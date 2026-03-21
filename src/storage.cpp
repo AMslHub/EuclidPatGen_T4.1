@@ -1,0 +1,283 @@
+#include <storage.h>
+
+#include <EEPROM.h>
+
+#include <euclid.h>
+
+// EEPROM storage for persistent parameters
+// Hinweis: Bei Layout-Aenderungen EEPROM_MAGIC_* anpassen.
+#define EEPROM_MAGIC_CURRENT 0xEADA
+#define EEPROM_MAGIC_SLOTS   0xEA5A
+#define EEPROM_ADDR_CURRENT  0
+
+struct ParamBlock {
+    uint8_t len[3];
+    uint8_t num[3];
+    int8_t rot[3];
+    uint8_t prob[3];
+    uint8_t probAuto[3];
+    uint8_t values[3][32];
+    uint8_t hold[3];
+    uint8_t gateLen[3][32];
+    uint8_t gateHold[3];
+    uint8_t rotValues[3];
+    uint8_t rotGateLen[3];
+};
+
+struct CurrentParams {
+    uint16_t bpm;
+    ParamBlock data;
+    uint8_t epatSavedMask;
+    uint8_t epat[3][32];
+};
+
+struct SlotParams {
+    ParamBlock data;
+    uint8_t epatSavedMask;
+    uint8_t epat[3][32];
+};
+
+struct EucParams {
+    uint16_t magic;
+    CurrentParams data;
+};
+
+struct SlotsHeader {
+    uint16_t magic;
+    uint8_t usedMask;
+    uint8_t reserved;
+};
+
+static const uint16_t EEPROM_ADDR_SLOTS = (uint16_t)(EEPROM_ADDR_CURRENT + sizeof(EucParams));
+static const uint16_t EEPROM_ADDR_SLOTS_HEADER = EEPROM_ADDR_SLOTS;
+static const uint16_t EEPROM_ADDR_SLOTS_DATA = (uint16_t)(EEPROM_ADDR_SLOTS_HEADER + sizeof(SlotsHeader));
+static const uint8_t SLOT_COUNT = 7;
+
+static int pendingSlot = -1;
+static bool pendingLoad = false;
+static int activeSlot = -1;
+
+static void packParamsCore(ParamBlock &p){
+    for(int i=0;i<3;i++){
+        p.len[i] = (uint8_t) clampVal(PatLen[i], 1, 32);
+        p.num[i] = (uint8_t) clampVal(PatNum[i], 0, PatLen[i]);
+        int rmax = PatLen[i] > 0 ? PatLen[i] : 0;
+        p.rot[i] = (int8_t) clampVal(PatRot[i], -rmax, rmax);
+        p.prob[i] = (uint8_t) clampVal(PatProb[i], 0, 20);
+        p.probAuto[i] = PatProbAuto[i] ? 1 : 0;
+        if(ProbEuclidRebuild[i]){
+            p.probAuto[i] = (uint8_t)(p.probAuto[i] | 0x02);
+        }
+        for(int j=0;j<32;j++){
+            p.values[i][j] = ValuesArr[i][j];
+            p.gateLen[i][j] = GateLenArr[i][j];
+        }
+        p.hold[i] = (*HoldArr[i]) ? 1 : 0;
+        p.gateHold[i] = (*GateHoldArr[i]) ? 1 : 0;
+        p.rotValues[i] = RotateValues[i] ? 1 : 0;
+        p.rotGateLen[i] = RotateGateLen[i] ? 1 : 0;
+    }
+}
+
+static void unpackParamsCore(const ParamBlock &p){
+    for(int i=0;i<3;i++){
+        PatLen[i] = clampVal(p.len[i], 1, 32);
+        PatNum[i] = clampVal(p.num[i], 0, PatLen[i]);
+        int rmax = PatLen[i] > 0 ? PatLen[i] : 0;
+        PatRot[i] = clampVal((int)p.rot[i], -rmax, rmax);
+        PatProb[i] = clampVal(p.prob[i], 0, 20);
+        PatProbAuto[i] = (p.probAuto[i] & 0x01) != 0;
+        ProbEuclidRebuild[i] = (p.probAuto[i] & 0x02) != 0;
+        for(int j=0;j<32;j++){
+            ValuesArr[i][j] = p.values[i][j];
+            GateLenArr[i][j] = p.gateLen[i][j];
+        }
+        *HoldArr[i] = (p.hold[i] != 0);
+        *GateHoldArr[i] = (p.gateHold[i] != 0);
+        RotateValues[i] = (p.rotValues[i] != 0);
+        RotateGateLen[i] = (p.rotGateLen[i] != 0);
+    }
+}
+
+static void packCurrent(CurrentParams &p){
+    p.bpm = (uint16_t) clampVal((int)bpm, 0, 600);
+    packParamsCore(p.data);
+    p.epatSavedMask = 0;
+    for(int i=0;i<3;i++){
+        if(!PatProbAuto[i]){
+            p.epatSavedMask = (uint8_t)(p.epatSavedMask | (1u << i));
+        }
+        for(int j=0;j<32;j++){
+            p.epat[i][j] = (uint8_t)(EPatArr[i][j] ? 1 : 0);
+        }
+    }
+}
+
+static void unpackCurrent(const CurrentParams &p){
+    bpm = (uint16_t) clampVal((int)p.bpm, 0, 600);
+    unpackParamsCore(p.data);
+    for(int i=0;i<3;i++){
+        bool hasSnapshot = (p.epatSavedMask & (1u << i)) != 0;
+        if(hasSnapshot && !PatProbAuto[i]){
+            int len = clampVal(PatLen[i], 1, 32);
+            for(int j=0;j<len;j++){
+                EPatArr[i][j] = (p.epat[i][j] != 0);
+            }
+            for(int j=len;j<32;j++){
+                EPatArr[i][j] = false;
+            }
+        }else{
+            rebuildPattern(PatLen[i], PatNum[i], PatProb[i], EPatArr[i]);
+        }
+    }
+}
+
+static void packSlot(SlotParams &p){
+    packParamsCore(p.data);
+    p.epatSavedMask = 0;
+    for(int i=0;i<3;i++){
+        if(!PatProbAuto[i]){
+            p.epatSavedMask = (uint8_t)(p.epatSavedMask | (1u << i));
+        }
+        for(int j=0;j<32;j++){
+            p.epat[i][j] = (uint8_t)(EPatArr[i][j] ? 1 : 0);
+        }
+    }
+}
+
+static void unpackSlot(const SlotParams &p){
+    unpackParamsCore(p.data);
+    for(int i=0;i<3;i++){
+        bool hasSnapshot = (p.epatSavedMask & (1u << i)) != 0;
+        if(hasSnapshot && !PatProbAuto[i]){
+            int len = clampVal(PatLen[i], 1, 32);
+            for(int j=0;j<len;j++){
+                EPatArr[i][j] = (p.epat[i][j] != 0);
+            }
+            for(int j=len;j<32;j++){
+                EPatArr[i][j] = false;
+            }
+        }else{
+            rebuildPattern(PatLen[i], PatNum[i], PatProb[i], EPatArr[i]);
+        }
+    }
+}
+
+static SlotsHeader readSlotsHeader(){
+    SlotsHeader h;
+    EEPROM.get(EEPROM_ADDR_SLOTS_HEADER, h);
+    if(h.magic != EEPROM_MAGIC_SLOTS){
+        h.magic = EEPROM_MAGIC_SLOTS;
+        h.usedMask = 0;
+        h.reserved = 0;
+        EEPROM.put(EEPROM_ADDR_SLOTS_HEADER, h);
+    }
+    return h;
+}
+
+static void writeSlotsHeader(const SlotsHeader &h){
+    EEPROM.put(EEPROM_ADDR_SLOTS_HEADER, h);
+}
+
+static uint16_t slotAddr(int slot){
+    return (uint16_t)(EEPROM_ADDR_SLOTS_DATA + slot * sizeof(SlotParams));
+}
+
+// Zweck: Speichert alle relevanten Parameter dauerhaft im EEPROM.
+// Side Effects: schreibt in den EEPROM.
+// Assumptions: EEPROM ist verfuegbar; Arrays haben Laenge 32.
+void saveParams(){
+    EucParams p;
+    p.magic = EEPROM_MAGIC_CURRENT;
+    packCurrent(p.data);
+    EEPROM.put(EEPROM_ADDR_CURRENT, p);
+}
+
+// Zweck: Laedt Parameter aus dem EEPROM oder setzt Defaults.
+// Side Effects: schreibt in globale Parameter-Arrays und Flags.
+// Assumptions: EEPROM-Layout passt zur aktuellen Struktur oder Defaults werden gesetzt.
+void loadParams(){
+    EucParams p;
+    EEPROM.get(EEPROM_ADDR_CURRENT, p);
+    if(p.magic == EEPROM_MAGIC_CURRENT){
+        unpackCurrent(p.data);
+    }else{
+        // Defaults when EEPROM layout changes
+        bpm = 120;
+        for(int i=0;i<3;i++){
+            *HoldArr[i] = true;
+            *GateHoldArr[i] = false;
+            RotateValues[i] = false;
+            RotateGateLen[i] = false;
+            PatProb[i] = 10;
+            PatProbAuto[i] = false;
+            ProbEuclidRebuild[i] = false;
+        }
+    }
+}
+
+void scheduleSaveParams(){
+    PendingSave = true;
+    PendingSaveAt = millis() + SAVE_DEBOUNCE_MS;
+}
+
+uint8_t getSlotsUsedMask(){
+    SlotsHeader h = readSlotsHeader();
+    return h.usedMask;
+}
+
+bool saveParamsSlot(int slot){
+    if(slot < 0 || slot >= SLOT_COUNT) return false;
+    SlotParams p;
+    packSlot(p);
+    EEPROM.put(slotAddr(slot), p);
+    SlotsHeader h = readSlotsHeader();
+    h.usedMask = (uint8_t)(h.usedMask | (1u << slot));
+    writeSlotsHeader(h);
+    return true;
+}
+
+bool deleteParamsSlot(int slot){
+    if(slot < 0 || slot >= SLOT_COUNT) return false;
+    SlotsHeader h = readSlotsHeader();
+    h.usedMask = (uint8_t)(h.usedMask & ~(1u << slot));
+    writeSlotsHeader(h);
+    if(activeSlot == slot){
+        activeSlot = -1;
+    }
+    return true;
+}
+
+static bool loadParamsSlotNow(int slot){
+    if(slot < 0 || slot >= SLOT_COUNT) return false;
+    SlotsHeader h = readSlotsHeader();
+    if((h.usedMask & (1u << slot)) == 0){
+        return false;
+    }
+    SlotParams p;
+    EEPROM.get(slotAddr(slot), p);
+    unpackSlot(p);
+    activeSlot = slot;
+    return true;
+}
+
+bool requestLoadSlot(int slot){
+    if(slot < 0 || slot >= SLOT_COUNT) return false;
+    pendingSlot = slot;
+    pendingLoad = true;
+    return true;
+}
+
+bool applyPendingLoadIfReady(unsigned int step){
+    if(!pendingLoad) return false;
+    if(PatLen[0] <= 0) return false;
+    if((step % (unsigned int)PatLen[0]) != 0) return false;
+    bool ok = loadParamsSlotNow(pendingSlot);
+    pendingLoad = false;
+    pendingSlot = -1;
+    return ok;
+}
+
+int getActiveSlot(){
+    return activeSlot;
+}
