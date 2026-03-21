@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "EuclidPatGen_T4.1",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"cmath": "cpp"
+		}
+	}
+}
