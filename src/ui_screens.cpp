@@ -53,32 +53,6 @@ static int perfSeq1LastStep = -1;
 static int perfSeq1LastX = -1;
 static bool probFlash[3] = { false, false, false };
 static uint32_t probFlashUntil[3] = { 0, 0, 0 };
-// Zweck: Prueft, ob im rotierten Pattern an der Position ein Hit liegt.
-// Side Effects: keine.
-// Assumptions: PatLen[setIdx] > 0, EPatArr[setIdx] ist gueltig.
-static inline bool isHitRotated(int setIdx, int idx){
-  int len = PatLen[setIdx];
-  if(len <= 0) return false;
-  int rot = PatRot[setIdx] % len;
-  if(rot < 0) rot += len;
-  int src = idx - rot;
-  if(src < 0) src += len;
-  return EPatArr[setIdx][src];
-}
-
-// Zweck: Berechnet den Quellindex unter Beruecksichtigung der Rotation.
-// Side Effects: keine.
-// Assumptions: PatLen[setIdx] > 0.
-static inline int rotatedSrcIndex(int setIdx, int idx){
-  int len = PatLen[setIdx];
-  if(len <= 0) return idx;
-  int rot = PatRot[setIdx] % len;
-  if(rot < 0) rot += len;
-  int src = idx - rot;
-  if(src < 0) src += len;
-  return src;
-}
-
 // Zweck: Prueft, ob ein Punkt innerhalb einer Box mit zusaetzlichem Rand liegt.
 // Side Effects: keine.
 // Assumptions: mapX/mapY sind in Screen-Koordinaten.
@@ -261,23 +235,6 @@ static void startProbButtonFlash(int idx){
   drawProbButton(true);
 }
 
-static void syncStagedPatternFromCurrent(int idx){
-  if(idx < 0 || idx > 2) return;
-  int len = clampVal(PatLen[idx], 1, 32);
-  for(int i=0;i<len;i++){
-    EPatBArr[idx][i] = EPatArr[idx][i];
-  }
-  for(int i=len;i<32;i++){
-    EPatBArr[idx][i] = false;
-  }
-}
-
-static void stageProbAutoPatternFromCurrent(int idx){
-  if(idx < 0 || idx > 2) return;
-  int len = clampVal(PatLen[idx], 1, 32);
-  buildProbPattern(EPatArr[idx], EPatBArr[idx], len, PatNum[idx], PatProb[idx], ProbEuclidRebuild[idx]);
-}
-
 void tickProbButtonFlash(){
   uint32_t now = millis();
   for(int i=0;i<3;i++){
@@ -298,8 +255,12 @@ void tickProbButtonFlash(){
 static void applyProbToPattern(int idx){
   if(idx < 0 || idx > 2) return;
   int len = clampVal(PatLen[idx], 1, 32);
-  buildProbPattern(EPatArr[idx], EPatArr[idx], len, PatNum[idx], PatProb[idx], ProbEuclidRebuild[idx]);
-  syncStagedPatternFromCurrent(idx);
+  // Temp-Buffer verhindert src==dst-Aliasing in buildProbPattern.
+  bool tmp[32];
+  buildProbPattern(EPatArr[idx], tmp, len, PatNum[idx], PatProb[idx], ProbEuclidRebuild[idx]);
+  for(int i = 0;     i < len; i++) EPatArr[idx][i] = tmp[i];
+  for(int i = len;   i < 32;  i++) EPatArr[idx][i] = false;
+  syncEPatBFromEPat(idx);
 }
 
 // Zweck: Zeichnet die Checkbox fuer Euclid-Rebuild plus kleine Mutation.
@@ -438,6 +399,17 @@ static void drawPerfMsBox(int row, bool isSoloColumn, int yTop){
   tft.drawRect(x + 1, yTop + 1, PERF_MS_W - 2, PERF_MS_H - 2, ILI9341_WHITE);
 }
 
+// Zweck: Berechnet die Y-Positionen der Mute/Solo-Boxen (single source of truth).
+// Wird von drawPerformanceScreen und handlePerformance verwendet.
+static void calcPerfMsY(int msY[3]) {
+  int sb = PERF_BTN_Y - 15;        // seqBottom3
+  msY[2] = sb - PERF_MS_H + 5;
+  sb -= 30;                          // seqBottom2
+  msY[1] = sb - PERF_MS_H + 5;
+  sb -= 30;                          // seqBottom1
+  msY[0] = sb - PERF_MS_H + 5;
+}
+
 // Zweck: Zeichnet den Performance-Menue-Screen.
 // Side Effects: schreibt auf das TFT.
 // Assumptions: TFT ist initialisiert.
@@ -469,31 +441,22 @@ void drawPerformanceScreen(){
     drawPerfButton(i);
   }
 
-  // Sequencer-Labels ueber dem Load-Button
+  // Sequencer-Labels und Mute/Solo-Boxen
   tft.setFont(Arial_16);
   tft.setTextColor(ILI9341_LIGHTGREY);
-  int seqCharH = 16;
-  int seqBottom3 = PERF_BTN_Y - 15;
-  int seqBottom2 = seqBottom3 - 30;
-  int seqBottom1 = seqBottom2 - 30;
-  drawCenteredLabel(PERF_BTN_XS[0], seqBottom1 - seqCharH, PERF_BTN_W, seqCharH, "Seq1", 8, seqCharH, -5, 0);
-  drawCenteredLabel(PERF_BTN_XS[0], seqBottom2 - seqCharH, PERF_BTN_W, seqCharH, "Seq2", 8, seqCharH, -5, 0);
-  drawCenteredLabel(PERF_BTN_XS[0], seqBottom3 - seqCharH, PERF_BTN_W, seqCharH, "Seq3", 8, seqCharH, -5, 0);
-
-  // Mute/Solo-Boxen neben Seq-Labels
-  int msY1 = seqBottom1 - PERF_MS_H + 5;
-  int msY2 = seqBottom2 - PERF_MS_H + 5;
-  int msY3 = seqBottom3 - PERF_MS_H + 5;
-
-  drawPerfMsBox(0, false, msY1);
-  drawPerfMsBox(0, true, msY1);
-  drawPerfMsBox(1, false, msY2);
-  drawPerfMsBox(1, true, msY2);
-  drawPerfMsBox(2, false, msY3);
-  drawPerfMsBox(2, true, msY3);
-
-  drawCenteredLabel(PERF_MS_X1, msY1 - seqCharH, PERF_MS_W, seqCharH, "M", 8, seqCharH, -5, -5);
-  drawCenteredLabel(PERF_MS_X2, msY1 - seqCharH, PERF_MS_W, seqCharH, "S", 8, seqCharH, -5, -5);
+  static const int seqCharH = 16;
+  int msY[3];
+  calcPerfMsY(msY);
+  // seqBottom[i] = msY[i] + PERF_MS_H - 5
+  drawCenteredLabel(PERF_BTN_XS[0], msY[0] + PERF_MS_H - 5 - seqCharH, PERF_BTN_W, seqCharH, "Seq1", 8, seqCharH, -5, 0);
+  drawCenteredLabel(PERF_BTN_XS[0], msY[1] + PERF_MS_H - 5 - seqCharH, PERF_BTN_W, seqCharH, "Seq2", 8, seqCharH, -5, 0);
+  drawCenteredLabel(PERF_BTN_XS[0], msY[2] + PERF_MS_H - 5 - seqCharH, PERF_BTN_W, seqCharH, "Seq3", 8, seqCharH, -5, 0);
+  for(int i = 0; i < 3; i++){
+    drawPerfMsBox(i, false, msY[i]);
+    drawPerfMsBox(i, true,  msY[i]);
+  }
+  drawCenteredLabel(PERF_MS_X1, msY[0] - seqCharH, PERF_MS_W, seqCharH, "M", 8, seqCharH, -5, -5);
+  drawCenteredLabel(PERF_MS_X2, msY[0] - seqCharH, PERF_MS_W, seqCharH, "S", 8, seqCharH, -5, -5);
 }
 
 // Zweck: Behandelt Touch-Events im Performance-Menue.
@@ -527,18 +490,18 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
 
   // Mute/Solo-Boxen
   tft.setFont(Arial_16);
-  int seqBottom3 = PERF_BTN_Y - 15;
-  int seqBottom2 = seqBottom3 - 30;
-  int seqBottom1 = seqBottom2 - 30;
-  int msY[3] = { seqBottom1 - PERF_MS_H + 5, seqBottom2 - PERF_MS_H + 5, seqBottom3 - PERF_MS_H + 5 };
+  int msY[3];
+  calcPerfMsY(msY);
 
   for(int row = 0; row < 3; row++){
     if(hitBox(mapX, mapY, PERF_MS_X1, msY[row], PERF_MS_W, PERF_MS_H, PERF_MS_PAD)){
-      // Mute aktiviert -> alle Solos aus
-      SoloSeq[0] = false;
-      SoloSeq[1] = false;
-      SoloSeq[2] = false;
       MuteSeq[row] = !MuteSeq[row];
+      if(MuteSeq[row]){
+        // Mute aktiviert -> alle Solos aus (gegenseitiger Ausschluss)
+        SoloSeq[0] = false;
+        SoloSeq[1] = false;
+        SoloSeq[2] = false;
+      }
       drawPerfMsBox(row, false, msY[row]);
       drawPerfMsBox(0, true, msY[0]);
       drawPerfMsBox(1, true, msY[1]);
@@ -546,13 +509,13 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
       return true;
     }
     if(hitBox(mapX, mapY, PERF_MS_X2, msY[row], PERF_MS_W, PERF_MS_H, PERF_MS_PAD)){
-      // Solo aktiviert -> alle Mutes aus
-      MuteSeq[0] = false;
-      MuteSeq[1] = false;
-      MuteSeq[2] = false;
       if(SoloSeq[row]){
         SoloSeq[row] = false;
       }else{
+        // Solo aktiviert -> alle Mutes aus (gegenseitiger Ausschluss)
+        MuteSeq[0] = false;
+        MuteSeq[1] = false;
+        MuteSeq[2] = false;
         SoloSeq[0] = false;
         SoloSeq[1] = false;
         SoloSeq[2] = false;
@@ -660,9 +623,9 @@ void redrawParam(int idx){
 
     drawEucledianCircle(R1, PatLen[idx], PatNum[idx], PatRot[idx], PatProb[idx], EPatArr[idx]);
     if(PatProbAuto[idx]){
-      stageProbAutoPatternFromCurrent(idx);
+      stageProbPatternFromCurrent(idx);
     }else{
-      syncStagedPatternFromCurrent(idx);
+      syncEPatBFromEPat(idx);
     }
     drawParamButtons(PatLen[idx], PatNum[idx], PatRot[idx], PatProb[idx]);
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
@@ -818,10 +781,10 @@ void drawValuesBar(int setIdx, int idx){
     int xStep = x0 + idx * wStep;
     int x = xStep + (wStep - w) / 2;
 
-    int src = RotateValues[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
+    int src = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
     uint8_t val = ValuesArr[setIdx][src];
     int fillH = (int)((val * (long)h) / 255L);
-    bool active = RotateValues[setIdx] ? EPatArr[setIdx][src] : isHitRotated(setIdx, idx);
+    bool active = RotateValues[setIdx] ? EPatArr[setIdx][src] : patternIsHit(setIdx, idx);
 
     // Clear full step area
     tft.fillRect(xStep, y0, wStep, h, ILI9341_BLACK);
@@ -909,9 +872,9 @@ void handleEUCLPARAM(int idx, int mapX, int mapY, uint16_t tipPos){
     if(hitBox(mapX, mapY, PARAM_PBOX_X, PARAM_PBOX_Y, PARAM_PBOX_S, PARAM_PBOX_S, 8)){
         PatProbAuto[idx] = !PatProbAuto[idx];
         if(PatProbAuto[idx]){
-            stageProbAutoPatternFromCurrent(idx);
+            stageProbPatternFromCurrent(idx);
         }else{
-            syncStagedPatternFromCurrent(idx);
+            syncEPatBFromEPat(idx);
         }
         scheduleSaveParams();
         drawProbAutoCheckbox(idx);
@@ -920,9 +883,9 @@ void handleEUCLPARAM(int idx, int mapX, int mapY, uint16_t tipPos){
     if(hitBox(mapX, mapY, PARAM_ERBOX_X, PARAM_ERBOX_Y, PARAM_ERBOX_S, PARAM_ERBOX_S, 8)){
         ProbEuclidRebuild[idx] = !ProbEuclidRebuild[idx];
         if(PatProbAuto[idx]){
-            stageProbAutoPatternFromCurrent(idx);
+            stageProbPatternFromCurrent(idx);
         }else{
-            syncStagedPatternFromCurrent(idx);
+            syncEPatBFromEPat(idx);
         }
         scheduleSaveParams();
         drawProbEuclidRebuildCheckbox(idx);
@@ -1044,7 +1007,7 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateValues[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
+    int writeIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
     ValuesArr[setIdx][writeIdx] = (uint8_t)v;
@@ -1067,7 +1030,7 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateValues[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
+    int writeIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
     ValuesArr[setIdx][writeIdx] = (uint8_t)v;
@@ -1119,10 +1082,10 @@ void drawGateLenBar(int setIdx, int idx){
     int xStep = x0 + idx * wStep;
     int x = xStep + (wStep - w) / 2;
 
-    int src = RotateGateLen[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
+    int src = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
     uint8_t val = GateLenArr[setIdx][src];
     int fillH = (int)((val * (long)h) / 255L);
-    bool active = RotateGateLen[setIdx] ? EPatArr[setIdx][src] : isHitRotated(setIdx, idx);
+    bool active = RotateGateLen[setIdx] ? EPatArr[setIdx][src] : patternIsHit(setIdx, idx);
 
     // Clear full step area
     tft.fillRect(xStep, y0, wStep, h, ILI9341_BLACK);
@@ -1198,6 +1161,7 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     if(hitBox(mapX, mapY, 260, 10, 24, 24, 8)){
         // GateHold: Aktiviert variable Gate-Laengen pro Step.
         *GateHoldArr[setIdx] = !(*GateHoldArr[setIdx]);
+        scheduleSaveParams();
         drawGateHoldCheckbox(setIdx);
         return;
     }
@@ -1213,7 +1177,7 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateGateLen[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
+    int writeIdx = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
     GateLenArr[setIdx][writeIdx] = (uint8_t)v;
@@ -1235,7 +1199,7 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateGateLen[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
+    int writeIdx = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
     GateLenArr[setIdx][writeIdx] = (uint8_t)v;
@@ -1288,8 +1252,8 @@ void handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
 
     int len = clampVal(PatLen[setIdx], 1, 32);
     int idx = cnt % len;
-    int writeValIdx = RotateValues[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
-    int writeGateIdx = RotateGateLen[setIdx] ? rotatedSrcIndex(setIdx, idx) : idx;
+    int writeValIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+    int writeGateIdx = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
 
     int v = map(mapX, x, x + w - 1, 0, 255);
     int g = map(mapY, y + h - 1, y, 0, 255);

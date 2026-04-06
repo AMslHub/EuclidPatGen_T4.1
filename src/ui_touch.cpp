@@ -8,7 +8,8 @@ bool readTouchMapped(int &mapX, int &mapY){
     // Kalibrierwerte sind hardware- und display-spezifisch.
     mapX = 320-map(p.x, 300, 3700, 0, 320);
     mapY = 240-map(p.y, 300, 3700, 0, 240);
-    return true;
+    // Koordinaten ausserhalb des Bildschirmbereichs = ungueltige Messung
+    return (mapX >= 0 && mapX < 320 && mapY >= 0 && mapY < 240);
 }
 
 // Zweck: Ordnet eine Touch-Position einer logischen UI-Zone zu.

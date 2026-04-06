@@ -1,4 +1,5 @@
 #include <app_state.h>
+#include <cv_inputs.h>
 #include <euclid.h>
 #include <gates.h>
 #include <hardware_map.h>
@@ -67,6 +68,9 @@ const uint32_t SAVE_DEBOUNCE_MS = 400;
 // Performance UI refresh after load
 bool PendingPerfRefresh = false;
 
+// Deferred full-screen redraw nach Slot-Load (verhindert fillScreen() in der Tick-Schleife)
+bool PendingCircsRedraw = false;
+
 // Performance touch gating
 bool PerfIgnoreUntilRelease = false;
  
@@ -81,28 +85,54 @@ bool EPatB3[32] = {0};
 bool *EPatArr[3] = { EPat1, EPat2, EPat3 };
 bool *EPatBArr[3] = { EPatB1, EPatB2, EPatB3 };
  
-const uint16_t BPM_MIN = 0;
-const uint16_t BPM_MAX = 600;
+const uint16_t BPM_STOP = 0;   // 0 = Timer anhalten (kein BPM)
+const uint16_t BPM_MIN  = 0;   // clampVal-Untergrenze (inkl. Stop)
+const uint16_t BPM_MAX  = 600;
 
 uint16_t bpm = 120;
 // Intervall in us (BPM -> Mikrosekunden pro Step)
 unsigned int iTim = 0;
  
 // Variablen
-volatile unsigned int cnthold = 0;
-volatile unsigned int cnt     = 0; // Zähler, wird in der ISR erhöht
-volatile uint32_t pendingTicks = 0;
+unsigned int cnthold = 0;
+unsigned int cnt     = 0;          // Zähler, nur im Main-Loop geschrieben
+volatile uint32_t pendingTicks = 0; // ISR-shared
 
 IntervalTimer myTimer;  // Interval-Timer Objekt
+
+// Externer Clock / Reset (active-low via MMBT3904-Transistor)
+static volatile uint32_t lastExtClockUs    = 0;
+static volatile bool     extClockReceived  = false; // ISR → Main-Loop Handshake
+static volatile bool     pendingReset      = false;
+static volatile uint32_t measuredPeriodUs  = 0;
+static bool              extClockActive    = false; // nur im Main-Loop-Kontext
+static const uint32_t    EXT_CLOCK_TIMEOUT_US = 3000000UL; // 3s ohne Puls → interner Timer
 
 // Gate handling
 const uint32_t GATE_PULSE_US = 5000; // 5 ms gate pulse
 const uint8_t GatePins[3] = { GATE_OUT1_PIN, GATE_OUT2_PIN, GATE_OUT3_PIN };
 volatile uint32_t gateOffAt[3] = { 0, 0, 0 };
-const int DAC0_PIN = VALUE_OUT1_PIN;
-const int DAC1_PIN = VALUE_OUT2_PIN;
-const int PWM_OUT_PIN = VALUE_OUT3_PWM_PIN;
 
+
+// Zweck: Verarbeitet externen Clock-Puls (active-low, FALLING-Flanke).
+// Misst Taktperiode fuer Gate-Laengen-Berechnung; zaehlt pendingTick.
+// Assumptions: Nur vom Interrupt-Kontext aufgerufen (Pin CLOCK_IN_PIN).
+void clockISR() {
+  uint32_t now = micros();
+  uint32_t period = now - lastExtClockUs;
+  if (extClockReceived && period > 500 && period < EXT_CLOCK_TIMEOUT_US) {
+    measuredPeriodUs = period;
+  }
+  lastExtClockUs   = now;
+  extClockReceived = true;
+  if (pendingTicks != 0xFFFFFFFFu) pendingTicks++;
+}
+
+// Zweck: Setzt Reset-Flag bei externem Reset-Puls (active-low, FALLING-Flanke).
+// Assumptions: Nur vom Interrupt-Kontext aufgerufen (Pin RESET_IN_PIN).
+void resetISR() {
+  pendingReset = true;
+}
 
 // Zweck: Zaehlt ausstehende Timer-Ticks fuer die Verarbeitung im Hauptloop.
 // Side Effects: schreibt auf die globale Variable pendingTicks.
@@ -151,29 +181,6 @@ void applyBpm(){
   myTimer.begin(timerISR, iTim);
 }
 
-// Zweck: Kopiert Pattern nach EPatB (Hilfsfunktion fuer P-Logik).
-// Side Effects: schreibt in EPatBArr[idx].
-// Assumptions: idx in 0..2; PatLen[idx] gueltig.
-static void syncEPatBFromEPat(int idx){
-  if(idx < 0 || idx > 2) return;
-  int len = clampVal(PatLen[idx], 1, 32);
-  for(int i=0;i<len;i++){
-    EPatBArr[idx][i] = EPatArr[idx][i];
-  }
-  for(int i=len;i<32;i++){
-    EPatBArr[idx][i] = false;
-  }
-}
-
-// Zweck: Bereitet das naechste Prob-/Auto-Pattern fuer eine Spur vor.
-// Side Effects: schreibt in EPatBArr[idx].
-// Assumptions: idx in 0..2; aktuelles Pattern in EPatArr[idx] ist gueltig.
-static void stageProbPatternFromCurrent(int idx){
-  if(idx < 0 || idx > 2) return;
-  int len = clampVal(PatLen[idx], 1, 32);
-  buildProbPattern(EPatArr[idx], EPatBArr[idx], len, PatNum[idx], PatProb[idx], ProbEuclidRebuild[idx]);
-}
-
 // Zweck: Wendet EPatB auf EPat an (Sequenzgrenze).
 // Side Effects: schreibt in EPatArr[idx].
 // Assumptions: idx in 0..2; PatLen[idx] gueltig.
@@ -220,19 +227,26 @@ void setup() {
   pinMode(GATE_OUT1_PIN, OUTPUT);
   pinMode(GATE_OUT2_PIN, OUTPUT);
   pinMode(GATE_OUT3_PIN, OUTPUT);
-  pinMode(PWM_OUT_PIN, OUTPUT);
-  digitalWrite(GATE_OUT1_PIN, LOW);
-  digitalWrite(GATE_OUT2_PIN, LOW);
-  digitalWrite(GATE_OUT3_PIN, LOW);
+  // 74HCT14 Schmitt-Trigger-Inverter: Idle-Pegel HIGH → Ausgang LOW (kein Gate)
+  digitalWrite(GATE_OUT1_PIN, HIGH);
+  digitalWrite(GATE_OUT2_PIN, HIGH);
+  digitalWrite(GATE_OUT3_PIN, HIGH);
 
-  analogWriteResolution(8);
-  analogWriteFrequency(PWM_OUT_PIN, 40000);
+  initCvOutputs();
+
+  pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
+  pinMode(RESET_IN_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
 
   tft.begin();
   ts.begin();
   tft.setClock(60000000); // SPI Speed
   tft.fillScreen(ILI9341_BLACK);
   tft.setRotation(3); // Screen rotation
+
+  // 12-bit ADC fuer CV-Eingänge
+  analogReadResolution(12);
 
   // RNG-Seed fuer Probabilistik
   randomSeed(analogRead(A0) + micros());
@@ -271,6 +285,38 @@ void setup() {
 // Assumptions: Wird fortlaufend aufgerufen; Timer-ISR zaehlt pendingTicks.
 void loop() {
   
+  readCvInputs();
+
+  // ----------- E X T E R N E R   C L O C K  -----------------------
+  if (extClockReceived) {
+    if (!extClockActive) {
+      extClockActive = true;
+      myTimer.end(); // internen Timer anhalten
+    }
+    uint32_t p = measuredPeriodUs;
+    if (p > 0) DurationOfOneStep = p;
+
+    // Timeout: kein Puls seit >3s → zurück zum internen Timer
+    if ((uint32_t)(micros() - lastExtClockUs) > EXT_CLOCK_TIMEOUT_US) {
+      noInterrupts();
+      extClockReceived = false;
+      measuredPeriodUs = 0;
+      interrupts();
+      extClockActive = false;
+      applyBpm();
+    }
+  }
+
+  // ----------- R E S E T  ------------------------------------------
+  if (pendingReset) {
+    noInterrupts();
+    pendingReset = false;
+    pendingTicks = 0;
+    interrupts();
+    cnt     = 0;
+    cnthold = 0;
+  }
+
   // ----------- T O U C H P A D ------------------------------------
   // Touchpad wurde gerade gerückt (nicht gehalten)
   if(ts.touched()){
@@ -430,15 +476,9 @@ void loop() {
         }
       }
       applyBpm();
-      if(GUIState == EUCLCIRCS){
-        tft.fillScreen(ILI9341_BLACK);
-        setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
-        drawBpmControls();
-        drawBpmValue();
-        drawEucledianCircleFromPattern(R1, PatLen[0], PatRot[0], EPatArr[0]);
-        drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
-        drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
-      }
+      // Redraw nicht hier – fillScreen() blockiert ~50ms und laesst Ticks aufstauen.
+      // Wird nach der Tick-Schleife per PendingCircsRedraw ausgefuehrt.
+      PendingCircsRedraw = true;
       PendingPerfRefresh = true;
       // Lesezeiger nach Load auf Schritt 1 (Index 0) zuruecksetzen
       cnt = 0;
@@ -522,7 +562,8 @@ void loop() {
     }
 
     outputValuesForStep(cnt);
-    delayMicroseconds(500);
+    // Hinweis: Falls DAC-Settling vor dem Gate-Trigger nötig ist, den Offset
+    // in GATE_PULSE_US einrechnen statt hier blockierend zu warten.
     triggerGates();
 
     cnthold = cnt; 
@@ -533,7 +574,7 @@ void loop() {
   for(int i=0;i<3;i++){
     uint32_t offAt = gateOffAt[i];
     if(offAt != 0 && (int32_t)(now - offAt) >= 0){
-      digitalWrite(GatePins[i], LOW);
+      digitalWrite(GatePins[i], HIGH); // 74HCT14: HIGH → Inverter-Ausgang LOW = Gate aus
       gateOffAt[i] = 0;
     }
   }
@@ -552,6 +593,20 @@ void loop() {
     tickPerformanceUi();
   }
   tickProbButtonFlash();
+
+  // Vollbild-Redraw nach Slot-Load (ausserhalb der Tick-Schleife, keine Tick-Stauung)
+  if(PendingCircsRedraw){
+    PendingCircsRedraw = false;
+    if(GUIState == EUCLCIRCS){
+      tft.fillScreen(ILI9341_BLACK);
+      setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
+      drawBpmControls();
+      drawBpmValue();
+      drawEucledianCircleFromPattern(R1, PatLen[0], PatRot[0], EPatArr[0]);
+      drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
+      drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
+    }
+  }
 
   // Active-Slot Kennzeichnung aktualisieren (falls ein Load passiert ist)
   if(PendingPerfRefresh){

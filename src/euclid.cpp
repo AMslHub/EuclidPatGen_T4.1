@@ -2,15 +2,6 @@
 
 #include <math.h>
 
-static inline int rotatedIndex(int idx, int len, int rot){
-    if(len <= 0) return 0;
-    int r = rot % len;
-    if(r < 0) r += len;
-    int src = idx - r;
-    if(src < 0) src += len;
-    return src;
-}
-
 static void copyPatternRange(bool *dst, const bool *src, int len){
     for(int i=0;i<len;i++){
         dst[i] = src[i];
@@ -101,8 +92,8 @@ static void mutatePatternByMoveCount(const bool *src, bool *dst, int len, int hi
     copyPatternRange(dst, work, len);
 }
 
-// Wird bei jedem BPM-Timer-Interrupt aufgerufen
 // Zweck: Aktualisiert die Kreisdarstellung und den Laufpunkt fuer den aktuellen Step.
+// Aufruf: Im Main-Loop, einmal pro BPM-Tick (NICHT im ISR-Kontext).
 // Side Effects: zeichnet direkt auf das TFT.
 // Assumptions: len > 0, cnthold/cnt sind gueltig.
 void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, bool *pattern){
@@ -111,7 +102,7 @@ void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, boo
     tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY); // Zeichne Großkreis
 
     int idx = cnthold % len;
-    int src = rotatedIndex(idx, len, PatRot);
+    int src = euclidRotatedSrc(idx, len, PatRot);
     if(pattern[src]==false){
       tft.drawCircle(CX+R*sin(2*M_PI/len*idx), CY-R*cos(2*M_PI/len*idx), r2, ILI9341_WHITE);
     }else{
@@ -227,7 +218,7 @@ void drawEucledianCircle(const int R, int len, int PatNum, int PatRot, int PatPr
     // Zeichne Großkreis und Unterteilungspunkte
     tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY);
     for(int i=0; i<len; i++){
-      int src = rotatedIndex(i, len, PatRot);
+      int src = euclidRotatedSrc(i, len, PatRot);
       if(pattern[src]==false){
         tft.drawCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2, ILI9341_WHITE);
       }else{
@@ -242,7 +233,7 @@ void drawEucledianCircle(const int R, int len, int PatNum, int PatRot, int PatPr
 void drawEucledianCircleFromPattern(const int R, int len, int PatRot, bool *pattern){
     tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY);
     for(int i=0; i<len; i++){
-      int src = rotatedIndex(i, len, PatRot);
+      int src = euclidRotatedSrc(i, len, PatRot);
       // Punktbereich vor dem Neuzeichnen loeschen, damit alte Fills verschwinden
       tft.fillCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2+3, ILI9341_BLACK);
       if(pattern[src]==false){
@@ -293,4 +284,23 @@ void Eucledian(bool *pattern, int steps, int PatNum, int PatFirstHit){
             }
         }
     }
+}
+
+// Zweck: Kopiert EPatArr[idx] vollstaendig in EPatBArr[idx] (Staged-Buffer).
+// Side Effects: schreibt in EPatBArr[idx].
+// Assumptions: idx in 0..2; PatLen[idx] gueltig.
+void syncEPatBFromEPat(int idx) {
+    if (idx < 0 || idx > 2) return;
+    int len = clampVal(PatLen[idx], 1, 32);
+    for (int i = 0; i < len; i++)  EPatBArr[idx][i] = EPatArr[idx][i];
+    for (int i = len; i < 32; i++) EPatBArr[idx][i] = false;
+}
+
+// Zweck: Bereitet das naechste Prob-/Auto-Pattern fuer Kanal idx vor.
+// Side Effects: schreibt in EPatBArr[idx].
+// Assumptions: idx in 0..2; aktuelles Pattern in EPatArr[idx] ist gueltig.
+void stageProbPatternFromCurrent(int idx) {
+    if (idx < 0 || idx > 2) return;
+    int len = clampVal(PatLen[idx], 1, 32);
+    buildProbPattern(EPatArr[idx], EPatBArr[idx], len, PatNum[idx], PatProb[idx], ProbEuclidRebuild[idx]);
 }

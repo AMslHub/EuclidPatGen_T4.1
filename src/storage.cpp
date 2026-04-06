@@ -270,7 +270,10 @@ bool requestLoadSlot(int slot){
 
 bool applyPendingLoadIfReady(unsigned int step){
     if(!pendingLoad) return false;
-    if(PatLen[0] <= 0) return false;
+    if(PatLen[0] <= 0){
+        pendingLoad = false;
+        return false;
+    }
     if((step % (unsigned int)PatLen[0]) != 0) return false;
     bool ok = loadParamsSlotNow(pendingSlot);
     pendingLoad = false;

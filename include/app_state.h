@@ -94,17 +94,14 @@ extern uint32_t DurationOfOneStep;
 extern uint16_t bpm;
 
 // Timing
-extern volatile unsigned int cnthold;
-extern volatile unsigned int cnt;
-extern volatile uint32_t pendingTicks;
+extern unsigned int cnthold;
+extern unsigned int cnt;
+extern volatile uint32_t pendingTicks;  // ISR-shared: volatile korrekt
 
 // Gate handling
 extern const uint32_t GATE_PULSE_US;
 extern const uint8_t GatePins[3];
 extern volatile uint32_t gateOffAt[3];
-extern const int DAC0_PIN;
-extern const int DAC1_PIN;
-extern const int PWM_OUT_PIN;
 
 inline int clampVal(int v, int lo, int hi){
   if(v < lo) return lo;
