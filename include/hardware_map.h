@@ -42,3 +42,12 @@ static constexpr uint8_t ENC3_SW_PIN = 32;
 
 static constexpr uint8_t CLOCK_IN_PIN = 6;
 static constexpr uint8_t RESET_IN_PIN = 7;
+
+// Touch-Kalibrierung (XPT2046, hardware- und displayspezifisch).
+// Rohwerte durch Antippen der vier Ecken im Serial Monitor ermitteln.
+// TOUCH_SWAP_XY = true wenn X- und Y-Achse vertauscht erscheinen.
+static constexpr int  TOUCH_X_MIN  =  422;   // Raw-Wert linker Rand  (gemessen: oben-links=420, unten-links=425)
+static constexpr int  TOUCH_X_MAX  = 3864;   // Raw-Wert rechter Rand (gemessen: oben-rechts=3924, unten-rechts=3804)
+static constexpr int  TOUCH_Y_MIN  =  360;   // Raw-Wert oberer Rand  (gemessen: oben-links=360, oben-rechts=360)
+static constexpr int  TOUCH_Y_MAX  = 3770;   // Raw-Wert unterer Rand (gemessen: unten-links=3865, unten-rechts=3674)
+static constexpr bool TOUCH_SWAP_XY = false; // true: X/Y-Achsen tauschen
