@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>EuclidPatGen T4.1 – Pinout Referenz</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 11px;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 20mm 18mm;
+  }
+
+  h1 {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #1a1a1a;
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 10px;
+    color: #555;
+    margin-bottom: 16px;
+  }
+
+  h2 {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 18px 0 6px;
+    color: #1a1a1a;
+    border-bottom: 1px solid #aaa;
+    padding-bottom: 2px;
+  }
+
+  h3 {
+    font-size: 11px;
+    font-weight: 700;
+    margin: 12px 0 4px;
+    color: #333;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 12px;
+    font-size: 10.5px;
+  }
+
+  th {
+    background: #2c2c2c;
+    color: #fff;
+    padding: 4px 7px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.03em;
+  }
+
+  td {
+    padding: 3px 7px;
+    border-bottom: 1px solid #e8e8e8;
+    vertical-align: middle;
+  }
+
+  tr:nth-child(even) td { background: #f7f7f7; }
+
+  .used     { background: #fff3cd !important; font-weight: 600; }
+  .used-spi { background: #d4edda !important; font-weight: 600; }
+  .used-adc { background: #d1ecf1 !important; font-weight: 600; }
+  .free     { color: #777; }
+  .free-sd  { color: #999; font-style: italic; }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    margin: 6px 0 14px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+  }
+  .legend-box {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #ccc;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 24px;
+  }
+
+  .note {
+    background: #f0f4ff;
+    border-left: 3px solid #3a5fcd;
+    padding: 6px 10px;
+    font-size: 10px;
+    margin: 8px 0 14px;
+    color: #333;
+  }
+
+  .free-table td:first-child { font-weight: 600; }
+
+  @page {
+    size: A4 portrait;
+    margin: 14mm 14mm 14mm 14mm;
+  }
+
+  @media print {
+    body { padding: 0; }
+    h2 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<h1>EuclidPatGen T4.1 &ndash; Pinout Referenz</h1>
+<div class="subtitle">Teensy 4.1 &bull; 3-Kanal Euklidischer Pattern-Generator &bull; Eurorack-Modul &bull; Stand: 2026-03-24</div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-box" style="background:#fff3cd"></div> Belegt (Digital/PWM)</div>
+  <div class="legend-item"><div class="legend-box" style="background:#d4edda"></div> Belegt (SPI-Bus)</div>
+  <div class="legend-item"><div class="legend-box" style="background:#d1ecf1"></div> Belegt (ADC/Analog)</div>
+  <div class="legend-item"><div class="legend-box" style="background:#f7f7f7; color:#777"></div> Frei</div>
+</div>
+
+<h2>Vollständige Pin-Belegung</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Pin</th>
+      <th>Alt-Funktion</th>
+      <th>PWM</th>
+      <th>Projekt-Belegung</th>
+      <th>Richtung</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="free">0</td><td>RX1 (Serial1)</td><td>–</td><td class="free">frei</td><td></td></tr>
+    <tr><td class="used-spi">1</td><td>TX1 / MISO (SPI1)</td><td>–</td><td class="used-spi">TFT_MISO_PIN (SPI1)</td><td>Eingang</td></tr>
+    <tr><td class="used">2</td><td>–</td><td>PWM</td><td class="used">TOUCH_IRQ_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">3</td><td>–</td><td>PWM</td><td class="used">GATE_OUT1_PIN</td><td>Ausgang</td></tr>
+    <tr><td class="used">4</td><td>–</td><td>PWM</td><td class="used">GATE_OUT2_PIN</td><td>Ausgang</td></tr>
+    <tr><td class="used">5</td><td>–</td><td>PWM</td><td class="used">GATE_OUT3_PIN</td><td>Ausgang</td></tr>
+    <tr><td class="used">6</td><td>–</td><td>PWM</td><td class="used">CLOCK_IN_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">7</td><td>RX2 (Serial2)</td><td>–</td><td class="used">RESET_IN_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">8</td><td>TX2 (Serial2)</td><td>–</td><td class="used">MCP4822_CS_PITCH_PIN (SPI0 CS)</td><td>Ausgang</td></tr>
+    <tr><td class="used">9</td><td>–</td><td>PWM</td><td class="used">MCP4822_CS_VALUE_PIN (SPI0 CS)</td><td>Ausgang</td></tr>
+    <tr><td class="used-spi">10</td><td>CS (SPI0)</td><td>PWM</td><td class="used-spi">TOUCH_CS_PIN (SPI0 CS)</td><td>Ausgang</td></tr>
+    <tr><td class="used-spi">11</td><td>MOSI (SPI0)</td><td>PWM</td><td class="used-spi">SPI0 MOSI – Touch + MCP4822</td><td>Ausgang</td></tr>
+    <tr><td class="used-spi">12</td><td>MISO (SPI0)</td><td>–</td><td class="used-spi">SPI0 MISO – Touch + MCP4822</td><td>Eingang</td></tr>
+    <tr><td class="used-spi">13</td><td>SCK (SPI0) / LED</td><td>PWM</td><td class="used-spi">SPI0 SCK – Touch + MCP4822</td><td>Ausgang</td></tr>
+    <tr><td class="free">14</td><td>A0 / TX3</td><td>–</td><td class="free">frei <em>(floating – RNG-Seed)</em></td><td></td></tr>
+    <tr><td class="used">15</td><td>A1 / RX3</td><td>–</td><td class="used">ENC1_CLK_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">16</td><td>A2 / RX4</td><td>–</td><td class="used">ENC1_DT_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">17</td><td>A3 / TX4</td><td>–</td><td class="used">ENC2_CLK_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">18</td><td>A4 / SDA (I2C0)</td><td>–</td><td class="used">ENC2_DT_PIN</td><td>Eingang</td></tr>
+    <tr><td class="free">19</td><td>A5 / SCL (I2C0)</td><td>–</td><td class="free">frei</td><td></td></tr>
+    <tr><td class="used">20</td><td>A6 / TX5</td><td>–</td><td class="used">TFT_DC_PIN</td><td>Ausgang</td></tr>
+    <tr><td class="used-spi">21</td><td>A7 / RX5 / CS (SPI1)</td><td>–</td><td class="used-spi">TFT_CS_PIN (SPI1 CS)</td><td>Ausgang</td></tr>
+    <tr><td class="used">22</td><td>A8</td><td>PWM</td><td class="used">ENC3_CLK_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">23</td><td>A9</td><td>PWM</td><td class="used">ENC3_DT_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">24</td><td>A10 / TX6</td><td>–</td><td class="used">ENC1_SW_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used">25</td><td>A11 / RX6</td><td>–</td><td class="used">ENC2_SW_PIN</td><td>Eingang</td></tr>
+    <tr><td class="used-spi">26</td><td>A12 / MOSI (SPI1)</td><td>–</td><td class="used-spi">TFT_MOSI_PIN (SPI1 MOSI)</td><td>Ausgang</td></tr>
+    <tr><td class="used-spi">27</td><td>A13 / SCK (SPI1)</td><td>–</td><td class="used-spi">TFT_SCLK_PIN (SPI1 SCK)</td><td>Ausgang</td></tr>
+    <tr><td class="free">28</td><td>RX7</td><td>–</td><td class="free">frei</td><td></td></tr>
+    <tr><td class="free">29</td><td>TX7</td><td>–</td><td class="free">frei</td><td></td></tr>
+    <tr><td class="free">30</td><td>–</td><td>–</td><td class="free">frei</td><td></td></tr>
+    <tr><td class="free">31</td><td>–</td><td>–</td><td class="free">frei</td><td></td></tr>
+    <tr><td class="used">32</td><td>–</td><td>–</td><td class="used">ENC3_SW_PIN</td><td>Eingang</td></tr>
+    <tr><td class="free">33</td><td>–</td><td>–</td><td class="free">frei</td><td></td></tr>
+    <tr><td class="free-sd">34</td><td>CS1 (SDIO)</td><td>–</td><td class="free-sd">frei (SD unbestückt)</td><td></td></tr>
+    <tr><td class="free-sd">35</td><td>MOSI1 (SDIO)</td><td>–</td><td class="free-sd">frei (SD unbestückt)</td><td></td></tr>
+    <tr><td class="free-sd">36</td><td>MISO1 (SDIO)</td><td>–</td><td class="free-sd">frei (SD unbestückt)</td><td></td></tr>
+    <tr><td class="free-sd">37</td><td>SCK1 (SDIO)</td><td>–</td><td class="free-sd">frei (SD unbestückt)</td><td></td></tr>
+    <tr><td class="used-adc">38</td><td>A14</td><td>–</td><td class="used-adc">CV_IN_1_PIN (Analog)</td><td>Eingang</td></tr>
+    <tr><td class="used-adc">39</td><td>A15</td><td>–</td><td class="used-adc">CV_IN_2_PIN (Analog)</td><td>Eingang</td></tr>
+    <tr><td class="used-adc">40</td><td>A16</td><td>–</td><td class="used-adc">CV_IN_3_PIN (Analog)</td><td>Eingang</td></tr>
+    <tr><td class="free">41</td><td>A17</td><td>–</td><td class="free">frei</td><td></td></tr>
+  </tbody>
+</table>
+
+<h2>SPI-Bus Übersicht</h2>
+
+<div class="two-col">
+<div>
+<h3>SPI0 – Touch + CV-DACs</h3>
+<table>
+  <thead><tr><th>Pin</th><th>Signal</th><th>Geräte</th></tr></thead>
+  <tbody>
+    <tr><td>11</td><td>MOSI</td><td>XPT2046, MCP4822 ×2</td></tr>
+    <tr><td>12</td><td>MISO</td><td>XPT2046</td></tr>
+    <tr><td>13</td><td>SCK</td><td>XPT2046, MCP4822 ×2</td></tr>
+    <tr><td>10</td><td>CS – Touch</td><td>XPT2046</td></tr>
+    <tr><td>9</td><td>CS – Value DAC</td><td>MCP4822 #1</td></tr>
+    <tr><td>8</td><td>CS – Pitch DAC</td><td>MCP4822 #2</td></tr>
+  </tbody>
+</table>
+</div>
+<div>
+<h3>SPI1 – TFT Display</h3>
+<table>
+  <thead><tr><th>Pin</th><th>Signal</th><th>Gerät</th></tr></thead>
+  <tbody>
+    <tr><td>26</td><td>MOSI</td><td>ILI9341</td></tr>
+    <tr><td>1</td><td>MISO</td><td>ILI9341</td></tr>
+    <tr><td>27</td><td>SCK</td><td>ILI9341</td></tr>
+    <tr><td>21</td><td>CS</td><td>ILI9341</td></tr>
+    <tr><td>20</td><td>DC</td><td>ILI9341</td></tr>
+    <tr><td>255</td><td>RST</td><td>an 3,3V (inaktiv)</td></tr>
+  </tbody>
+</table>
+</div>
+</div>
+
+<h2>Freie Pins nach Typ</h2>
+
+<table class="free-table">
+  <thead><tr><th>Typ</th><th>Pins</th><th>Bemerkung</th></tr></thead>
+  <tbody>
+    <tr><td>Digital</td><td>0, 19, 28, 29, 31, 33</td><td>Allgemein nutzbar</td></tr>
+    <tr><td>Analog (ADC)</td><td>14 (A0), 19 (A5), 41 (A17)</td><td>Pin 14 = RNG-Seed – floating lassen</td></tr>
+    <tr><td>SD-Karte (SDIO)</td><td>34, 35, 36, 37</td><td>Nur wenn SD-Slot unbestückt bleibt</td></tr>
+    <tr><td>I2C0</td><td>19 (SCL)</td><td>SDA (Pin 18) belegt durch ENC2_DT</td></tr>
+    <tr><td>Serial</td><td>0 (RX1), 28 (RX7), 29 (TX7)</td><td>TX1 (Pin 1) belegt durch TFT MISO</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Hinweis DAC-Ausgangsspannung:</strong> MCP4822 mit 2× internem Gain → V<sub>out,max</sub> = 4,096 V.
+  Für Eurorack 0–10 V ist ein externer Op-Amp-Verstärker (ca. 2,44×) erforderlich.<br>
+  <strong>Hinweis Pin 14 (A0):</strong> Bleibt absichtlich unbeschaltet (floating) – dient als Entropiequelle für <code>randomSeed()</code>.
+</div>
+
+<h2>Spannungsversorgung</h2>
+
+<table>
+  <thead><tr><th>Pin</th><th>Funktion</th><th>Spannung</th></tr></thead>
+  <tbody>
+    <tr><td>VIN</td><td>Versorgungseingang</td><td>3,6–5,5 V</td></tr>
+    <tr><td>3,3V</td><td>Geregelter Ausgang</td><td>3,3 V / max. 250 mA</td></tr>
+    <tr><td>GND</td><td>Masse</td><td>–</td></tr>
+    <tr><td>VBAT</td><td>RTC-Backup-Batterie</td><td>3 V</td></tr>
+    <tr><td>VUSB</td><td>USB-Versorgung</td><td>5 V</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

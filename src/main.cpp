@@ -318,7 +318,17 @@ void loop() {
   }
 
   // ----------- T O U C H P A D ------------------------------------
-  // Touchpad wurde gerade gerückt (nicht gehalten)
+  // DEBUG: Rohwerte fuer Touch-Kalibrierung — entfernen nach Kalibrierung
+  // Ecken antippen, Min/Max in Serial Monitor ablesen, in hardware_map.h eintragen.
+  // #define TOUCH_CALIBRATION_DEBUG
+  #ifdef TOUCH_CALIBRATION_DEBUG
+  if(ts.touched()){
+    TS_Point p = ts.getPoint();
+    Serial.printf("touch raw  x=%4d  y=%4d  z=%d\n", p.x, p.y, p.z);
+  }
+  #endif
+
+  // Touchpad wurde gerade gedrückt (nicht gehalten)
   if(ts.touched()){
     if(stillPressed == false){
       stillPressed = true;

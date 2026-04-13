@@ -5,9 +5,11 @@
 // Assumptions: Touch ist initialisiert; Kalibrierwerte passen zur Hardware.
 bool readTouchMapped(int &mapX, int &mapY){
     TS_Point p = ts.getPoint();
-    // Kalibrierwerte sind hardware- und display-spezifisch.
-    mapX = 320-map(p.x, 300, 3700, 0, 320);
-    mapY = 240-map(p.y, 300, 3700, 0, 240);
+    // Kalibrierwerte kommen aus hardware_map.h (TOUCH_X/Y_MIN/MAX, TOUCH_SWAP_XY).
+    int rawX = TOUCH_SWAP_XY ? p.y : p.x;
+    int rawY = TOUCH_SWAP_XY ? p.x : p.y;
+    mapX = 320 - map(rawX, TOUCH_X_MIN, TOUCH_X_MAX, 0, 320);
+    mapY = 240 - map(rawY, TOUCH_Y_MIN, TOUCH_Y_MAX, 0, 240);
     // Koordinaten ausserhalb des Bildschirmbereichs = ungueltige Messung
     return (mapX >= 0 && mapX < 320 && mapY >= 0 && mapY < 240);
 }
