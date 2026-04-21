@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <IntervalTimer.h>
-#include <ILI9341_t3.h>
+#include <ILI9341_t3n.h>
 #include <XPT2046_Touchscreen.h>
 #include <SPI.h>
 
@@ -27,7 +27,7 @@ enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
 
 // Shared display/touch objects
 extern XPT2046_Touchscreen ts;
-extern ILI9341_t3 tft;
+extern ILI9341_t3n tft;
 
 // Shared constants
 extern const int R1;

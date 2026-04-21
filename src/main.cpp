@@ -11,7 +11,7 @@ const int CX = 160;
 const int CY = 120;   
  
 XPT2046_Touchscreen ts(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
-ILI9341_t3 tft = ILI9341_t3(
+ILI9341_t3n tft = ILI9341_t3n(
   TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN, TFT_MOSI_PIN, TFT_SCLK_PIN, TFT_MISO_PIN
 );
 
@@ -239,11 +239,11 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
 
-  tft.begin();
-  ts.begin();
-  tft.setClock(60000000); // SPI Speed
+  tft.begin(60000000); // SPI Speed 60 MHz
   tft.fillScreen(ILI9341_BLACK);
   tft.setRotation(3); // Screen rotation
+
+  ts.begin();
 
   // 12-bit ADC fuer CV-Eingänge
   analogReadResolution(12);

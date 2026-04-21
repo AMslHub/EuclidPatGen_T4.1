@@ -1,6 +1,6 @@
 #include <ui_screens.h>
 
-#include <font_Arial.h>
+#include <ili9341_t3n_font_Arial.h>
 #include <font_AwesomeF100.h>
 
 #include <euclid.h>

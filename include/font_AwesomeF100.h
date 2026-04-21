@@ -1,7 +1,7 @@
 #ifndef _ILI9341_t3_font_AwesomeF100_
 #define _ILI9341_t3_font_AwesomeF100_
 
-#include "ILI9341_t3.h"
+#include "ILI9341_t3n.h"
 
 #ifdef __cplusplus
 extern "C" {
