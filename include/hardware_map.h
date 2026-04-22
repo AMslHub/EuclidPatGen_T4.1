@@ -21,8 +21,10 @@ static constexpr uint8_t GATE_OUT2_PIN = 4;
 static constexpr uint8_t GATE_OUT3_PIN = 5;
 
 // MCP4822 DACs (SPI0) – CV outputs via external DAC, keine MCU-PWM-Pins
-static constexpr uint8_t MCP4822_CS_VALUE_PIN = 9;   // CS for Value DAC
-static constexpr uint8_t MCP4822_CS_PITCH_PIN = 8;   // CS for Pitch DAC
+// DAC1 (CS=8): A=Pitch, B=Value1
+// DAC2 (CS=9): A=Value2, B=Value3
+static constexpr uint8_t MCP4822_CS_DAC1_PIN = 8;   // CS DAC1: Pitch + Value1
+static constexpr uint8_t MCP4822_CS_DAC2_PIN = 9;   // CS DAC2: Value2 + Value3
 
 static constexpr uint8_t CV_IN_1_PIN = 38; // A14 on 4.1
 static constexpr uint8_t CV_IN_2_PIN = 39; // A15 on 4.1

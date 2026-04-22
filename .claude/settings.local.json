@@ -7,7 +7,10 @@
       "Bash(python -c \"import reportlab\")",
       "Bash(pip show:*)",
       "Bash(where pandoc:*)",
-      "Bash(wc -l src/*.cpp include/*.h)"
+      "Bash(wc -l src/*.cpp include/*.h)",
+      "Bash(~/.platformio/penv/Scripts/pio run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

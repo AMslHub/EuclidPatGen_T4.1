@@ -15,8 +15,8 @@
 | 13 | — | SPI0 SCK |
 | 2 | TOUCH_IRQ_PIN | XPT2046 Interrupt |
 | 10 | TOUCH_CS_PIN | XPT2046 Chip Select |
-| 9 | MCP4822_CS_VALUE_PIN | MCP4822 DAC1 CS (Out1, Out2) |
-| 8 | MCP4822_CS_PITCH_PIN | MCP4822 DAC2 CS (Out3, reserviert) |
+| 9 | MCP4822_CS_DAC1_PIN | MCP4822 DAC1 CS (Pitch, Value1) |
+| 8 | MCP4822_CS_DAC2_PIN | MCP4822 DAC2 CS (Value2, Value3) |
 
 MCP4822 LDAC: fest auf **GND** verdrahtet (kein Teensy-Pin belegt).
 
@@ -24,10 +24,8 @@ MCP4822 LDAC: fest auf **GND** verdrahtet (kein Teensy-Pin belegt).
 
 | DAC | CS-Pin | Kanal A | Kanal B |
 | --- | --- | --- | --- |
-| DAC1 | 9 | Value Out 1 | Value Out 2 |
-| DAC2 | 8 | Value Out 3 | reserviert (0V) |
-
-Hinweis: `MCP4822_CS_PITCH_PIN` ist ein historischer Name aus der Planung — aktuell als dritter Value-Ausgang genutzt.
+| DAC1 | 9 | Pitch (noch nicht implementiert) | Value Out 1 |
+| DAC2 | 8 | Value Out 2 | Value Out 3 |
 
 ### SPI1 — TFT ILI9341 (MOSI=26, MISO=1, SCK=27)
 

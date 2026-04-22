@@ -26,12 +26,12 @@ void writeMcp4822Channel(uint8_t csPin, bool channelB, uint16_t value12) {
     digitalWriteFast(csPin, HIGH);
 }
 
-void writeCvOutputsRaw(uint16_t out1, uint16_t out2, uint16_t out3) {
+void writeCvOutputsRaw(uint16_t pitch, uint16_t out1, uint16_t out2, uint16_t out3) {
     SPI.beginTransaction(mcp4822SpiSettings);
-    writeMcp4822Channel(MCP4822_CS_VALUE_PIN, false, out1);
-    writeMcp4822Channel(MCP4822_CS_VALUE_PIN, true, out2);
-    writeMcp4822Channel(MCP4822_CS_PITCH_PIN, false, out3);
-    writeMcp4822Channel(MCP4822_CS_PITCH_PIN, true, 0);
+    writeMcp4822Channel(MCP4822_CS_DAC1_PIN, false, pitch); // DAC1-A = Pitch
+    writeMcp4822Channel(MCP4822_CS_DAC1_PIN, true,  out1);  // DAC1-B = Value1
+    writeMcp4822Channel(MCP4822_CS_DAC2_PIN, false, out2);  // DAC2-A = Value2
+    writeMcp4822Channel(MCP4822_CS_DAC2_PIN, true,  out3);  // DAC2-B = Value3
     SPI.endTransaction();
 }
 
@@ -42,11 +42,11 @@ void writeCvOutputsRaw(uint16_t out1, uint16_t out2, uint16_t out3) {
 // Assumptions: Die MCP4822 haengen an SPI0 (11/12/13) und reagieren auf CS=9/8. LDAC liegt auf GND.
 void initCvOutputs() {
     SPI.begin();
-    pinMode(MCP4822_CS_VALUE_PIN, OUTPUT);
-    pinMode(MCP4822_CS_PITCH_PIN, OUTPUT);
-    digitalWriteFast(MCP4822_CS_VALUE_PIN, HIGH);
-    digitalWriteFast(MCP4822_CS_PITCH_PIN, HIGH);
-    writeCvOutputsRaw(0, 0, 0);
+    pinMode(MCP4822_CS_DAC1_PIN, OUTPUT);
+    pinMode(MCP4822_CS_DAC2_PIN, OUTPUT);
+    digitalWriteFast(MCP4822_CS_DAC1_PIN, HIGH);
+    digitalWriteFast(MCP4822_CS_DAC2_PIN, HIGH);
+    writeCvOutputsRaw(0, 0, 0, 0);
 }
 
 // Zweck: Prueft, ob eine Spur aktuell aktiv ist (Mute/Solo).
@@ -151,8 +151,9 @@ void outputValuesForStep(unsigned int step) {
     }
 
     writeCvOutputsRaw(
-        scale8To12(lastOut[0]),
-        scale8To12(lastOut[1]),
-        scale8To12(lastOut[2])
+        0,                       // Pitch – noch nicht implementiert
+        scale8To12(lastOut[0]),  // Value1
+        scale8To12(lastOut[1]),  // Value2
+        scale8To12(lastOut[2])   // Value3
     );
 }
