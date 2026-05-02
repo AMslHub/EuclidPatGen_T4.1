@@ -1,8 +1,10 @@
 #include <app_state.h>
 #include <cv_inputs.h>
+#include <encoders.h>
 #include <euclid.h>
 #include <gates.h>
 #include <hardware_map.h>
+#include <pitch.h>
 #include <storage.h>
 #include <ui_screens.h>
 #include <ui_touch.h>
@@ -65,6 +67,33 @@ bool PendingSave = false;
 uint32_t PendingSaveAt = 0;
 const uint32_t SAVE_DEBOUNCE_MS = 400;
 
+// Encoder: ausstehende Circle-Redraws (erst am Pattern-Ende anwenden)
+bool pendingCircleRedraw[3] = { false, false, false };
+// Encoder: ausstehende Prob-Neugenerierung (Pattern-Mutation + Redraw from Pattern)
+bool pendingProbRegen[3]    = { false, false, false };
+// Angezeigte Länge — wird nur beim echten Kreis-Redraw aktualisiert, damit
+// updateEucledianCircle nie mit einer noch nicht gezeichneten Länge rechnet.
+int displayedPatLen[3] = { 10, 32, 16 };
+
+// Per-Kanal Geschwindigkeit: -3=÷4, -2=÷3, -1=÷2, 0=×1, 1=×2, 2=×3, 3=×4
+int chSpeedIdx[3] = { 0, 0, 0 };
+// Per-Kanal Schrittzaehler
+unsigned int cntCh[3]       = { 0, 0, 0 };
+
+// Pitch (Kanal 1)
+uint8_t PitchNote1[32]    = { 0 };
+uint8_t pitchSpread       = 2;
+uint8_t pitchScale        = 0;
+uint8_t pitchRoot         = 0;
+uint8_t pitchIntervalMask = 0x07;  // Root + Terz + Quinte
+int8_t  pitchShift        = 0;
+bool    pitchHold         = true;
+bool    pitchRotate       = true;
+static unsigned int cntChHold[3]  = { 0, 0, 0 };
+static uint8_t  chDivPhase[3]     = { 0, 0, 0 };
+static uint8_t  chSubTicksDone[3] = { 0, 0, 0 };
+static uint32_t lastGlobalTickUs  = 0;
+
 // Performance UI refresh after load
 bool PendingPerfRefresh = false;
 
@@ -100,13 +129,15 @@ volatile uint32_t pendingTicks = 0; // ISR-shared
 
 IntervalTimer myTimer;  // Interval-Timer Objekt
 
+// Clock-Modus: false=intern, true=extern (gespeichert im EEPROM)
+volatile bool extClockMode = false;
+
 // Externer Clock / Reset (active-low via MMBT3904-Transistor)
 static volatile uint32_t lastExtClockUs    = 0;
 static volatile bool     extClockReceived  = false; // ISR → Main-Loop Handshake
 static volatile bool     pendingReset      = false;
 static volatile uint32_t measuredPeriodUs  = 0;
 static bool              extClockActive    = false; // nur im Main-Loop-Kontext
-static const uint32_t    EXT_CLOCK_TIMEOUT_US = 3000000UL; // 3s ohne Puls → interner Timer
 
 // Gate handling
 const uint32_t GATE_PULSE_US = 5000; // 5 ms gate pulse
@@ -115,16 +146,32 @@ volatile uint32_t gateOffAt[3] = { 0, 0, 0 };
 
 
 // Zweck: Verarbeitet externen Clock-Puls (active-low, FALLING-Flanke).
-// Misst Taktperiode fuer Gate-Laengen-Berechnung; zaehlt pendingTick.
+// Misst Taktperiode; setzt pendingReset wenn nach einer langen Pause neu gestartet wird.
 // Assumptions: Nur vom Interrupt-Kontext aufgerufen (Pin CLOCK_IN_PIN).
 void clockISR() {
+  if (!extClockMode) return;  // Im internen Modus externe Pulse ignorieren
   uint32_t now = micros();
   uint32_t period = now - lastExtClockUs;
-  if (extClockReceived && period > 500 && period < EXT_CLOCK_TIMEOUT_US) {
-    measuredPeriodUs = period;
+
+  bool isRestart = false;
+  if (extClockReceived) {
+    uint32_t expected = measuredPeriodUs;
+    // Pause laenger als 2× die letzte Periode → Neustart erkennen
+    if (expected > 0) {
+      isRestart = (period > expected * 2u);
+    } else {
+      isRestart = (period > 500000UL);  // Fallback: >500 ms ohne gueltige Periode
+    }
+    if (!isRestart && period > 500) {
+      measuredPeriodUs = period;
+    }
   }
+
   lastExtClockUs   = now;
   extClockReceived = true;
+  if (isRestart) {
+    pendingReset = true;  // Main-Loop setzt alle Zaehler auf 0
+  }
   if (pendingTicks != 0xFFFFFFFFu) pendingTicks++;
 }
 
@@ -177,8 +224,35 @@ void applyBpm(){
     iTim = 1;
   }
   DurationOfOneStep = iTim;
+  if(extClockMode){
+    myTimer.end();  // Im ext-Modus keinen internen Timer starten
+    noInterrupts();
+    pendingTicks = 0;
+    interrupts();
+    return;
+  }
   myTimer.end();
   myTimer.begin(timerISR, iTim);
+}
+
+// Zweck: Wechselt zwischen internem und externem Clock-Modus.
+// Side Effects: startet/stoppt den IntervalTimer; setzt ext-Clock-Zustand zurueck.
+void setExtClockMode(bool v) {
+  extClockMode = v;
+  noInterrupts();
+  extClockReceived = false;
+  measuredPeriodUs = 0;
+  interrupts();
+  extClockActive = false;
+  if (!v) {
+    applyBpm();  // Internen Timer neu starten
+  } else {
+    myTimer.end();
+    noInterrupts();
+    pendingTicks = 0;
+    interrupts();
+  }
+  scheduleSaveParams();
 }
 
 // Zweck: Wendet EPatB auf EPat an (Sequenzgrenze).
@@ -234,6 +308,8 @@ void setup() {
 
   initCvOutputs();
 
+  setupEncoders();
+
   pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
   pinMode(RESET_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
@@ -264,6 +340,7 @@ void setup() {
   drawEucledianCircle(R1, PatLen[0], PatNum[0], PatRot[0], PatProb[0], EPatArr[0]);
   drawEucledianCircle(R2, PatLen[1], PatNum[1], PatRot[1], PatProb[1], EPatArr[1]);
   drawEucledianCircle(R3, PatLen[2], PatNum[2], PatRot[2], PatProb[2], EPatArr[2]);
+  for(int i = 0; i < 3; i++) displayedPatLen[i] = PatLen[i];
   syncEPatBFromEPat(0);
   syncEPatBFromEPat(1);
   syncEPatBFromEPat(2);
@@ -274,6 +351,7 @@ void setup() {
   }
 
   setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
+  drawEncParamIndicators();
   drawBpmControls();
 
   GUIState = EUCLCIRCS;
@@ -286,25 +364,17 @@ void setup() {
 void loop() {
   
   readCvInputs();
+  handleEncoders();
 
   // ----------- E X T E R N E R   C L O C K  -----------------------
-  if (extClockReceived) {
+  // Im ext-Modus: kein automatischer Fallback auf internen Timer —
+  // wenn der externe Clock stoppt, bleibt der Sequencer stehen.
+  if (extClockMode && extClockReceived) {
     if (!extClockActive) {
       extClockActive = true;
-      myTimer.end(); // internen Timer anhalten
     }
     uint32_t p = measuredPeriodUs;
     if (p > 0) DurationOfOneStep = p;
-
-    // Timeout: kein Puls seit >3s → zurück zum internen Timer
-    if ((uint32_t)(micros() - lastExtClockUs) > EXT_CLOCK_TIMEOUT_US) {
-      noInterrupts();
-      extClockReceived = false;
-      measuredPeriodUs = 0;
-      interrupts();
-      extClockActive = false;
-      applyBpm();
-    }
   }
 
   // ----------- R E S E T  ------------------------------------------
@@ -315,6 +385,12 @@ void loop() {
     interrupts();
     cnt     = 0;
     cnthold = 0;
+    for (int ch = 0; ch < 3; ch++) {
+        cntCh[ch]          = 0;
+        cntChHold[ch]      = 0;
+        chDivPhase[ch]     = 0;
+        chSubTicksDone[ch] = 0;
+    }
   }
 
   // ----------- T O U C H P A D ------------------------------------
@@ -433,6 +509,9 @@ void loop() {
                   redrawParam(2);
                 }
                 break;
+            case PITCH1:
+                handlePITCH(mapX, mapY, tipPos);
+                break;
             default:
                 break;
           }
@@ -440,13 +519,16 @@ void loop() {
       }
     }else{
       if(GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3 ||
-         GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3){
+         GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3 ||
+         GUIState == PITCH1){
         int mapX = 0;
         int mapY = 0;
         if(readTouchMapped(mapX, mapY)){
           if(GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3){
             int setIdx = (GUIState == VALUES1) ? 0 : (GUIState == VALUES2) ? 1 : 2;
             handleVALUESDrag(setIdx, mapX, mapY);
+          }else if(GUIState == PITCH1){
+            handlePITCHDrag(mapX, mapY);
           }else{
             int setIdx = (GUIState == GATELEN1) ? 0 : (GUIState == GATELEN2) ? 1 : 2;
             handleGATELENDrag(setIdx, mapX, mapY);
@@ -473,7 +555,30 @@ void loop() {
   // Wenn sich der Intervalltimer (BPM) gemeldet hat, dann folgendes durchführen 
   // GUI-Aktionen hängen vom GUI-Zustand ab
   while(consumePendingTick()){
-    cnt++; 
+    cnt++;
+    lastGlobalTickUs = micros();
+
+    // Per-Kanal Schrittzaehler vorrücken; chFired merkt, welche Kanaele diesen Tick feuern.
+    // cntChHold wird NICHT hier gesetzt – es wird erst nach dem Zeichnen des Dots aktualisiert,
+    // damit immer die zuletzt gezeichnete Position zum Loeschen verwendet wird.
+    bool chFired[3] = { false, false, false };
+    for (int ch = 0; ch < 3; ch++) {
+        int spd = chSpeedIdx[ch];
+        if (spd < 0) {
+            // Division: ÷N — Kanal schreitet nur alle N globalen Ticks weiter
+            int N = 1 - spd;  // spd=-1→N=2, spd=-2→N=3, spd=-3→N=4
+            if (++chDivPhase[ch] >= (uint8_t)N) {
+                chDivPhase[ch] = 0;
+                cntCh[ch]++;
+                chFired[ch] = true;
+            }
+        } else {
+            // ×1 oder Multiplikation: einmal pro globalem Tick
+            cntCh[ch]++;
+            chSubTicksDone[ch] = 0;
+            chFired[ch] = true;
+        }
+    }
 
     // Pending Preset-Load am Pattern-Start anwenden
     if(applyPendingLoadIfReady(cnt)){
@@ -486,22 +591,25 @@ void loop() {
         }
       }
       applyBpm();
-      // Redraw nicht hier – fillScreen() blockiert ~50ms und laesst Ticks aufstauen.
-      // Wird nach der Tick-Schleife per PendingCircsRedraw ausgefuehrt.
       PendingCircsRedraw = true;
       PendingPerfRefresh = true;
-      // Lesezeiger nach Load auf Schritt 1 (Index 0) zuruecksetzen
       cnt = 0;
       cnthold = 0;
+      for (int ch = 0; ch < 3; ch++) {
+          cntCh[ch]          = 0;
+          cntChHold[ch]      = 0;
+          chDivPhase[ch]     = 0;
+          chSubTicksDone[ch] = 0;
+      }
     }
 
-    // P-Flag: Sequenzgrenze -> vorbereitete Mutation uebernehmen und naechste erzeugen.
+    // P-Flag: Sequenzgrenze -> vorbereitete Mutation uebernehmen
     bool patternUpdated[3] = { false, false, false };
     for(int i=0;i<3;i++){
       if(!PatProbAuto[i]) continue;
       int len = PatLen[i];
       if(len <= 0) continue;
-      if((cnt % (unsigned int)len) == 0){
+      if((cntCh[i] % (unsigned int)len) == 0){
         applyEPatBToEPat(i);
         stageProbPatternFromCurrent(i);
         patternUpdated[i] = true;
@@ -525,58 +633,152 @@ void loop() {
       }
     }
 
-    // Wahrscheinlichkeits-Autoupdates deaktiviert
-
     // GUI-zustandsabhängige BPM-Timeractions
     switch(GUIState){
-      case EUCLCIRCS:
-          // Eucledian-Circle-Grafik-Update (Laufpunkt in allen Circles um eins weitersetzen)
-          updateEucledianCircle(R1, PatLen[0], PatRot[0], ILI9341_YELLOW, EPatArr[0]);
-          updateEucledianCircle(R2, PatLen[1], PatRot[1], ILI9341_RED, EPatArr[1]);
-          updateEucledianCircle(R3, PatLen[2], PatRot[2], ILI9341_GREEN, EPatArr[2]);
+      case EUCLCIRCS: {
+          const int Rs[3] = { R1, R2, R3 };
+          for(int ch = 0; ch < 3; ch++){
+              if((cntCh[ch] % (unsigned int)displayedPatLen[ch]) == 0){
+                  if(pendingCircleRedraw[ch]){
+                      pendingCircleRedraw[ch] = false;
+                      bool lenChanged = (PatLen[ch] != displayedPatLen[ch]);
+                      clearEucledianCircle(Rs[ch], displayedPatLen[ch]);
+                      displayedPatLen[ch] = PatLen[ch];
+                      drawEucledianCircle(Rs[ch], PatLen[ch], PatNum[ch], PatRot[ch], PatProb[ch], EPatArr[ch]);
+                      if(PatProbAuto[ch]) stageProbPatternFromCurrent(ch);
+                      else                syncEPatBFromEPat(ch);
+                      drawEncParamIndicator(ch);
+                      if(lenChanged){
+                          cntCh[ch]      = 0;
+                          cntChHold[ch]  = 0;
+                          chDivPhase[ch] = 0;
+                      }
+                  }
+                  if(pendingProbRegen[ch]){
+                      pendingProbRegen[ch] = false;
+                      triggerProbAction(ch);
+                      clearEucledianCircle(Rs[ch], displayedPatLen[ch]);
+                      displayedPatLen[ch] = PatLen[ch];
+                      drawEucledianCircleFromPattern(Rs[ch], PatLen[ch], PatRot[ch], EPatArr[ch]);
+                      drawEncParamIndicator(ch);
+                  }
+              }
+          }
+          // Nur Kanaele animieren die diesen Tick vorgerückt sind.
+          // cntChHold wird NACH dem Zeichnen gesetzt → naechster Tick loescht genau dort.
+          static const uint16_t CH_COLORS[3] = { ILI9341_YELLOW, ILI9341_RED, ILI9341_GREEN };
+          for (int ch = 0; ch < 3; ch++) {
+              if (!chFired[ch]) continue;
+              updateEucledianCircle(Rs[ch], displayedPatLen[ch], PatRot[ch], CH_COLORS[ch], EPatArr[ch], cntChHold[ch], cntCh[ch]);
+              cntChHold[ch] = cntCh[ch];
+          }
           break;
+      }
       case VALUES1:
-          drawValuesPlayhead(0, cnt);
+          drawValuesPlayhead(0, cntCh[0]);
           break;
       case VALUES2:
-          drawValuesPlayhead(1, cnt);
+          drawValuesPlayhead(1, cntCh[1]);
           break;
       case VALUES3:
-          drawValuesPlayhead(2, cnt);
+          drawValuesPlayhead(2, cntCh[2]);
           break;
       case GATELEN1:
-          drawValuesPlayhead(0, cnt);
+          drawValuesPlayhead(0, cntCh[0]);
           break;
       case GATELEN2:
-          drawValuesPlayhead(1, cnt);
+          drawValuesPlayhead(1, cntCh[1]);
           break;
       case GATELEN3:
-          drawValuesPlayhead(2, cnt);
+          drawValuesPlayhead(2, cntCh[2]);
           break;
       case XY1:
-          drawXYPlayhead(0, cnt);
+          drawXYPlayhead(0, cntCh[0]);
+          drawXYDotPlayhead(0, cntCh[0]);
           break;
       case XY2:
-          drawXYPlayhead(1, cnt);
+          drawXYPlayhead(1, cntCh[1]);
+          drawXYDotPlayhead(1, cntCh[1]);
           break;
       case XY3:
-          drawXYPlayhead(2, cnt);
+          drawXYPlayhead(2, cntCh[2]);
+          drawXYDotPlayhead(2, cntCh[2]);
+          break;
+      case PITCH1:
+          if (chFired[0]) drawPitchPlayhead(cntCh[0]);
           break;
       case EUCLPARAM1:
       case EUCLPARAM2:
       case EUCLPARAM3:
-          // Parameter-Menüs werden nur bei Benutzeraktion aktualisiert (verhindert Flackern)
-          break; 
+          break;
       default:
          break;
     }
 
     outputValuesForStep(cnt);
-    // Hinweis: Falls DAC-Settling vor dem Gate-Trigger nötig ist, den Offset
-    // in GATE_PULSE_US einrechnen statt hier blockierend zu warten.
-    triggerGates();
+    // Nur Kanaele triggern die diesen Tick tatsaechlich vorgerueckt sind.
+    // triggerGates() fuer alle Kanaele wuerde bei ÷N-Kanaelen mehrfach
+    // den gleichen Hit ausloesen (da cntCh unveraendert bleibt).
+    for (int ch = 0; ch < 3; ch++) {
+        if (chFired[ch]) triggerGateForCh(ch);
+    }
 
-    cnthold = cnt; 
+    cnthold = cnt;
+    // Auf Nicht-EUCLCIRCS Screens cntChHold nachfuehren (wird auf EUCLCIRCS bereits
+    // direkt nach dem Zeichnen gesetzt; hier nur fuer Screen-Wechsel-Konsistenz).
+    if (GUIState != EUCLCIRCS) {
+        for (int ch = 0; ch < 3; ch++) cntChHold[ch] = cntCh[ch];
+    }
+  }
+
+  // Sub-Ticks fuer ×N Kanaele (zwischen globalen Ticks, basiert auf micros())
+  {
+    uint32_t nowUs = micros();
+    for (int ch = 0; ch < 3; ch++) {
+        int spd = chSpeedIdx[ch];
+        if (spd <= 0) continue;  // ÷N oder ×1: keine Sub-Ticks
+        int N = spd + 1;  // ×2→N=2, ×3→N=3, ×4→N=4
+        uint32_t period = (extClockActive && measuredPeriodUs > 0) ? measuredPeriodUs : iTim;
+        if (period == 0) continue;
+        uint32_t subInterval = period / (uint32_t)N;
+        for (int sub = 1; sub < N; sub++) {
+            if (chSubTicksDone[ch] >= (uint8_t)sub) continue;
+            uint32_t fireAt = lastGlobalTickUs + (uint32_t)sub * subInterval;
+            if ((int32_t)(nowUs - fireAt) >= 0) {
+                chSubTicksDone[ch] = (uint8_t)sub;
+                cntCh[ch]++;
+                triggerGateForCh(ch);
+                outputValuesForStep(cnt);
+                // UI-Animation fuer Sub-Tick: Playhead Schritt fuer Schritt bewegen
+                if (GUIState == EUCLCIRCS) {
+                    static const uint16_t SUB_COLORS[3] = { ILI9341_YELLOW, ILI9341_RED, ILI9341_GREEN };
+                    const int Rs[3] = { R1, R2, R3 };
+                    updateEucledianCircle(Rs[ch], displayedPatLen[ch], PatRot[ch], SUB_COLORS[ch], EPatArr[ch], cntChHold[ch], cntCh[ch]);
+                    cntChHold[ch] = cntCh[ch];
+                } else {
+                    // Welcher Kanal wird gerade auf dem Screen angezeigt?
+                    int screenCh = -1;
+                    switch (GUIState) {
+                        case VALUES1: case GATELEN1: case XY1: screenCh = 0; break;
+                        case VALUES2: case GATELEN2: case XY2: screenCh = 1; break;
+                        case VALUES3: case GATELEN3: case XY3: screenCh = 2; break;
+                        default: break;
+                    }
+                    if (screenCh == ch) {
+                        if (GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3 ||
+                            GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3) {
+                            drawValuesPlayhead(ch, cntCh[ch]);
+                        } else if (GUIState == PITCH1 && ch == 0) {
+                            drawPitchPlayhead(cntCh[0]);
+                        } else {
+                            drawXYPlayhead(ch, cntCh[ch]);
+                            drawXYDotPlayhead(ch, cntCh[ch]);
+                        }
+                    }
+                }
+            }
+        }
+    }
   }
 
   // Gate pulses off timing (non-blocking)
@@ -610,11 +812,13 @@ void loop() {
     if(GUIState == EUCLCIRCS){
       tft.fillScreen(ILI9341_BLACK);
       setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
+      drawEncParamIndicators();
       drawBpmControls();
       drawBpmValue();
       drawEucledianCircleFromPattern(R1, PatLen[0], PatRot[0], EPatArr[0]);
       drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
       drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
+      for(int i = 0; i < 3; i++) displayedPatLen[i] = PatLen[i];
     }
   }
 

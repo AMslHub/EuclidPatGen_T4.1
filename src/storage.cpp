@@ -6,7 +6,7 @@
 
 // EEPROM storage for persistent parameters
 // Hinweis: Bei Layout-Aenderungen EEPROM_MAGIC_* anpassen.
-#define EEPROM_MAGIC_CURRENT 0xEADA
+#define EEPROM_MAGIC_CURRENT 0xEADF
 #define EEPROM_MAGIC_SLOTS   0xEA5A
 #define EEPROM_ADDR_CURRENT  0
 
@@ -22,6 +22,18 @@ struct ParamBlock {
     uint8_t gateHold[3];
     uint8_t rotValues[3];
     uint8_t rotGateLen[3];
+    int8_t  speed[3];  // chSpeedIdx: -3..+3 (÷4..×4)
+};
+
+struct PitchBlock {
+    uint8_t note[32];       // Rohwerte 0-255 pro Step
+    uint8_t spread;         // Oktavbereich 1-5
+    uint8_t scale;          // Skalenindex
+    uint8_t root;           // Grundton 0-11
+    uint8_t intervalMask;   // Bitfeld aktiver Intervalle
+    int8_t  shift;          // Oktavtransposition -3..+3
+    uint8_t hold;           // pitchHold: 0=aus, 1=an
+    uint8_t rotate;         // pitchRotate: 0=aus, 1=an
 };
 
 struct CurrentParams {
@@ -29,12 +41,15 @@ struct CurrentParams {
     ParamBlock data;
     uint8_t epatSavedMask;
     uint8_t epat[3][32];
+    uint8_t extClkMode;  // 0=intern, 1=extern
+    PitchBlock pitch;
 };
 
 struct SlotParams {
     ParamBlock data;
     uint8_t epatSavedMask;
     uint8_t epat[3][32];
+    PitchBlock pitch;
 };
 
 struct EucParams {
@@ -76,6 +91,7 @@ static void packParamsCore(ParamBlock &p){
         p.gateHold[i] = (*GateHoldArr[i]) ? 1 : 0;
         p.rotValues[i] = RotateValues[i] ? 1 : 0;
         p.rotGateLen[i] = RotateGateLen[i] ? 1 : 0;
+        p.speed[i] = (int8_t)clampVal(chSpeedIdx[i], -3, 3);
     }
 }
 
@@ -96,6 +112,7 @@ static void unpackParamsCore(const ParamBlock &p){
         *GateHoldArr[i] = (p.gateHold[i] != 0);
         RotateValues[i] = (p.rotValues[i] != 0);
         RotateGateLen[i] = (p.rotGateLen[i] != 0);
+        chSpeedIdx[i] = clampVal((int)p.speed[i], -3, 3);
     }
 }
 
@@ -111,6 +128,15 @@ static void packCurrent(CurrentParams &p){
             p.epat[i][j] = (uint8_t)(EPatArr[i][j] ? 1 : 0);
         }
     }
+    p.extClkMode = extClockMode ? 1 : 0;
+    p.pitch.spread       = pitchSpread;
+    p.pitch.scale        = pitchScale;
+    p.pitch.root         = pitchRoot;
+    p.pitch.intervalMask = pitchIntervalMask;
+    p.pitch.shift        = pitchShift;
+    p.pitch.hold         = pitchHold   ? 1 : 0;
+    p.pitch.rotate       = pitchRotate ? 1 : 0;
+    for (int i = 0; i < 32; i++) p.pitch.note[i] = PitchNote1[i];
 }
 
 static void unpackCurrent(const CurrentParams &p){
@@ -130,6 +156,15 @@ static void unpackCurrent(const CurrentParams &p){
             rebuildPattern(PatLen[i], PatNum[i], PatProb[i], EPatArr[i]);
         }
     }
+    extClockMode     = (p.extClkMode != 0);
+    pitchSpread      = (p.pitch.spread >= 1 && p.pitch.spread <= 5) ? p.pitch.spread : 2;
+    pitchScale       = p.pitch.scale;
+    pitchRoot        = p.pitch.root % 12;
+    pitchIntervalMask = (p.pitch.intervalMask != 0) ? p.pitch.intervalMask : 0x07;
+    pitchShift       = clampVal((int)p.pitch.shift, -3, 3);
+    pitchHold        = (p.pitch.hold   != 0);
+    pitchRotate      = (p.pitch.rotate != 0);
+    for (int i = 0; i < 32; i++) PitchNote1[i] = p.pitch.note[i];
 }
 
 static void packSlot(SlotParams &p){
@@ -143,6 +178,14 @@ static void packSlot(SlotParams &p){
             p.epat[i][j] = (uint8_t)(EPatArr[i][j] ? 1 : 0);
         }
     }
+    p.pitch.spread       = pitchSpread;
+    p.pitch.scale        = pitchScale;
+    p.pitch.root         = pitchRoot;
+    p.pitch.intervalMask = pitchIntervalMask;
+    p.pitch.shift        = pitchShift;
+    p.pitch.hold         = pitchHold   ? 1 : 0;
+    p.pitch.rotate       = pitchRotate ? 1 : 0;
+    for (int i = 0; i < 32; i++) p.pitch.note[i] = PitchNote1[i];
 }
 
 static void unpackSlot(const SlotParams &p){
@@ -161,6 +204,14 @@ static void unpackSlot(const SlotParams &p){
             rebuildPattern(PatLen[i], PatNum[i], PatProb[i], EPatArr[i]);
         }
     }
+    pitchSpread      = (p.pitch.spread >= 1 && p.pitch.spread <= 5) ? p.pitch.spread : 2;
+    pitchScale       = p.pitch.scale;
+    pitchRoot        = p.pitch.root % 12;
+    pitchIntervalMask = (p.pitch.intervalMask != 0) ? p.pitch.intervalMask : 0x07;
+    pitchShift       = clampVal((int)p.pitch.shift, -3, 3);
+    pitchHold        = (p.pitch.hold   != 0);
+    pitchRotate      = (p.pitch.rotate != 0);
+    for (int i = 0; i < 32; i++) PitchNote1[i] = p.pitch.note[i];
 }
 
 static SlotsHeader readSlotsHeader(){
@@ -204,6 +255,15 @@ void loadParams(){
     }else{
         // Defaults when EEPROM layout changes
         bpm = 120;
+        extClockMode     = false;
+        pitchSpread      = 2;
+        pitchScale       = 0;
+        pitchRoot        = 0;
+        pitchIntervalMask = 0x07;  // Root + Terz + Quinte
+        pitchShift       = 0;
+        pitchHold        = true;
+        pitchRotate      = true;
+        for (int i = 0; i < 32; i++) PitchNote1[i] = 0;
         for(int i=0;i<3;i++){
             *HoldArr[i] = true;
             *GateHoldArr[i] = false;
@@ -212,6 +272,7 @@ void loadParams(){
             PatProb[i] = 10;
             PatProbAuto[i] = false;
             ProbEuclidRebuild[i] = false;
+            chSpeedIdx[i] = 0;
         }
     }
 }

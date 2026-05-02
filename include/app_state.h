@@ -21,7 +21,8 @@ enum {
   GATELEN3,
   XY1,
   XY2,
-  XY3
+  XY3,
+  PITCH1
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
 
@@ -92,6 +93,37 @@ extern const uint32_t SAVE_DEBOUNCE_MS;
 
 extern uint32_t DurationOfOneStep;
 extern uint16_t bpm;
+
+// Encoder-Parameter-Auswahl pro Kanal (0=PatLen, 1=PatNum, 2=PatRot, 3=PatProb, 4=Speed)
+extern uint8_t encParamSel[3];
+// Ausstehender Circle-Redraw fuer jeden Kanal (erst am Pattern-Ende anwenden)
+extern bool pendingCircleRedraw[3];
+// Ausstehende Prob-Neugenerierung per Encoder (erst am Pattern-Ende anwenden)
+extern bool pendingProbRegen[3];
+// Aktuell angezeigte Kreislaenge — muss nach jedem Kreis-Redraw mit PatLen synced werden
+extern int displayedPatLen[3];
+// Ausstehender Vollbild-Redraw nach Slot-Load
+extern bool PendingCircsRedraw;
+
+// Per-Kanal Geschwindigkeit: -3=÷4, -2=÷3, -1=÷2, 0=×1, 1=×2, 2=×3, 3=×4
+extern int chSpeedIdx[3];
+// Per-Kanal Schrittzaehler (wird mit der kanalspezifischen Geschwindigkeit inkrementiert)
+extern unsigned int cntCh[3];
+
+// Pitch (nur Kanal 1 / Hardware-CV-Ausgang Pitch)
+extern uint8_t PitchNote1[32];   // Rohwert 0-255 pro Step
+extern uint8_t pitchSpread;      // Oktavbereich 1-5
+extern uint8_t pitchScale;       // Skalenindex (0..SCALE_COUNT-1)
+extern uint8_t pitchRoot;        // Grundton 0=C .. 11=H
+extern uint8_t pitchIntervalMask; // Bitfeld: bit0="1",bit1="3",bit2="5",bit3="7",bit4="9",bit5="11",bit6="13"
+extern int8_t  pitchShift;        // Oktavtransposition: -3..+3
+extern bool    pitchHold;         // true: Pitch-CV nur bei Hit aktualisieren
+extern bool    pitchRotate;       // true: Pitch-Pattern relativ zur Rotation
+
+// Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)
+extern volatile bool extClockMode;
+// Wechselt den Clock-Modus und startet/stoppt den internen Timer entsprechend.
+void setExtClockMode(bool v);
 
 // Timing
 extern unsigned int cnthold;

@@ -1,6 +1,7 @@
 #include <gates.h>
 #include <hardware_map.h>
 #include <euclid.h>
+#include <pitch.h>
 
 namespace {
 
@@ -111,18 +112,33 @@ void triggerGates() {
         if (!isSeqActive(i)) continue;
         int len = PatLen[i];
         if (len <= 0) continue;
-        int idx = cnt % len;
+        int idx = cntCh[i] % len;
         if (patternIsHit(i, idx)) {
-            digitalWrite(GatePins[i], LOW); // 74HCT14: LOW → Inverter-Ausgang HIGH = Gate an
-            gateOffAt[i] = micros() + gateLenForStep(i, cnt);
+            digitalWrite(GatePins[i], LOW);
+            gateOffAt[i] = micros() + gateLenForStep(i, cntCh[i]);
         }
+    }
+}
+
+// Zweck: Triggert den Gate-Ausgang fuer einen einzelnen Kanal (fuer Sub-Ticks bei ×N).
+// Side Effects: schreibt auf Gate-Pin und gateOffAt.
+// Assumptions: cntCh[ch] ist bereits auf den neuen Wert gesetzt.
+void triggerGateForCh(int ch) {
+    if (ch < 0 || ch > 2) return;
+    if (!isSeqActive(ch)) return;
+    int len = PatLen[ch];
+    if (len <= 0) return;
+    int idx = cntCh[ch] % len;
+    if (patternIsHit(ch, idx)) {
+        digitalWrite(GatePins[ch], LOW);
+        gateOffAt[ch] = micros() + gateLenForStep(ch, cntCh[ch]);
     }
 }
 
 // Zweck: Gibt CV-Werte fuer den aktuellen Step aus.
 // Side Effects: schreibt auf die externen MCP4822 DACs.
-// Assumptions: PatLen[ch] > 0; initCvOutputs() wurde im setup() aufgerufen.
-void outputValuesForStep(unsigned int step) {
+// Assumptions: cntCh[ch] enthaelt den aktuellen Schritt pro Kanal.
+void outputValuesForStep(unsigned int /*step_unused*/) {
     static uint8_t lastOut[3] = { 0, 0, 0 };
 
     for (int ch = 0; ch < 3; ch++) {
@@ -136,7 +152,7 @@ void outputValuesForStep(unsigned int step) {
             continue;
         }
 
-        int idx = step % len;
+        int idx = cntCh[ch] % len;
         bool hit = patternIsHit(ch, idx);
         int src = RotateValues[ch] ? patternRotatedSrc(ch, idx) : idx;
         uint8_t v = ValuesArr[ch][src];
@@ -150,8 +166,26 @@ void outputValuesForStep(unsigned int step) {
         }
     }
 
+    // Pitch-CV fuer Kanal 1: quantisierter Schritt aus PitchNote1
+    static uint16_t lastPitchDac = 0;
+    uint16_t pitchDac = lastPitchDac;
+    {
+        int len0 = PatLen[0];
+        if (len0 > 0) {
+            int pidx = (int)(cntCh[0] % (unsigned int)len0);
+            bool hit = patternIsHit(0, pidx);
+            int  src = pitchRotate ? patternRotatedSrc(0, pidx) : pidx;
+            if (!pitchHold || hit) {
+                int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
+                                          pitchRoot, pitchIntervalMask);
+                midi = clampVal(midi + (int)pitchShift * 12, 36, 127);
+                lastPitchDac = midiToDac(midi);
+                pitchDac = lastPitchDac;
+            }
+        }
+    }
     writeCvOutputsRaw(
-        0,                       // Pitch – noch nicht implementiert
+        pitchDac,
         scale8To12(lastOut[0]),  // Value1
         scale8To12(lastOut[1]),  // Value2
         scale8To12(lastOut[2])   // Value3

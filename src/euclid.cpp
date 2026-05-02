@@ -96,12 +96,12 @@ static void mutatePatternByMoveCount(const bool *src, bool *dst, int len, int hi
 // Aufruf: Im Main-Loop, einmal pro BPM-Tick (NICHT im ISR-Kontext).
 // Side Effects: zeichnet direkt auf das TFT.
 // Assumptions: len > 0, cnthold/cnt sind gueltig.
-void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, bool *pattern){
+void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, bool *pattern, unsigned int prevStep, unsigned int curStep){
     // remove current position point and restore base pattern
-    tft.fillCircle(CX+R*sin(2*M_PI/len*cnthold), CY-R*cos(2*M_PI/len*cnthold), r3+1, ILI9341_BLACK); // Lösche Laufpunkt
-    tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY); // Zeichne Großkreis
+    tft.fillCircle(CX+R*sin(2*M_PI/len*prevStep), CY-R*cos(2*M_PI/len*prevStep), r3+1, ILI9341_BLACK);
+    tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY);
 
-    int idx = cnthold % len;
+    int idx = prevStep % len;
     int src = euclidRotatedSrc(idx, len, PatRot);
     if(pattern[src]==false){
       tft.drawCircle(CX+R*sin(2*M_PI/len*idx), CY-R*cos(2*M_PI/len*idx), r2, ILI9341_WHITE);
@@ -109,9 +109,8 @@ void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, boo
       tft.fillCircle(CX+R*sin(2*M_PI/len*idx), CY-R*cos(2*M_PI/len*idx), r2+2, ILI9341_WHITE);
     }
 
-    // Laufpunkt an nächste Stelle rücken (Euclid pattern 1) ***** Versuch ****
-    int idx2 = cnt % len;
-    tft.fillCircle(CX+R*sin(2*M_PI/len*idx2), CY-R*cos(2*M_PI/len*idx2), r3, color); 
+    int idx2 = curStep % len;
+    tft.fillCircle(CX+R*sin(2*M_PI/len*idx2), CY-R*cos(2*M_PI/len*idx2), r3, color);
 }
 
 // Zweck: Berechnet ein Euclid-Pattern und zeichnet den Kreis samt Hits.
@@ -211,6 +210,14 @@ void buildProbPattern(const bool *current, bool *dst, int len, int PatNum, int P
     mutatePatternByMoveCount(base, dst, len, hitCount, moves);
 }
 
+// Loescht alle Dot-Positionen eines Kreises (inkl. Laufpunkt-Groesse).
+// Muss mit der aktuell ANGEZEIGTEN Laenge aufgerufen werden, bevor neu gezeichnet wird.
+void clearEucledianCircle(const int R, int len) {
+    for(int i = 0; i < len; i++) {
+        tft.fillCircle(CX + R*sin(2*M_PI/len*i), CY - R*cos(2*M_PI/len*i), r3+1, ILI9341_BLACK);
+    }
+}
+
 void drawEucledianCircle(const int R, int len, int PatNum, int PatRot, int PatProb, bool *pattern){
     // Berechne Eucledian-Pattern aus Parametern
     rebuildPattern(len, PatNum, PatProb, pattern);
@@ -234,8 +241,8 @@ void drawEucledianCircleFromPattern(const int R, int len, int PatRot, bool *patt
     tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY);
     for(int i=0; i<len; i++){
       int src = euclidRotatedSrc(i, len, PatRot);
-      // Punktbereich vor dem Neuzeichnen loeschen, damit alte Fills verschwinden
-      tft.fillCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2+3, ILI9341_BLACK);
+      // Punktbereich inkl. Laufpunkt loeschen (r3+1 >= Laufpunkt-Radius r3)
+      tft.fillCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r3+1, ILI9341_BLACK);
       if(pattern[src]==false){
         tft.drawCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2, ILI9341_WHITE);
       }else{
