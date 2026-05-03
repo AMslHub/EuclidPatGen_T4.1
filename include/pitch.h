@@ -42,3 +42,7 @@ const char *getIntervalLabel(int i);
 // Gibt an, ob Intervalltaste i (0-6) einen gueltigen Skalengrad in scaleIdx hat.
 // Greyed-out-Logik: Skalen mit < 7 Toenen haben keine Entsprechung fuer alle Tasten.
 bool intervalExists(uint8_t scaleIdx, int i);
+
+// Bildet Spielposition idx (0..len-1) per Faltungs-Modus auf effektive Quellposition ab.
+// foldMode: 0=off, 1=Spiegel½, 2=Repeat½, 3=Spiegel¼, 4=Repeat¼
+int foldPitchIdx(int idx, int len, uint8_t foldMode);

@@ -109,6 +109,8 @@ extern bool PendingCircsRedraw;
 extern int chSpeedIdx[3];
 // Per-Kanal Schrittzaehler (wird mit der kanalspezifischen Geschwindigkeit inkrementiert)
 extern unsigned int cntCh[3];
+// Auto-Rotate: Schritte pro Zyklus (0=aus, 1-4=aktiv)
+extern uint8_t autoRotateStep[3];
 
 // Pitch (nur Kanal 1 / Hardware-CV-Ausgang Pitch)
 extern uint8_t PitchNote1[32];   // Rohwert 0-255 pro Step
@@ -119,6 +121,7 @@ extern uint8_t pitchIntervalMask; // Bitfeld: bit0="1",bit1="3",bit2="5",bit3="7
 extern int8_t  pitchShift;        // Oktavtransposition: -3..+3
 extern bool    pitchHold;         // true: Pitch-CV nur bei Hit aktualisieren
 extern bool    pitchRotate;       // true: Pitch-Pattern relativ zur Rotation
+extern uint8_t pitchFoldMode;    // 0=off, 1=Spiegel½, 2=Repeat½, 3=Spiegel¼, 4=Repeat¼
 
 // Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)
 extern volatile bool extClockMode;

@@ -13,6 +13,7 @@ static int lastValuesPlayIdx[3] = { -1, -1, -1 };
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
 static const uint16_t XY_GRID_COLOR = 0x2104;  // dunkles Grau fuer XY-Raster
+static bool xyPadPitchMode = false;  // true: Kanal-1-XY-Pad zeigt Pitch/Value statt GateLen/Value
 
 static const int PARAM_BTN_W = 30;
 static const int PARAM_BTN_H = 30;
@@ -30,6 +31,9 @@ static const int PARAM_PBOX_S = 24;
 static const int PARAM_ERBOX_X = 12;
 static const int PARAM_ERBOX_Y = 108;
 static const int PARAM_ERBOX_S = 24;
+static const int PARAM_ARBOX_X = 12;
+static const int PARAM_ARBOX_Y = 154;
+static const int PARAM_ARBOX_S = 24;
 static const int PERF_BOX_Y = 190;
 static const int PERF_BOX_W = 30;
 static const int PERF_BOX_H = 30;
@@ -463,6 +467,26 @@ static void drawProbEuclidRebuildCheckbox(int setIdx){
   }
 }
 
+// Zeichnet die Auto-Rotate-Auswahlbox (0=aus, 1-4=Schritte pro Zyklus).
+void drawAutoRotateBox(int setIdx) {
+    uint8_t step = autoRotateStep[setIdx];
+    tft.setFont(Arial_12);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(PARAM_ARBOX_X - 1, PARAM_ARBOX_Y - 14);
+    tft.print("AR");
+    if (step > 0) {
+        tft.drawRect(PARAM_ARBOX_X, PARAM_ARBOX_Y, PARAM_ARBOX_S, PARAM_ARBOX_S, ILI9341_GREEN);
+        tft.fillRect(PARAM_ARBOX_X + 1, PARAM_ARBOX_Y + 1, PARAM_ARBOX_S - 2, PARAM_ARBOX_S - 2, ILI9341_DARKGREEN);
+        tft.setTextColor(ILI9341_GREEN);
+    } else {
+        tft.drawRect(PARAM_ARBOX_X, PARAM_ARBOX_Y, PARAM_ARBOX_S, PARAM_ARBOX_S, ILI9341_DARKGREY);
+        tft.fillRect(PARAM_ARBOX_X + 1, PARAM_ARBOX_Y + 1, PARAM_ARBOX_S - 2, PARAM_ARBOX_S - 2, ILI9341_BLACK);
+        tft.setTextColor(ILI9341_DARKGREY);
+    }
+    tft.setCursor(PARAM_ARBOX_X + 8, PARAM_ARBOX_Y + 6);
+    tft.printf("%d", step);
+}
+
 // Zweck: Zeichnet ein Patternnummer-Kaestchen (Status/Selection).
 // Side Effects: schreibt auf das TFT.
 // Assumptions: idx in 0..6.
@@ -857,6 +881,7 @@ void redrawParam(int idx){
       drawXYButton(idx);
       drawProbAutoCheckbox(idx);
       drawProbEuclidRebuildCheckbox(idx);
+      drawAutoRotateBox(idx);
       if(idx == 0) drawPitchButton();
     }
 }
@@ -883,6 +908,7 @@ void redrawParamFromPattern(int idx){
     drawXYButton(idx);
     drawProbAutoCheckbox(idx);
     drawProbEuclidRebuildCheckbox(idx);
+    drawAutoRotateBox(idx);
     if(idx == 0) drawPitchButton();
 }
 
@@ -1120,6 +1146,12 @@ void handleEUCLPARAM(int idx, int mapX, int mapY, uint16_t tipPos){
         }
         scheduleSaveParams();
         drawProbEuclidRebuildCheckbox(idx);
+        return;
+    }
+    if(hitBox(mapX, mapY, PARAM_ARBOX_X, PARAM_ARBOX_Y, PARAM_ARBOX_S, PARAM_ARBOX_S, 8)){
+        autoRotateStep[idx] = (autoRotateStep[idx] + 1) % 5;  // 0→1→2→3→4→0
+        scheduleSaveParams();
+        drawAutoRotateBox(idx);
         return;
     }
     if(hitBox(mapX, mapY, 260, 200, 50, 30, 6)){
@@ -1457,9 +1489,15 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
 // Berechnet die Pad-Pixelposition eines Steps (Value=X, GateLen=Y invertiert).
 static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
     int vi = RotateValues[setIdx]  ? patternRotatedSrc(setIdx, stepIdx) : stepIdx;
-    int gi = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, stepIdx) : stepIdx;
-    dotX = 90 + ((int)ValuesArr[setIdx][vi]  * 179) / 255;
-    dotY = 40 + 179 - ((int)GateLenArr[setIdx][gi] * 179) / 255;
+    dotX = 90 + ((int)ValuesArr[setIdx][vi] * 179) / 255;
+    if (setIdx == 0 && xyPadPitchMode) {
+        int effIdx = foldPitchIdx(stepIdx, clampVal(PatLen[0], 1, 32), pitchFoldMode);
+        int pi = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
+        dotY = 40 + 179 - ((int)PitchNote1[pi] * 179) / 255;
+    } else {
+        int gi = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, stepIdx) : stepIdx;
+        dotY = 40 + 179 - ((int)GateLenArr[setIdx][gi] * 179) / 255;
+    }
 }
 
 static bool getXYDotIsHit(int setIdx, int stepIdx) {
@@ -1528,8 +1566,23 @@ void drawXYDotPlayhead(int setIdx, unsigned int step) {
     lastXYDotIdx[setIdx] = idx;
 }
 
+static void drawXYModeToggle(int setIdx) {
+    if (setIdx != 0) return;
+    int bx = 270, by = 5, bw = 44, bh = 24;
+    if (xyPadPitchMode) {
+        tft.fillRect(bx, by, bw, bh, ILI9341_DARKGREEN);
+        tft.drawRect(bx, by, bw, bh, ILI9341_GREEN);
+    } else {
+        tft.fillRect(bx, by, bw, bh, ILI9341_BLACK);
+        tft.drawRect(bx, by, bw, bh, ILI9341_DARKGREY);
+    }
+    tft.setFont(Arial_12);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(bx + 8, by + 6);
+    tft.print("PV");
+}
+
 void drawXYPadScreen(int setIdx){
-    (void)setIdx;
     tft.fillScreen(ILI9341_BLACK);
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
 
@@ -1550,8 +1603,10 @@ void drawXYPadScreen(int setIdx){
     tft.setCursor(x + 60, y + h + 8);
     tft.print("Value");
 
-    // Vertikale Beschriftung links vom Pad (etwas nach unten versetzt)
-    drawVerticalLabel(x - 20, y + 34, "Gatelength");
+    bool pitchMode = (setIdx == 0 && xyPadPitchMode);
+    drawVerticalLabel(x - 20, y + 34, pitchMode ? "Pitch    " : "Gatelength");
+
+    drawXYModeToggle(setIdx);
 
     resetXYPlayhead(setIdx);
     drawXYPlayhead(setIdx, cntCh[setIdx]);
@@ -1570,6 +1625,13 @@ void handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
         return;
     }
 
+    // PV-Mode-Toggle (nur Kanal 1, oben rechts)
+    if (setIdx == 0 && hitBox(mapX, mapY, 270, 5, 44, 24, 4)) {
+        xyPadPitchMode = !xyPadPitchMode;
+        drawXYPadScreen(setIdx);
+        return;
+    }
+
     int x = 90;
     int y = 40;
     int w = 180;
@@ -1581,7 +1643,6 @@ void handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
     int len = clampVal(PatLen[setIdx], 1, 32);
     int idx = cntCh[setIdx] % len;
     int writeValIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
-    int writeGateIdx = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
 
     int v = map(mapX, x, x + w - 1, 0, 255);
     int g = map(mapY, y + h - 1, y, 0, 255);
@@ -1589,7 +1650,14 @@ void handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
     g = clampVal(g, 0, 255);
 
     ValuesArr[setIdx][writeValIdx] = (uint8_t)v;
-    GateLenArr[setIdx][writeGateIdx] = (uint8_t)g;
+    if (setIdx == 0 && xyPadPitchMode) {
+        int writePitchIdx = pitchRotate ? patternRotatedSrc(0, idx) : idx;
+        PitchNote1[writePitchIdx] = (uint8_t)g;
+        scheduleSaveParams();
+    } else {
+        int writeGateIdx = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        GateLenArr[setIdx][writeGateIdx] = (uint8_t)g;
+    }
 
     lastXYDotIdx[setIdx] = -1;
     clearXYPadContent();
@@ -1724,6 +1792,11 @@ static const int PITCH_ROT_BS  = 24;
 static const int PITCH_DP_BX   = 185;  // rechte Kante bündig mit V1 (x=209)
 static const int PITCH_DP_BY   = 42;
 static const int PITCH_DP_BS   = 24;
+// Faltungs-Box (rechtsbündig mit Preset-Box, darüber)
+static const int PITCH_FOLD_BX = 70;
+static const int PITCH_FOLD_BY = 14;
+static const int PITCH_FOLD_BW = 60;
+static const int PITCH_FOLD_BH = 22;
 
 static bool pitchDisplayMode = false;
 static int lastPitchPlayIdx = -1;
@@ -1745,8 +1818,9 @@ static void drawPitchBar(int idx) {
     int w  = xN - x - 1;
     if (w < 1) w = 1;
 
-    int src  = pitchRotate ? patternRotatedSrc(0, idx) : idx;
-    bool hit = patternIsHit(0, idx);
+    int effIdx = foldPitchIdx(idx, len, pitchFoldMode);
+    int src    = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
+    bool hit   = patternIsHit(0, idx);
 
     tft.fillRect(x, PITCH_BAR_Y, xN - x, PITCH_BAR_H, ILI9341_BLACK);
 
@@ -1910,6 +1984,21 @@ void drawPitchControls() {
     }
 }
 
+static void drawPitchFoldBox() {
+    static const char* foldNames[5] = { "off", "m 1/2", "r 1/2", "m 1/4", "r 1/4" };
+    const char *label = foldNames[clampVal((int)pitchFoldMode, 0, 4)];
+    bool active = (pitchFoldMode > 0);
+    tft.fillRect(PITCH_FOLD_BX + 1, PITCH_FOLD_BY + 1,
+                 PITCH_FOLD_BW - 2, PITCH_FOLD_BH - 2, ILI9341_BLACK);
+    tft.drawRect(PITCH_FOLD_BX, PITCH_FOLD_BY, PITCH_FOLD_BW, PITCH_FOLD_BH,
+                 active ? ILI9341_GREEN : ILI9341_DARKGREY);
+    tft.setFont(Arial_12);
+    tft.setTextColor(active ? ILI9341_GREEN : ILI9341_LIGHTGREY);
+    int labelW = (int)strlen(label) * 7;
+    tft.setCursor(PITCH_FOLD_BX + (PITCH_FOLD_BW - labelW) / 2, PITCH_FOLD_BY + 4);
+    tft.print(label);
+}
+
 void drawPitchScreen() {
     tft.fillScreen(ILI9341_BLACK);
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
@@ -1919,6 +2008,7 @@ void drawPitchScreen() {
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setCursor(176, 18);
     tft.print("V1");
+    drawPitchFoldBox();
     drawPitchPresetBox();
     drawPitchHoldCheckbox();
     drawPitchRotateCheckbox();
@@ -1938,6 +2028,14 @@ void drawPitchScreen() {
 }
 
 void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
+    // Fold-Box vor UL-Check prüfen (liegt in UL-Zone)
+    if (hitBox(mapX, mapY, PITCH_FOLD_BX, PITCH_FOLD_BY, PITCH_FOLD_BW, PITCH_FOLD_BH, 4)) {
+        pitchFoldMode = (pitchFoldMode + 1) % 5;
+        scheduleSaveParams();
+        drawPitchFoldBox();
+        drawPitchBars();
+        return;
+    }
     if (tipPos == UL) {
         GUIState = EUCLPARAM1;
         redrawParamFromPattern(0);

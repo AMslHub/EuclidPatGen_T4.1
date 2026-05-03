@@ -160,6 +160,29 @@ bool intervalExists(uint8_t scaleIdx, int i) {
     return (deg < sc.count && sc.semitones[deg] != 255);
 }
 
+int foldPitchIdx(int idx, int len, uint8_t foldMode) {
+    if (foldMode == 0 || len <= 0) return idx;
+    int half    = len / 2;
+    int quarter = len / 4;
+    switch (foldMode) {
+        case 1:  // Spiegel an der Haelfte (Palindrom)
+            return (half > 0 && idx >= half) ? len - 1 - idx : idx;
+        case 2:  // Wiederholung ab Haelfte
+            return (half > 0) ? idx % half : idx;
+        case 3:  // Spiegel am Viertel
+            if (quarter > 0) {
+                int cycle = quarter * 2;
+                int pos   = idx % cycle;
+                return (pos < quarter) ? pos : cycle - 1 - pos;
+            }
+            return idx;
+        case 4:  // Wiederholung ab Viertel
+            return (quarter > 0) ? idx % quarter : idx;
+        default:
+            return idx;
+    }
+}
+
 int buildNoteList(uint8_t spread, uint8_t scaleIdx, uint8_t root,
                   uint8_t intervalMask, int *notes) {
     if (spread < 1) spread = 1;

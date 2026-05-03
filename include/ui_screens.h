@@ -22,6 +22,7 @@ void drawEncParamIndicators();        // Alle drei Indikatoren zeichnen
 void drawSpeedIndicator(int ch);      // Geschwindigkeits-Anzeige auf dem Parameter-Screen
 void triggerProbAction(int ch);       // Neues Zufallspattern fuer Kanal ch (wie Prob-Button per Touch)
 void drawParamButtonHighlight(int ch); // Aktiven Parameter-Button rot hervorheben
+void drawAutoRotateBox(int ch);        // Auto-Rotate-Auswahlbox (0-4)
 void tickPerformanceUi();
 void tickProbButtonFlash();
 void drawExtClockCheckbox();

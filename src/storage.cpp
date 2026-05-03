@@ -6,8 +6,8 @@
 
 // EEPROM storage for persistent parameters
 // Hinweis: Bei Layout-Aenderungen EEPROM_MAGIC_* anpassen.
-#define EEPROM_MAGIC_CURRENT 0xEADF
-#define EEPROM_MAGIC_SLOTS   0xEA5A
+#define EEPROM_MAGIC_CURRENT 0xEAE1
+#define EEPROM_MAGIC_SLOTS   0xEA5C
 #define EEPROM_ADDR_CURRENT  0
 
 struct ParamBlock {
@@ -23,6 +23,7 @@ struct ParamBlock {
     uint8_t rotValues[3];
     uint8_t rotGateLen[3];
     int8_t  speed[3];  // chSpeedIdx: -3..+3 (÷4..×4)
+    uint8_t autoRotate[3];  // 0=aus, 1-4=Schritte pro Zyklus
 };
 
 struct PitchBlock {
@@ -34,6 +35,7 @@ struct PitchBlock {
     int8_t  shift;          // Oktavtransposition -3..+3
     uint8_t hold;           // pitchHold: 0=aus, 1=an
     uint8_t rotate;         // pitchRotate: 0=aus, 1=an
+    uint8_t foldMode;       // pitchFoldMode: 0=off, 1-4
 };
 
 struct CurrentParams {
@@ -92,6 +94,7 @@ static void packParamsCore(ParamBlock &p){
         p.rotValues[i] = RotateValues[i] ? 1 : 0;
         p.rotGateLen[i] = RotateGateLen[i] ? 1 : 0;
         p.speed[i] = (int8_t)clampVal(chSpeedIdx[i], -3, 3);
+        p.autoRotate[i] = (uint8_t)clampVal((int)autoRotateStep[i], 0, 4);
     }
 }
 
@@ -113,6 +116,7 @@ static void unpackParamsCore(const ParamBlock &p){
         RotateValues[i] = (p.rotValues[i] != 0);
         RotateGateLen[i] = (p.rotGateLen[i] != 0);
         chSpeedIdx[i] = clampVal((int)p.speed[i], -3, 3);
+        autoRotateStep[i] = (uint8_t)clampVal((int)p.autoRotate[i], 0, 4);
     }
 }
 
@@ -136,6 +140,7 @@ static void packCurrent(CurrentParams &p){
     p.pitch.shift        = pitchShift;
     p.pitch.hold         = pitchHold   ? 1 : 0;
     p.pitch.rotate       = pitchRotate ? 1 : 0;
+    p.pitch.foldMode     = (uint8_t)clampVal((int)pitchFoldMode, 0, 4);
     for (int i = 0; i < 32; i++) p.pitch.note[i] = PitchNote1[i];
 }
 
@@ -164,6 +169,7 @@ static void unpackCurrent(const CurrentParams &p){
     pitchShift       = clampVal((int)p.pitch.shift, -3, 3);
     pitchHold        = (p.pitch.hold   != 0);
     pitchRotate      = (p.pitch.rotate != 0);
+    pitchFoldMode    = (uint8_t)clampVal((int)p.pitch.foldMode, 0, 4);
     for (int i = 0; i < 32; i++) PitchNote1[i] = p.pitch.note[i];
 }
 
@@ -185,6 +191,7 @@ static void packSlot(SlotParams &p){
     p.pitch.shift        = pitchShift;
     p.pitch.hold         = pitchHold   ? 1 : 0;
     p.pitch.rotate       = pitchRotate ? 1 : 0;
+    p.pitch.foldMode     = (uint8_t)clampVal((int)pitchFoldMode, 0, 4);
     for (int i = 0; i < 32; i++) p.pitch.note[i] = PitchNote1[i];
 }
 
@@ -211,6 +218,7 @@ static void unpackSlot(const SlotParams &p){
     pitchShift       = clampVal((int)p.pitch.shift, -3, 3);
     pitchHold        = (p.pitch.hold   != 0);
     pitchRotate      = (p.pitch.rotate != 0);
+    pitchFoldMode    = (uint8_t)clampVal((int)p.pitch.foldMode, 0, 4);
     for (int i = 0; i < 32; i++) PitchNote1[i] = p.pitch.note[i];
 }
 

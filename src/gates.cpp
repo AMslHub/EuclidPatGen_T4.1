@@ -172,9 +172,10 @@ void outputValuesForStep(unsigned int /*step_unused*/) {
     {
         int len0 = PatLen[0];
         if (len0 > 0) {
-            int pidx = (int)(cntCh[0] % (unsigned int)len0);
-            bool hit = patternIsHit(0, pidx);
-            int  src = pitchRotate ? patternRotatedSrc(0, pidx) : pidx;
+            int pidx    = (int)(cntCh[0] % (unsigned int)len0);
+            bool hit    = patternIsHit(0, pidx);
+            int effPidx = foldPitchIdx(pidx, len0, pitchFoldMode);
+            int  src    = pitchRotate ? patternRotatedSrc(0, effPidx) : effPidx;
             if (!pitchHold || hit) {
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);

@@ -79,6 +79,7 @@ int displayedPatLen[3] = { 10, 32, 16 };
 int chSpeedIdx[3] = { 0, 0, 0 };
 // Per-Kanal Schrittzaehler
 unsigned int cntCh[3]       = { 0, 0, 0 };
+uint8_t autoRotateStep[3]   = { 0, 0, 0 };  // 0=aus, 1-4=Schritte pro Zyklus
 
 // Pitch (Kanal 1)
 uint8_t PitchNote1[32]    = { 0 };
@@ -89,6 +90,7 @@ uint8_t pitchIntervalMask = 0x07;  // Root + Terz + Quinte
 int8_t  pitchShift        = 0;
 bool    pitchHold         = true;
 bool    pitchRotate       = true;
+uint8_t pitchFoldMode     = 0;
 static unsigned int cntChHold[3]  = { 0, 0, 0 };
 static uint8_t  chDivPhase[3]     = { 0, 0, 0 };
 static uint8_t  chSubTicksDone[3] = { 0, 0, 0 };
@@ -619,6 +621,19 @@ void loop() {
       if(patternUpdated[i]){
         refreshUiForPatternUpdate(i);
       }
+    }
+
+    // Auto-Rotate: PatRot am Zyklusende automatisch erhoehen
+    for (int ch = 0; ch < 3; ch++) {
+        if (autoRotateStep[ch] == 0) continue;
+        int len = clampVal(PatLen[ch], 1, 32);
+        if ((cntCh[ch] % (unsigned int)len) == 0) {
+            int newRot = PatRot[ch] + (int)autoRotateStep[ch];
+            int maxRot = len - 1;
+            while (newRot > maxRot) newRot -= len;
+            PatRot[ch] = newRot;
+            refreshUiForPatternUpdate(ch);
+        }
     }
 
     // XY-Pad: exakt beim Step sampeln, nur wenn Touch aktiv ist
