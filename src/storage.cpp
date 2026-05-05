@@ -3,11 +3,12 @@
 #include <EEPROM.h>
 
 #include <euclid.h>
+#include <cv_inputs.h>
 
 // EEPROM storage for persistent parameters
 // Hinweis: Bei Layout-Aenderungen EEPROM_MAGIC_* anpassen.
-#define EEPROM_MAGIC_CURRENT 0xEAE1
-#define EEPROM_MAGIC_SLOTS   0xEA5C
+#define EEPROM_MAGIC_CURRENT 0xEAE2
+#define EEPROM_MAGIC_SLOTS   0xEA5D
 #define EEPROM_ADDR_CURRENT  0
 
 struct ParamBlock {
@@ -45,6 +46,7 @@ struct CurrentParams {
     uint8_t epat[3][32];
     uint8_t extClkMode;  // 0=intern, 1=extern
     PitchBlock pitch;
+    uint8_t cvTargetMap[3];  // CV-Eingang → Zielparameter (CvTarget enum)
 };
 
 struct SlotParams {
@@ -142,6 +144,7 @@ static void packCurrent(CurrentParams &p){
     p.pitch.rotate       = pitchRotate ? 1 : 0;
     p.pitch.foldMode     = (uint8_t)clampVal((int)pitchFoldMode, 0, 4);
     for (int i = 0; i < 32; i++) p.pitch.note[i] = PitchNote1[i];
+    for (int i = 0; i < 3; i++) p.cvTargetMap[i] = cvTargetMap[i];
 }
 
 static void unpackCurrent(const CurrentParams &p){
@@ -171,6 +174,8 @@ static void unpackCurrent(const CurrentParams &p){
     pitchRotate      = (p.pitch.rotate != 0);
     pitchFoldMode    = (uint8_t)clampVal((int)p.pitch.foldMode, 0, 4);
     for (int i = 0; i < 32; i++) PitchNote1[i] = p.pitch.note[i];
+    for (int i = 0; i < 3; i++)
+        cvTargetMap[i] = (p.cvTargetMap[i] < CV_TARGET_COUNT) ? p.cvTargetMap[i] : CV_TARGET_NONE;
 }
 
 static void packSlot(SlotParams &p){
@@ -281,6 +286,7 @@ void loadParams(){
             PatProbAuto[i] = false;
             ProbEuclidRebuild[i] = false;
             chSpeedIdx[i] = 0;
+            cvTargetMap[i] = CV_TARGET_NONE;
         }
     }
 }

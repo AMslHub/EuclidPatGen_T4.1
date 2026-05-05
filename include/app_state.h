@@ -22,7 +22,8 @@ enum {
   XY1,
   XY2,
   XY3,
-  PITCH1
+  PITCH1,
+  CV_CONFIG
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
 
@@ -142,4 +143,11 @@ inline int clampVal(int v, int lo, int hi){
   if(v < lo) return lo;
   if(v > hi) return hi;
   return v;
+}
+
+// Prüft ob Kanal ch aktiv ist (Mute/Solo-Logik).
+inline bool isSeqActive(int ch) {
+  bool anySolo = SoloSeq[0] || SoloSeq[1] || SoloSeq[2];
+  if (anySolo) return SoloSeq[ch] && !MuteSeq[ch];
+  return !MuteSeq[ch];
 }

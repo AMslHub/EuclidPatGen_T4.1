@@ -2,6 +2,7 @@
 #include <hardware_map.h>
 #include <euclid.h>
 #include <pitch.h>
+#include <cv_inputs.h>
 
 namespace {
 
@@ -50,29 +51,18 @@ void initCvOutputs() {
     writeCvOutputsRaw(0, 0, 0, 0);
 }
 
-// Zweck: Prueft, ob eine Spur aktuell aktiv ist (Mute/Solo).
-// Side Effects: keine.
-// Assumptions: MuteSeq/SoloSeq sind gesetzt.
-static inline bool isSeqActive(int ch) {
-    bool anySolo = SoloSeq[0] || SoloSeq[1] || SoloSeq[2];
-    if (anySolo) {
-        return SoloSeq[ch] && !MuteSeq[ch];
-    }
-    return !MuteSeq[ch];
-}
-
 // Zweck: Liefert die Dauer bis zum naechsten Hit im selben Pattern (in us).
-// Side Effects: keine.
-// Assumptions: DurationOfOneStep > 0 oder GATE_PULSE_US ist gesetzt.
+// Beruecksichtigt den CV PatRot-Offset fuer die Hit-Erkennung.
 static uint32_t durationToNextHit(int ch, unsigned int step) {
     int len = PatLen[ch];
     if (len <= 0) {
         return DurationOfOneStep > 0 ? DurationOfOneStep : GATE_PULSE_US;
     }
     int idx = step % len;
+    int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
     for (int i = 1; i <= len; i++) {
         int nidx = (idx + i) % len;
-        if (patternIsHit(ch, nidx)) {
+        if (EPatArr[ch][euclidRotatedSrc(nidx, len, effRot)]) {
             uint32_t d = (uint32_t)i * DurationOfOneStep;
             return (d > 0) ? d : GATE_PULSE_US;
         }
@@ -81,8 +71,7 @@ static uint32_t durationToNextHit(int ch, unsigned int step) {
 }
 
 // Zweck: Berechnet die Gate-Laenge fuer einen Step.
-// Side Effects: keine.
-// Assumptions: GateHold/RotateGateLen sind konsistent mit Arrays; PatLen[ch] > 0.
+// Beruecksichtigt den CV PatRot-Offset bei RotateGateLen.
 uint32_t gateLenForStep(int ch, unsigned int step) {
     int len = PatLen[ch];
     if (len <= 0) {
@@ -92,53 +81,64 @@ uint32_t gateLenForStep(int ch, unsigned int step) {
         return GATE_PULSE_US;
     }
     int idx = step % len;
-    int src = RotateGateLen[ch] ? patternRotatedSrc(ch, idx) : idx;
+    int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+    int src = RotateGateLen[ch] ? euclidRotatedSrc(idx, len, effRot) : idx;
     uint8_t v = GateLenArr[ch][src];
     if (v == 0) {
         return GATE_PULSE_US;
     }
     uint32_t maxLen = durationToNextHit(ch, step);
-    if (v == 255) {  // GateHold ist hier bereits gesichert (siehe Zeile oben)
+    if (v == 255) {
         return maxLen;
     }
     return (uint32_t)(GATE_PULSE_US + ((maxLen - GATE_PULSE_US) * (uint32_t)v) / 255U);
 }
 
-// Zweck: Triggert Gate-Ausgaenge, wenn der aktuelle Step ein Hit ist.
-// Side Effects: schreibt auf Gate-Pins und gateOffAt.
-// Assumptions: cnt ist aktuell; GatePins sind als OUTPUT konfiguriert.
+// Zweck: Triggert Gate-Ausgaenge, wenn der aktuelle Step ein Hit ist (alle Kanaele).
+// Beruecksichtigt isSeqActive, CV PatRot-Offset.
 void triggerGates() {
     for (int i = 0; i < 3; i++) {
         if (!isSeqActive(i)) continue;
         int len = PatLen[i];
         if (len <= 0) continue;
         int idx = cntCh[i] % len;
-        if (patternIsHit(i, idx)) {
+        int effRot = clampVal(PatRot[i] + (int)cvPatRotOffset[i], -(len - 1), len - 1);
+        if (EPatArr[i][euclidRotatedSrc(idx, len, effRot)]) {
             digitalWrite(GatePins[i], LOW);
             gateOffAt[i] = micros() + gateLenForStep(i, cntCh[i]);
         }
     }
 }
 
-// Zweck: Triggert den Gate-Ausgang fuer einen einzelnen Kanal (fuer Sub-Ticks bei ×N).
-// Side Effects: schreibt auf Gate-Pin und gateOffAt.
-// Assumptions: cntCh[ch] ist bereits auf den neuen Wert gesetzt.
+// Zweck: Triggert den Gate-Ausgang fuer einen einzelnen Kanal (Sub-Ticks bei x*N).
+// Beruecksichtigt isSeqActive, CV PatRot-Offset.
 void triggerGateForCh(int ch) {
     if (ch < 0 || ch > 2) return;
     if (!isSeqActive(ch)) return;
     int len = PatLen[ch];
     if (len <= 0) return;
     int idx = cntCh[ch] % len;
-    if (patternIsHit(ch, idx)) {
+    int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+    if (EPatArr[ch][euclidRotatedSrc(idx, len, effRot)]) {
         digitalWrite(GatePins[ch], LOW);
         gateOffAt[ch] = micros() + gateLenForStep(ch, cntCh[ch]);
     }
 }
 
-// Zweck: Gibt CV-Werte fuer den aktuellen Step aus.
-// Side Effects: schreibt auf die externen MCP4822 DACs.
-// Assumptions: cntCh[ch] enthaelt den aktuellen Schritt pro Kanal.
-void outputValuesForStep(unsigned int /*step_unused*/) {
+// Cache für Ratchet-Folgehits: unmodulierte Value-Werte + aktueller Pitch-DAC
+static uint8_t  lastOutUnmod[3] = { 0, 0, 0 };
+static uint16_t lastPitchDacVal = 0;
+
+// DAC-Zustand-Cache: was zuletzt tatsächlich auf den DAC geschrieben wurde.
+// Wird von outputValuesForStep UND outputRatchetValue gepflegt, damit
+// Swing-Steps den alten Wert halten können bis das Gate feuert.
+static uint16_t sDacPitch  = 0;
+static uint16_t sDacOut[3] = { 0, 0, 0 };
+
+// Zweck: Gibt CV-Werte fuer den aktuellen Step aus (erster Ratchet-Hit, idx=0).
+// swingMask: Bit pro Kanal (Bit0=Ch0). Fuer gesetzte Kanaele wird der alte DAC-Wert
+// gehalten (Gate ist noch verzoegert) und der neue Wert erst bei Gate-Feuer geschrieben.
+void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
     static uint8_t lastOut[3] = { 0, 0, 0 };
 
     for (int ch = 0; ch < 3; ch++) {
@@ -152,18 +152,18 @@ void outputValuesForStep(unsigned int /*step_unused*/) {
             continue;
         }
 
-        int idx = cntCh[ch] % len;
-        bool hit = patternIsHit(ch, idx);
-        int src = RotateValues[ch] ? patternRotatedSrc(ch, idx) : idx;
-        uint8_t v = ValuesArr[ch][src];
+        int idx    = cntCh[ch] % len;
+        int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        bool hit   = EPatArr[ch][euclidRotatedSrc(idx, len, effRot)];
+        int src    = RotateValues[ch] ? euclidRotatedSrc(idx, len, effRot) : idx;
+        uint8_t v  = ValuesArr[ch][src];
 
         if (*HoldArr[ch]) {
-            if (hit) {
-                lastOut[ch] = v;
-            }
+            if (hit) lastOut[ch] = v;
         } else {
             lastOut[ch] = v;
         }
+        lastOutUnmod[ch] = lastOut[ch];  // vor Modulation cachen
     }
 
     // Pitch-CV fuer Kanal 1: quantisierter Schritt aus PitchNote1
@@ -173,22 +173,56 @@ void outputValuesForStep(unsigned int /*step_unused*/) {
         int len0 = PatLen[0];
         if (len0 > 0) {
             int pidx    = (int)(cntCh[0] % (unsigned int)len0);
-            bool hit    = patternIsHit(0, pidx);
+            int effRot0 = clampVal(PatRot[0] + (int)cvPatRotOffset[0], -(len0 - 1), len0 - 1);
+            bool hit    = EPatArr[0][euclidRotatedSrc(pidx, len0, effRot0)];
             int effPidx = foldPitchIdx(pidx, len0, pitchFoldMode);
-            int  src    = pitchRotate ? patternRotatedSrc(0, effPidx) : effPidx;
+            int src     = pitchRotate ? euclidRotatedSrc(effPidx, len0, effRot0) : effPidx;
             if (!pitchHold || hit) {
+                int totalShift = (int)pitchShift + (int)cvPitchShiftOffset;
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);
-                midi = clampVal(midi + (int)pitchShift * 12, 36, 127);
+                midi = clampVal(midi + totalShift * 12, 36, 127);
                 lastPitchDac = midiToDac(midi);
                 pitchDac = lastPitchDac;
             }
         }
     }
-    writeCvOutputsRaw(
-        pitchDac,
-        scale8To12(lastOut[0]),  // Value1
-        scale8To12(lastOut[1]),  // Value2
-        scale8To12(lastOut[2])   // Value3
-    );
+    lastPitchDacVal = pitchDac;
+
+    // Value-Modulation: ratchetIdx=0 (erster Hit des Bursts), Total=cvRatchetCount
+    uint8_t modOut[3];
+    for (int ch = 0; ch < 3; ch++) {
+        int total = (cvRatchetCount[ch] > 1) ? (int)cvRatchetCount[ch] : 1;
+        float mod = getValueModFactor(ch, 0, total);
+        modOut[ch] = (uint8_t)clampVal((int)((float)lastOutUnmod[ch] * mod + 0.5f), 0, 255);
+    }
+
+    // Swing: Kanaele in swingMask halten alten DAC-Wert; neue Werte werden erst beim
+    // Gate-Feuer via outputRatchetValue(ch, 0, 1) geschrieben.
+    uint16_t writePitch = (swingMask & 0x01u) ? sDacPitch : pitchDac;
+    uint16_t writeOut[3];
+    for (int ch = 0; ch < 3; ch++) {
+        writeOut[ch] = (swingMask & (1u << ch)) ? sDacOut[ch] : scale8To12(modOut[ch]);
+    }
+    sDacPitch = writePitch;
+    sDacOut[0] = writeOut[0];
+    sDacOut[1] = writeOut[1];
+    sDacOut[2] = writeOut[2];
+    writeCvOutputsRaw(writePitch, writeOut[0], writeOut[1], writeOut[2]);
+}
+
+// Zweck: Schreibt modulierten Value fuer Ratchet-Sub-Hit i auf den DAC.
+// Auch fuer Swing-Gate-Feuer (ratchetIdx=0, ratchetTotal=1): schreibt den
+// zuvor berechneten neuen Wert, der beim Tick-Zeitpunkt zurueckgehalten wurde.
+void outputRatchetValue(int ch, int ratchetIdx, int ratchetTotal) {
+    uint8_t out[3];
+    for (int i = 0; i < 3; i++) {
+        float mod = (i == ch) ? getValueModFactor(i, ratchetIdx, ratchetTotal) : 1.0f;
+        out[i] = (uint8_t)clampVal((int)((float)lastOutUnmod[i] * mod + 0.5f), 0, 255);
+    }
+    sDacPitch  = lastPitchDacVal;
+    sDacOut[0] = scale8To12(out[0]);
+    sDacOut[1] = scale8To12(out[1]);
+    sDacOut[2] = scale8To12(out[2]);
+    writeCvOutputsRaw(sDacPitch, sDacOut[0], sDacOut[1], sDacOut[2]);
 }

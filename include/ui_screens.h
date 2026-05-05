@@ -69,3 +69,6 @@ void setPitchPresetBrowseIdx(int idx);
 void setPitchPresetBrowseActive(bool active);
 void resetPitchPresetBrowseState();
 void loadPitchPreset(int idx);
+void drawCvConfigScreen();
+void handleCvConfig(int mapX, int mapY, uint16_t tipPos);
+void tickCvConfigUi();

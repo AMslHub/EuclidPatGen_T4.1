@@ -96,6 +96,17 @@ static uint8_t  chDivPhase[3]     = { 0, 0, 0 };
 static uint8_t  chSubTicksDone[3] = { 0, 0, 0 };
 static uint32_t lastGlobalTickUs  = 0;
 
+// Ratchet: Zusätzliche Sub-Hits innerhalb eines Steps (CV-gesteuert)
+static uint8_t  ratchetRemain[3]   = { 0, 0, 0 };
+static uint8_t  ratchetTotal[3]    = { 1, 1, 1 };  // Gesamtzahl Hits im Burst
+static uint32_t ratchetNextAt[3]   = { 0, 0, 0 };
+static uint32_t ratchetInterval[3] = { 0, 0, 0 };
+
+// Swing: Verzögerter Gate-Trigger für gerade Steps (CV-gesteuert)
+static bool     swingPending[3]  = { false, false, false };
+static uint32_t swingFireAt[3]   = { 0, 0, 0 };
+static uint32_t swingGateDur[3]  = { 0, 0, 0 };
+
 // Performance UI refresh after load
 bool PendingPerfRefresh = false;
 
@@ -366,6 +377,7 @@ void setup() {
 void loop() {
   
   readCvInputs();
+  applyCvTargets();
   handleEncoders();
 
   // ----------- E X T E R N E R   C L O C K  -----------------------
@@ -513,6 +525,9 @@ void loop() {
                 break;
             case PITCH1:
                 handlePITCH(mapX, mapY, tipPos);
+                break;
+            case CV_CONFIG:
+                handleCvConfig(mapX, mapY, tipPos);
                 break;
             default:
                 break;
@@ -730,12 +745,56 @@ void loop() {
          break;
     }
 
-    outputValuesForStep(cnt);
+    // Swing-Maske: Kanaele, deren Gate verzögert feuert → DAC-Wert jetzt einfrieren
+    uint8_t swingMask = 0;
+    if (cvSwingPct > 0) {
+        for (int ch = 0; ch < 3; ch++) {
+            if (!chFired[ch] || !isSeqActive(ch)) continue;
+            int len = PatLen[ch];
+            if (len <= 0) continue;
+            int idx    = (int)(cntCh[ch] % (unsigned int)len);
+            int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+            if (EPatArr[ch][euclidRotatedSrc(idx, len, effRot)] && ((cntCh[ch] % 2u) == 0u)) {
+                swingMask |= (uint8_t)(1u << ch);
+            }
+        }
+    }
+    outputValuesForStep(cnt, swingMask);
+
+    // Gate-Trigger: Swing und Ratchet beruecksichtigen.
     // Nur Kanaele triggern die diesen Tick tatsaechlich vorgerueckt sind.
-    // triggerGates() fuer alle Kanaele wuerde bei ÷N-Kanaelen mehrfach
-    // den gleichen Hit ausloesen (da cntCh unveraendert bleibt).
     for (int ch = 0; ch < 3; ch++) {
-        if (chFired[ch]) triggerGateForCh(ch);
+        if (!chFired[ch]) continue;
+        if (!isSeqActive(ch)) { ratchetRemain[ch] = 0; swingPending[ch] = false; continue; }
+        int len = PatLen[ch];
+        if (len <= 0) continue;
+        int idx    = (int)(cntCh[ch] % (unsigned int)len);
+        int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        if (!EPatArr[ch][euclidRotatedSrc(idx, len, effRot)]) { ratchetRemain[ch] = 0; continue; }
+
+        // Swing gilt fuer jeden 2. Step (0-indiziert: cntCh gerade → Step 2, 4, 6…)
+        bool applySwing = (cvSwingPct > 0) && ((cntCh[ch] % 2u) == 0u);
+        if (applySwing) {
+            uint32_t swingDelay = (uint32_t)cvSwingPct * DurationOfOneStep / 100u;
+            swingPending[ch]  = true;
+            swingFireAt[ch]   = lastGlobalTickUs + swingDelay;
+            swingGateDur[ch]  = gateLenForStep(ch, cntCh[ch]);
+            ratchetRemain[ch] = 0;
+        } else {
+            swingPending[ch] = false;
+            digitalWrite(GatePins[ch], LOW);
+            gateOffAt[ch] = micros() + gateLenForStep(ch, cntCh[ch]);
+            // Ratchet: N-1 zusaetzliche Sub-Hits gleichmaessig verteilt
+            if (cvRatchetCount[ch] > 1 && DurationOfOneStep > 0) {
+                ratchetTotal[ch]    = cvRatchetCount[ch];
+                ratchetRemain[ch]   = cvRatchetCount[ch] - 1;
+                ratchetInterval[ch] = DurationOfOneStep / (uint32_t)cvRatchetCount[ch];
+                ratchetNextAt[ch]   = lastGlobalTickUs + ratchetInterval[ch];
+            } else {
+                ratchetTotal[ch]  = 1;
+                ratchetRemain[ch] = 0;
+            }
+        }
     }
 
     cnthold = cnt;
@@ -806,6 +865,35 @@ void loop() {
     }
   }
 
+  // Ratchet Sub-Hits (zeitgesteuert, unabhaengig von Ticks)
+  {
+    uint32_t nowUs = micros();
+    for (int ch = 0; ch < 3; ch++) {
+        if (ratchetRemain[ch] > 0 && (int32_t)(nowUs - ratchetNextAt[ch]) >= 0) {
+            ratchetRemain[ch]--;
+            ratchetNextAt[ch] += ratchetInterval[ch];
+            // ratchetIdx: Burst-Position dieses Sub-Hits (1..N-1)
+            int ratchetIdx = (int)ratchetTotal[ch] - 1 - (int)ratchetRemain[ch];
+            if (isSeqActive(ch)) {
+                outputRatchetValue(ch, ratchetIdx, (int)ratchetTotal[ch]);
+                digitalWrite(GatePins[ch], LOW);
+                gateOffAt[ch] = micros() + GATE_PULSE_US;
+            }
+        }
+    }
+    // Swing: verzoegerte Gate-Trigger feuern + DAC-Wert nachholen
+    for (int ch = 0; ch < 3; ch++) {
+        if (swingPending[ch] && (int32_t)(nowUs - swingFireAt[ch]) >= 0) {
+            swingPending[ch] = false;
+            if (isSeqActive(ch)) {
+                outputRatchetValue(ch, 0, 1);  // deferred new CV/Pitch value
+                digitalWrite(GatePins[ch], LOW);
+                gateOffAt[ch] = micros() + swingGateDur[ch];
+            }
+        }
+    }
+  }
+
   // Deferred save (debounce)
   if(PendingSave){
     uint32_t nowMs = millis();
@@ -818,6 +906,9 @@ void loop() {
   // Performance-Button-Flash und Sequencer-Playhead aktualisieren
   if(GUIState == PERFORMANCE){
     tickPerformanceUi();
+  }
+  if(GUIState == CV_CONFIG){
+    tickCvConfigUi();
   }
   tickProbButtonFlash();
 

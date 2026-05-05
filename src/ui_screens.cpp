@@ -8,6 +8,7 @@
 #include <gates.h>
 #include <pitch.h>
 #include <encoders.h>
+#include <cv_inputs.h>
 
 static int lastValuesPlayIdx[3] = { -1, -1, -1 };
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
@@ -666,6 +667,13 @@ void drawPerformanceScreen(){
   rhythmBrowseActive = false;
   drawRhythmPresetWindow();
 
+  // CV-Config-Button (rechts, unter Rhythm-Preset)
+  tft.setFont(Arial_12);
+  tft.drawRect(175, 50, 55, 24, ILI9341_DARKGREY);
+  tft.setTextColor(ILI9341_LIGHTGREY);
+  tft.setCursor(181, 58);
+  tft.print("CV Cfg");
+
   // Ext-Clock-Checkbox (rechte Seite, ueber Save/Del)
   drawExtClockCheckbox();
 
@@ -693,6 +701,12 @@ void drawPerformanceScreen(){
 // Return: true, wenn eine Aktion ausgefuehrt wurde.
 bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
   updatePerfButtonFlash();
+  // CV-Config-Button (x=175, y=50, w=55, h=24) — vor UL-Prüfung
+  if (hitBox(mapX, mapY, 175, 50, 55, 24, 5)) {
+      GUIState = CV_CONFIG;
+      drawCvConfigScreen();
+      return true;
+  }
   if(tipPos == UL){
     GUIState = EUCLCIRCS;
     PendingCircsRedraw = false;  // Wir zeichnen sofort selbst
@@ -2163,4 +2177,94 @@ static void drawPitchButton() {
     tft.drawRect(260, 10, 50, 28, ILI9341_DARKGREY);
     tft.setCursor(272, 18);
     tft.print("Pt");
+}
+
+// ---------------------------------------------------------------------------
+// CV-Config-Screen
+// ---------------------------------------------------------------------------
+static const int CV_CFG_ROW_Y[3] = {60, 120, 180};
+static const int CV_CFG_ROW_H    = 36;
+static const int CV_CFG_BTN_X    = 55;
+static const int CV_CFG_BTN_W    = 180;
+static const int CV_CFG_BAR_X    = 243;
+static const int CV_CFG_BAR_W    = 69;
+static int lastCvBarFill[3]      = {-1, -1, -1};
+
+static void drawCvRow(int i) {
+    int y = CV_CFG_ROW_Y[i];
+
+    // Label "CV1" / "CV2" / "CV3"
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(8, y + 10);
+    tft.print("CV");
+    tft.print(i + 1);
+
+    // Ziel-Button (Tippen → nächstes Target)
+    uint8_t tgt    = cvTargetMap[i];
+    uint16_t bcol  = (tgt != CV_TARGET_NONE) ? ILI9341_GREEN : ILI9341_DARKGREY;
+    tft.fillRect(CV_CFG_BTN_X + 1, y + 1, CV_CFG_BTN_W - 2, CV_CFG_ROW_H - 2, ILI9341_BLACK);
+    tft.drawRect(CV_CFG_BTN_X, y, CV_CFG_BTN_W, CV_CFG_ROW_H, bcol);
+    tft.setFont(Arial_16);
+    tft.setTextColor(bcol);
+    const char *lbl = cvTargetLabel(tgt);
+    int lblW = (int)strlen(lbl) * 9;
+    tft.setCursor(CV_CFG_BTN_X + (CV_CFG_BTN_W - lblW) / 2, y + 10);
+    tft.print(lbl);
+
+    // CV-Pegel-Balken (rechts)
+    int barFill = (int)((uint32_t)cvSmooth[i] * CV_CFG_BAR_W / 4095u);
+    lastCvBarFill[i] = barFill;
+    tft.fillRect(CV_CFG_BAR_X, y + 6, barFill, CV_CFG_ROW_H - 12, ILI9341_CYAN);
+    tft.fillRect(CV_CFG_BAR_X + barFill, y + 6, CV_CFG_BAR_W - barFill, CV_CFG_ROW_H - 12, ILI9341_BLACK);
+    tft.drawRect(CV_CFG_BAR_X, y + 6, CV_CFG_BAR_W, CV_CFG_ROW_H - 12, ILI9341_DARKGREY);
+}
+
+void drawCvConfigScreen() {
+    tft.fillScreen(ILI9341_BLACK);
+    lastCvBarFill[0] = lastCvBarFill[1] = lastCvBarFill[2] = -1;
+
+    // Rücksprungpfeil
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setFont(AwesomeF100_24);
+    tft.setCursor(10, 15);
+    tft.print((char)18);
+
+    // Titel
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(50, 18);
+    tft.print("CV Config");
+
+    for (int i = 0; i < 3; i++) drawCvRow(i);
+}
+
+void handleCvConfig(int mapX, int mapY, uint16_t tipPos) {
+    if (tipPos == UL) {
+        GUIState = PERFORMANCE;
+        drawPerformanceScreen();
+        return;
+    }
+    for (int i = 0; i < 3; i++) {
+        int y = CV_CFG_ROW_Y[i];
+        if (hitBox(mapX, mapY, CV_CFG_BTN_X, y, CV_CFG_BTN_W, CV_CFG_ROW_H, 4)) {
+            cvTargetMap[i] = (uint8_t)((cvTargetMap[i] + 1) % CV_TARGET_COUNT);
+            applyCvTargets();
+            drawCvRow(i);
+            scheduleSaveParams();
+            return;
+        }
+    }
+}
+
+// Aktualisiert nur die CV-Pegel-Balken (wird jeden Loop-Durchlauf aufgerufen).
+void tickCvConfigUi() {
+    for (int i = 0; i < 3; i++) {
+        int barFill = (int)((uint32_t)cvSmooth[i] * CV_CFG_BAR_W / 4095u);
+        if (barFill == lastCvBarFill[i]) continue;
+        lastCvBarFill[i] = barFill;
+        int y = CV_CFG_ROW_Y[i];
+        tft.fillRect(CV_CFG_BAR_X, y + 6, barFill, CV_CFG_ROW_H - 12, ILI9341_CYAN);
+        tft.fillRect(CV_CFG_BAR_X + barFill, y + 6, CV_CFG_BAR_W - barFill, CV_CFG_ROW_H - 12, ILI9341_BLACK);
+    }
 }
