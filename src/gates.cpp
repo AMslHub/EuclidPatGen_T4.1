@@ -175,10 +175,12 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
             int pidx    = (int)(cntCh[0] % (unsigned int)len0);
             int effRot0 = clampVal(PatRot[0] + (int)cvPatRotOffset[0], -(len0 - 1), len0 - 1);
             bool hit    = EPatArr[0][euclidRotatedSrc(pidx, len0, effRot0)];
-            int effPidx = foldPitchIdx(pidx, len0, pitchFoldMode);
+            uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+            int effPidx = foldPitchIdx(pidx, len0, effFold);
             int src     = pitchRotate ? euclidRotatedSrc(effPidx, len0, effRot0) : effPidx;
             if (!pitchHold || hit) {
-                int totalShift = (int)pitchShift + (int)cvPitchShiftOffset;
+                int octSrc = RotateOctave[0] ? euclidRotatedSrc(pidx, len0, effRot0) : pidx;
+                int totalShift = (int)pitchShift + (int)cvPitchShiftOffset + (int)OctaveNote1[octSrc];
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);
                 midi = clampVal(midi + totalShift * 12, 36, 127);

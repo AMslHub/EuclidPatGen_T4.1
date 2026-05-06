@@ -42,6 +42,10 @@ uint8_t Values1[32] = { 0 };
 uint8_t Values2[32] = { 0 };
 uint8_t Values3[32] = { 0 };
 uint8_t *ValuesArr[3] = { Values1, Values2, Values3 };
+uint8_t Ratchet1[32] = { 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1 };
+uint8_t Ratchet2[32] = { 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1 };
+uint8_t Ratchet3[32] = { 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1 };
+uint8_t *RatchetArr[3] = { Ratchet1, Ratchet2, Ratchet3 };
 uint8_t GateLen1[32] = { 0 };
 uint8_t GateLen2[32] = { 0 };
 uint8_t GateLen3[32] = { 0 };
@@ -54,9 +58,11 @@ bool Hold1 = true;
 bool Hold2 = true;
 bool Hold3 = true;
 bool *HoldArr[3] = { &Hold1, &Hold2, &Hold3 };
-bool RotateValues[3] = { false, false, false };
+bool RotateValues[3]  = { false, false, false };
 bool RotateGateLen[3] = { false, false, false };
-uint32_t DurationOfOneStep = 0;  
+bool RotateRatchet[3] = { false, false, false };
+bool RotateOctave[3]  = { false, false, false };
+uint32_t DurationOfOneStep = 0;
 
 // Performance (Mute/Solo)
 bool MuteSeq[3] = { false, false, false };
@@ -83,6 +89,7 @@ uint8_t autoRotateStep[3]   = { 0, 0, 0 };  // 0=aus, 1-4=Schritte pro Zyklus
 
 // Pitch (Kanal 1)
 uint8_t PitchNote1[32]    = { 0 };
+int8_t  OctaveNote1[32]   = { 0 };
 uint8_t pitchSpread       = 2;
 uint8_t pitchScale        = 0;
 uint8_t pitchRoot         = 0;
@@ -378,6 +385,19 @@ void loop() {
   
   readCvInputs();
   applyCvTargets();
+
+  // CV Slot-Sel: Slot laden wenn CV einen neuen Slot auswählt
+  {
+    static int8_t lastCvSlot = -1;
+    if (cvSlotSel != lastCvSlot) {
+      lastCvSlot = cvSlotSel;
+      if (cvSlotSel >= 0 && (getSlotsUsedMask() & (1u << cvSlotSel))) {
+        requestLoadSlot(cvSlotSel);
+        PendingPerfRefresh = true;
+      }
+    }
+  }
+
   handleEncoders();
 
   // ----------- E X T E R N E R   C L O C K  -----------------------
@@ -506,28 +526,20 @@ void loop() {
                 }
                 break;
             case XY1:
-                if(tipPos == UL){
-                  GUIState = EUCLPARAM1;
-                  redrawParam(0);
-                }
-                break;
             case XY2:
-                if(tipPos == UL){
-                  GUIState = EUCLPARAM2;
-                  redrawParam(1);
-                }
+            case XY3: {
+                int xyIdx = (GUIState == XY1) ? 0 : (GUIState == XY2) ? 1 : 2;
+                handleXYPAD(xyIdx, mapX, mapY, tipPos);
                 break;
-            case XY3:
-                if(tipPos == UL){
-                  GUIState = EUCLPARAM3;
-                  redrawParam(2);
-                }
-                break;
+            }
             case PITCH1:
                 handlePITCH(mapX, mapY, tipPos);
                 break;
             case CV_CONFIG:
                 handleCvConfig(mapX, mapY, tipPos);
+                break;
+            case NAV:
+                handleNav(mapX, mapY);
                 break;
             default:
                 break;
@@ -651,14 +663,13 @@ void loop() {
         }
     }
 
-    // XY-Pad: exakt beim Step sampeln, nur wenn Touch aktiv ist
+    // XY-Pad: Werte exakt beim Step sampeln, nur wenn Touch im Pad-Bereich
     if((GUIState == XY1 || GUIState == XY2 || GUIState == XY3) && ts.touched()){
       int mapX = 0;
       int mapY = 0;
       if(readTouchMapped(mapX, mapY)){
-        uint16_t pos = getTipPositionFromXY(mapX, mapY);
         int setIdx = (GUIState == XY1) ? 0 : (GUIState == XY2) ? 1 : 2;
-        handleXYPAD(setIdx, mapX, mapY, pos);
+        handleXYPADRecord(setIdx, mapX, mapY);
         scheduleSaveParams();
       }
     }
@@ -735,6 +746,7 @@ void loop() {
           drawXYDotPlayhead(2, cntCh[2]);
           break;
       case PITCH1:
+          tickPitchUi();
           if (chFired[0]) drawPitchPlayhead(cntCh[0]);
           break;
       case EUCLPARAM1:
@@ -782,17 +794,21 @@ void loop() {
             ratchetRemain[ch] = 0;
         } else {
             swingPending[ch] = false;
-            digitalWrite(GatePins[ch], LOW);
-            gateOffAt[ch] = micros() + gateLenForStep(ch, cntCh[ch]);
-            // Ratchet: N-1 zusaetzliche Sub-Hits gleichmaessig verteilt
-            if (cvRatchetCount[ch] > 1 && DurationOfOneStep > 0) {
-                ratchetTotal[ch]    = cvRatchetCount[ch];
-                ratchetRemain[ch]   = cvRatchetCount[ch] - 1;
-                ratchetInterval[ch] = DurationOfOneStep / (uint32_t)cvRatchetCount[ch];
-                ratchetNextAt[ch]   = lastGlobalTickUs + ratchetInterval[ch];
-            } else {
-                ratchetTotal[ch]  = 1;
-                ratchetRemain[ch] = 0;
+            {
+                int rIdx = RotateRatchet[ch] ? euclidRotatedSrc(idx, len, effRot) : idx;
+                uint8_t perStepR = RatchetArr[ch][rIdx];
+                uint8_t effR = (cvRatchetCount[ch] > perStepR) ? cvRatchetCount[ch] : perStepR;
+                digitalWrite(GatePins[ch], LOW);
+                gateOffAt[ch] = micros() + (effR > 1 ? GATE_PULSE_US : gateLenForStep(ch, cntCh[ch]));
+                if (effR > 1 && DurationOfOneStep > 0) {
+                    ratchetTotal[ch]    = effR;
+                    ratchetRemain[ch]   = effR - 1;
+                    ratchetInterval[ch] = DurationOfOneStep / (uint32_t)effR;
+                    ratchetNextAt[ch]   = lastGlobalTickUs + ratchetInterval[ch];
+                } else {
+                    ratchetTotal[ch]  = 1;
+                    ratchetRemain[ch] = 0;
+                }
             }
         }
     }
@@ -911,6 +927,9 @@ void loop() {
     tickCvConfigUi();
   }
   tickProbButtonFlash();
+  if (tickSaveToast()) {
+    navigateToScreen(GUIState);  // Screen nach Toast-Ablauf neu zeichnen
+  }
 
   // Vollbild-Redraw nach Slot-Load (ausserhalb der Tick-Schleife, keine Tick-Stauung)
   if(PendingCircsRedraw){

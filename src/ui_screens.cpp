@@ -10,11 +10,12 @@
 #include <encoders.h>
 #include <cv_inputs.h>
 
-static int lastValuesPlayIdx[3] = { -1, -1, -1 };
+static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
+static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
 static const uint16_t XY_GRID_COLOR = 0x2104;  // dunkles Grau fuer XY-Raster
-static bool xyPadPitchMode = false;  // true: Kanal-1-XY-Pad zeigt Pitch/Value statt GateLen/Value
+static int  xyPadPitchMode = 0;  // 0=GateLen, 1=Pitch 1oct, 2=Pitch 3oct, 3=Pitch 5oct
 
 static const int PARAM_BTN_W = 30;
 static const int PARAM_BTN_H = 30;
@@ -202,7 +203,8 @@ int  getPitchPresetBrowseIdx()    { return pitchPresetBrowseIdx; }
 bool getPitchPresetBrowseActive() { return pitchPresetBrowseActive; }
 
 void setPitchPresetBrowseIdx(int idx) {
-    pitchPresetBrowseIdx = ((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT;
+    int N = PITCH_PRESET_COUNT + 1;  // +1 für "Random"
+    pitchPresetBrowseIdx = ((idx % N) + N) % N;
     if (GUIState == PITCH1) drawPitchPresetBox();
 }
 
@@ -217,7 +219,8 @@ void resetPitchPresetBrowseState() {
 
 void loadPitchPreset(int idx) {
     getPitchPresetNotes(idx, PitchNote1);
-    pitchPresetBrowseIdx = ((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT;
+    int N = PITCH_PRESET_COUNT + 1;
+    pitchPresetBrowseIdx = ((idx % N) + N) % N;
     scheduleSaveParams();
     if (GUIState == PITCH1) {
         drawPitchPresetBox();
@@ -494,10 +497,12 @@ void drawAutoRotateBox(int setIdx) {
 static void drawPerfSlotBox(int idx){
   int x = PERF_BOX_XS[idx];
   bool selected   = (idx == perfSelected);
-  bool encBrowse  = (idx == perfEncSlot);
-  uint16_t border = ILI9341_DARKGREY;
+  bool encBrowse  = (idx == perfEncSlot) && (cvSlotSel < 0);  // Browse nur wenn kein CV
+  bool cvCtrl     = (cvSlotSel >= 0) && (idx == (int)cvSlotSel);
+  uint16_t border = cvCtrl ? ILI9341_CYAN : ILI9341_DARKGREY;
   uint16_t fill;
   if      (selected)  fill = ILI9341_GREEN;
+  else if (cvCtrl)    fill = 0x0410;  // dunkles Cyan: CV-gesteuert
   else if (encBrowse) fill = ILI9341_CYAN;
   else                fill = (perfUsedMask & (1u << idx)) ? ILI9341_WHITE : ILI9341_BLACK;
   tft.fillRect(x + 1, PERF_BOX_Y + 1, PERF_BOX_W - 2, PERF_BOX_H - 2, fill);
@@ -506,6 +511,17 @@ static void drawPerfSlotBox(int idx){
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_BLACK);
     drawCenteredLabel(x, PERF_BOX_Y, PERF_BOX_W, PERF_BOX_H, "A", 8, 16, -5, 0);
+  }
+}
+
+// CV-Lock-Indikator: im freien Bereich zwischen Load (x=0..60) und Save (x=140..200)
+static void drawCvSlotIndicator() {
+  tft.fillRect(62, PERF_BTN_Y + 2, 76, PERF_BTN_H - 4, ILI9341_BLACK);
+  if (cvSlotSel >= 0) {
+    tft.setFont(Arial_10);
+    tft.setTextColor(ILI9341_CYAN);
+    tft.setCursor(67, PERF_BTN_Y + 10);
+    tft.print("CV\x10Slot");
   }
 }
 
@@ -595,6 +611,14 @@ static void drawPerfSeq1Playhead(){
 void tickPerformanceUi(){
   updatePerfButtonFlash();
   drawPerfSeq1Playhead();
+  static int8_t lastCvSlotTick = -2;
+  if (cvSlotSel != lastCvSlotTick) {
+    int8_t prev = lastCvSlotTick;
+    lastCvSlotTick = cvSlotSel;
+    if (prev >= 0 && prev < 7) drawPerfSlotBox(prev);
+    if (cvSlotSel >= 0 && cvSlotSel < 7) drawPerfSlotBox(cvSlotSel);
+    drawCvSlotIndicator();
+  }
 }
 
 void drawExtClockCheckbox() {
@@ -655,6 +679,7 @@ void drawPerformanceScreen(){
   for(int i=0;i<7;i++){
     drawPerfSlotBox(i);
   }
+  drawCvSlotIndicator();
 
   // Load/Save/Del Buttons
   for(int i=0;i<3;i++){
@@ -970,6 +995,109 @@ void drawProbAutoCheckbox(int setIdx){
   }
 }
 
+static void drawValuesEditButtons(int setIdx) {
+    // Clear entire lower controls row
+    tft.fillRect(0, 42, 285, 28, ILI9341_BLACK);
+    int mode = valuesEditMode[setIdx];
+
+    // Rat toggle button: x=50, y=42, w=46, h=24
+    bool ratOn = (mode == 1);
+    tft.drawRect(50, 42, 46, 24, ratOn ? ILI9341_CYAN : ILI9341_DARKGREY);
+    tft.setFont(Arial_12);
+    tft.setTextColor(ratOn ? ILI9341_CYAN : ILI9341_LIGHTGREY);
+    tft.setCursor(62, 48);
+    tft.print("Rat");
+
+    // RR checkbox (RotateRatchet): x=98, y=43, s=20
+    tft.drawRect(98, 43, 20, 20, ILI9341_DARKGREY);
+    if (RotateRatchet[setIdx]) {
+        tft.drawLine(102, 53, 105, 57, ILI9341_GREEN);
+        tft.drawLine(105, 57, 114, 46, ILI9341_GREEN);
+    }
+
+    if (setIdx == 0) {
+        // Oct toggle button: x=140, y=42, w=46, h=24
+        bool octOn = (mode == 2);
+        tft.drawRect(140, 42, 46, 24, octOn ? ILI9341_MAGENTA : ILI9341_DARKGREY);
+        tft.setTextColor(octOn ? ILI9341_MAGENTA : ILI9341_LIGHTGREY);
+        tft.setCursor(152, 48);
+        tft.print("Oct");
+
+        // RO checkbox (RotateOctave): x=188, y=43, s=20
+        tft.drawRect(188, 43, 20, 20, ILI9341_DARKGREY);
+        if (RotateOctave[setIdx]) {
+            tft.drawLine(192, 53, 195, 57, ILI9341_GREEN);
+            tft.drawLine(195, 57, 204, 46, ILI9341_GREEN);
+        }
+    }
+
+    // RV checkbox (RotateValues): original position x=260, y=42, s=24 (flush with H above)
+    tft.drawRect(260, 42, 24, 24, ILI9341_DARKGREY);
+    tft.setFont(Arial_12);
+    tft.setCursor(236, 48);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.print("RV");
+    if (RotateValues[setIdx]) {
+        tft.drawLine(264, 54, 270, 60, ILI9341_GREEN);
+        tft.drawLine(270, 60, 280, 48, ILI9341_GREEN);
+    }
+}
+
+void drawRatchetBar(int setIdx, int idx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    int x0 = 10, y0 = 240 - 5 - 160, h = 160;
+    int totalW = 320 - 2 * x0;
+    int x     = x0 + (idx       * totalW) / len;
+    int xNext = x0 + ((idx + 1) * totalW) / len;
+    int w     = xNext - x - 1;
+    int src = RotateRatchet[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+    uint8_t rval = (uint8_t)clampVal((int)RatchetArr[setIdx][src], 1, 4);
+    int fillH = (rval * h) / 4;  // 1→40, 2→80, 3→120, 4→160
+    bool active = RotateRatchet[setIdx] ? EPatArr[setIdx][src] : patternIsHit(setIdx, idx);
+    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
+    if (fillH > 0) {
+        int y = y0 + h - fillH;
+        tft.fillRect(x, y, w, fillH, active ? ILI9341_YELLOW : ILI9341_DARKGREY);
+        if (w >= 10 && fillH >= 12) {
+            tft.setFont(Arial_12);
+            tft.setTextColor(ILI9341_BLACK);
+            tft.setCursor(x + (w - 7) / 2, y + 2);
+            tft.print(rval);
+        }
+    }
+}
+
+void drawRatchetBars(int setIdx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    for (int i = 0; i < len; i++) drawRatchetBar(setIdx, i);
+}
+
+void drawOctaveBar(int setIdx, int idx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    int x0 = 10, y0 = 240 - 5 - 160, h = 160;
+    int totalW = 320 - 2 * x0;
+    int x     = x0 + (idx       * totalW) / len;
+    int xNext = x0 + ((idx + 1) * totalW) / len;
+    int w     = xNext - x - 1;
+    int osrc = RotateOctave[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+    int8_t octVal = OctaveNote1[osrc];
+    bool active = RotateOctave[setIdx] ? EPatArr[setIdx][osrc] : patternIsHit(setIdx, idx);
+    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
+    int cy = y0 + h / 2;
+    tft.drawFastHLine(x, cy, xNext - x, ILI9341_DARKGREY);
+    if (octVal != 0) {
+        int barH = abs(octVal) * (h / 2) / 3;
+        uint16_t col = active ? ILI9341_MAGENTA : 0x4208;
+        if (octVal > 0) tft.fillRect(x, cy - barH, w, barH, col);
+        else            tft.fillRect(x, cy + 1, w, barH, col);
+    }
+}
+
+void drawOctaveBars(int setIdx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    for (int i = 0; i < len; i++) drawOctaveBar(setIdx, i);
+}
+
 // Zweck: Baut den Values-Screen fuer ein Pattern auf.
 // Side Effects: schreibt auf das TFT und setzt Playhead-Status.
 // Assumptions: setIdx in 0..2.
@@ -979,6 +1107,7 @@ void drawValuesScreen(int setIdx){
     drawHoldCheckbox(setIdx);
     drawRotateValuesCheckbox(setIdx);
     drawGateLenButton();
+    drawValuesEditButtons(setIdx);
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setCursor(287, 10);
@@ -990,7 +1119,9 @@ void drawValuesScreen(int setIdx){
       int h  = 160;
       tft.drawRect(x0 - 1, y0 - 1, 320 - 2 * x0 + 2, h + 2, ILI9341_DARKGREY);
     }
-    drawValuesBars(setIdx);
+    if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
+    else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+    else                                  drawValuesBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
 }
@@ -1094,21 +1225,7 @@ void drawHoldCheckbox(int setIdx){
 // Side Effects: schreibt auf das TFT.
 // Assumptions: setIdx in 0..2.
 void drawRotateValuesCheckbox(int setIdx){
-    int x = 260;
-    int y = 42;
-    int s = 24;
-
-    tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
-    tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
-    tft.setFont(Arial_12);
-    tft.setCursor(x - 24, y + 6);
-    tft.setTextColor(ILI9341_LIGHTGREY);
-    tft.print("RV");
-
-    if(RotateValues[setIdx]){
-        tft.drawLine(x+4, y+12, x+10, y+18, ILI9341_GREEN);
-        tft.drawLine(x+10, y+18, x+20, y+6, ILI9341_GREEN);
-    }
+    drawValuesEditButtons(setIdx);
 }
 
 // Zweck: Zeichnet den Button zum GateLen-Screen.
@@ -1262,12 +1379,25 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         }
         return;
     }
+    if(hitBox(mapX, mapY, 98, 43, 20, 20, 6)){
+        RotateRatchet[setIdx] = !RotateRatchet[setIdx];
+        scheduleSaveParams();
+        drawValuesEditButtons(setIdx);
+        if (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
+        return;
+    }
+    if(setIdx == 0 && hitBox(mapX, mapY, 188, 43, 20, 20, 6)){
+        RotateOctave[setIdx] = !RotateOctave[setIdx];
+        scheduleSaveParams();
+        drawValuesEditButtons(setIdx);
+        if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+        return;
+    }
     if(hitBox(mapX, mapY, 260, 42, 24, 24, 8)){
-        // Rotate Values: Werte werden relativ zur Pattern-Rotation interpretiert.
         RotateValues[setIdx] = !RotateValues[setIdx];
         scheduleSaveParams();
-        drawRotateValuesCheckbox(setIdx);
-        drawValuesBars(setIdx);
+        drawValuesEditButtons(setIdx);
+        if (valuesEditMode[setIdx] == 0) drawValuesBars(setIdx);
         return;
     }
     if(hitBox(mapX, mapY, 260, 10, 24, 24, 8)){
@@ -1282,6 +1412,22 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         drawGateLenScreen(setIdx);
         return;
     }
+    if(hitBox(mapX, mapY, 50, 42, 46, 24, 6)){
+        valuesEditMode[setIdx] = (valuesEditMode[setIdx] == 1) ? 0 : 1;
+        drawValuesEditButtons(setIdx);
+        if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
+        else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+        else                                  drawValuesBars(setIdx);
+        return;
+    }
+    if(setIdx == 0 && hitBox(mapX, mapY, 140, 42, 46, 24, 6)){
+        valuesEditMode[setIdx] = (valuesEditMode[setIdx] == 2) ? 0 : 2;
+        drawValuesEditButtons(setIdx);
+        if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
+        else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+        else                                  drawValuesBars(setIdx);
+        return;
+    }
 
     int len = clampVal(PatLen[setIdx], 1, 32);
     int x0 = 10;
@@ -1294,12 +1440,26 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
-    int v = map(mapY, y0 + h, y0, 0, 255);
-    v = clampVal(v, 0, 255);
-    ValuesArr[setIdx][writeIdx] = (uint8_t)v;
-    scheduleSaveParams();
-    drawValuesBar(setIdx, idx);
+    if (valuesEditMode[setIdx] == 1) {
+        int writeIdx = RotateRatchet[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
+        RatchetArr[setIdx][writeIdx] = (uint8_t)v;
+        scheduleSaveParams();
+        drawRatchetBar(setIdx, idx);
+    } else if (valuesEditMode[setIdx] == 2 && setIdx == 0) {
+        int writeIdx = RotateOctave[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        int v = clampVal(3 - (mapY - y0) * 7 / h, -3, 3);
+        OctaveNote1[writeIdx] = (int8_t)v;
+        scheduleSaveParams();
+        drawOctaveBar(setIdx, idx);
+    } else {
+        int writeIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        int v = map(mapY, y0 + h, y0, 0, 255);
+        v = clampVal(v, 0, 255);
+        ValuesArr[setIdx][writeIdx] = (uint8_t)v;
+        scheduleSaveParams();
+        drawValuesBar(setIdx, idx);
+    }
 }
 
 // Zweck: Behandelt Drag-Events im Values-Screen.
@@ -1317,12 +1477,26 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
-    int v = map(mapY, y0 + h, y0, 0, 255);
-    v = clampVal(v, 0, 255);
-    ValuesArr[setIdx][writeIdx] = (uint8_t)v;
-    scheduleSaveParams();
-    drawValuesBar(setIdx, idx);
+    if (valuesEditMode[setIdx] == 1) {
+        int writeIdx = RotateRatchet[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
+        RatchetArr[setIdx][writeIdx] = (uint8_t)v;
+        scheduleSaveParams();
+        drawRatchetBar(setIdx, idx);
+    } else if (valuesEditMode[setIdx] == 2 && setIdx == 0) {
+        int writeIdx = RotateOctave[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        int v = clampVal(3 - (mapY - y0) * 7 / h, -3, 3);
+        OctaveNote1[writeIdx] = (int8_t)v;
+        scheduleSaveParams();
+        drawOctaveBar(setIdx, idx);
+    } else {
+        int writeIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        int v = map(mapY, y0 + h, y0, 0, 255);
+        v = clampVal(v, 0, 255);
+        ValuesArr[setIdx][writeIdx] = (uint8_t)v;
+        scheduleSaveParams();
+        drawValuesBar(setIdx, idx);
+    }
 }
 
 // Zweck: Baut den GateLen-Screen fuer ein Pattern auf.
@@ -1504,10 +1678,22 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
 static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
     int vi = RotateValues[setIdx]  ? patternRotatedSrc(setIdx, stepIdx) : stepIdx;
     dotX = 90 + ((int)ValuesArr[setIdx][vi] * 179) / 255;
-    if (setIdx == 0 && xyPadPitchMode) {
-        int effIdx = foldPitchIdx(stepIdx, clampVal(PatLen[0], 1, 32), pitchFoldMode);
-        int pi = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
-        dotY = 40 + 179 - ((int)PitchNote1[pi] * 179) / 255;
+    if (setIdx == 0 && xyPadPitchMode == 4) {
+        // RO-Modus: X=Ratchet-Zellmitte, Y=Oktave-Zellmitte
+        int rsrc = RotateRatchet[0] ? patternRotatedSrc(0, stepIdx) : stepIdx;
+        int osrc = RotateOctave[0]  ? patternRotatedSrc(0, stepIdx) : stepIdx;
+        int rat = clampVal((int)RatchetArr[0][rsrc], 1, 4);
+        int oct = clampVal((int)OctaveNote1[osrc], -3, 3);
+        dotX = 90 + (rat - 1) * 45 + 22;
+        int ri = 3 - oct;  // Zeilenindex: 0=oben(+3)..6=unten(-3)
+        dotY = 40 + (2 * ri + 1) * 90 / 7;
+    } else if (setIdx == 0 && xyPadPitchMode > 0) {
+        // Rohdaten anzeigen — Y-Bereich nach PV-Modus skaliert (PV1=51, PV3=153, PV5=255)
+        static const int maxRaw[4] = { 255, 51, 153, 255 };
+        int mr = maxRaw[xyPadPitchMode];
+        int scaledY = ((int)PitchNote1[stepIdx] * 179) / mr;
+        if (scaledY > 179) scaledY = 179;
+        dotY = 40 + 179 - scaledY;
     } else {
         int gi = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, stepIdx) : stepIdx;
         dotY = 40 + 179 - ((int)GateLenArr[setIdx][gi] * 179) / 255;
@@ -1544,9 +1730,39 @@ static void eraseAndRestoreXYDot(int dotX, int dotY) {
 // Loescht das Pad-Innere und zeichnet das Gitter neu (fuer vollstaendigen Dot-Refresh).
 static void clearXYPadContent() {
     tft.fillRect(91, 41, 178, 178, ILI9341_BLACK);
-    for (int i = 1; i < 10; i++) {
-        tft.drawFastVLine(90 + i * 18, 41, 178, XY_GRID_COLOR);
-        tft.drawFastHLine(91, 40 + i * 18, 178, XY_GRID_COLOR);
+    if (xyPadPitchMode == 4) {
+        for (int i = 1; i <= 3; i++)
+            tft.drawFastVLine(90 + i * 45, 41, 178, XY_GRID_COLOR);
+        for (int i = 1; i <= 6; i++)
+            tft.drawFastHLine(91, 40 + (i * 180) / 7, 178, XY_GRID_COLOR);
+    } else {
+        for (int i = 1; i < 10; i++) {
+            tft.drawFastVLine(90 + i * 18, 41, 178, XY_GRID_COLOR);
+            tft.drawFastHLine(91, 40 + i * 18, 178, XY_GRID_COLOR);
+        }
+    }
+}
+
+// Stellt RO-Gitterlinien (4×7) nach Dot-Loeschung wieder her.
+static void eraseAndRestoreXYDotRO(int dotX, int dotY) {
+    tft.fillCircle(dotX, dotY, 3, ILI9341_BLACK);
+    for (int i = 1; i <= 3; i++) {
+        int gx = 90 + i * 45;
+        int dx = gx - dotX; if (dx < 0) dx = -dx;
+        if (dx <= 3) {
+            int y0 = dotY - 3; if (y0 < 41)  y0 = 41;
+            int y1 = dotY + 3; if (y1 > 218) y1 = 218;
+            if (y1 >= y0) tft.drawFastVLine(gx, y0, y1 - y0 + 1, XY_GRID_COLOR);
+        }
+    }
+    for (int i = 1; i <= 6; i++) {
+        int gy = 40 + (i * 180) / 7;
+        int dy = gy - dotY; if (dy < 0) dy = -dy;
+        if (dy <= 3) {
+            int x0 = dotX - 3; if (x0 < 91)  x0 = 91;
+            int x1 = dotX + 3; if (x1 > 268) x1 = 268;
+            if (x1 >= x0) tft.drawFastHLine(x0, gy, x1 - x0 + 1, XY_GRID_COLOR);
+        }
     }
 }
 
@@ -1570,7 +1786,10 @@ void drawXYDotPlayhead(int setIdx, unsigned int step) {
     if (last >= 0 && last < len) {
         int dotX, dotY;
         getXYDotXY(setIdx, last, dotX, dotY);
-        eraseAndRestoreXYDot(dotX, dotY);
+        if (setIdx == 0 && xyPadPitchMode == 4)
+            eraseAndRestoreXYDotRO(dotX, dotY);
+        else
+            eraseAndRestoreXYDot(dotX, dotY);
         uint16_t col = getXYDotIsHit(setIdx, last) ? ILI9341_WHITE : ILI9341_DARKGREY;
         tft.fillCircle(dotX, dotY, 2, col);
     }
@@ -1583,17 +1802,18 @@ void drawXYDotPlayhead(int setIdx, unsigned int step) {
 static void drawXYModeToggle(int setIdx) {
     if (setIdx != 0) return;
     int bx = 270, by = 5, bw = 44, bh = 24;
-    if (xyPadPitchMode) {
-        tft.fillRect(bx, by, bw, bh, ILI9341_DARKGREEN);
-        tft.drawRect(bx, by, bw, bh, ILI9341_GREEN);
-    } else {
-        tft.fillRect(bx, by, bw, bh, ILI9341_BLACK);
-        tft.drawRect(bx, by, bw, bh, ILI9341_DARKGREY);
-    }
+    static const char* labels[5] = { "PV", "PV1", "PV3", "PV5", "RO" };
+    bool roMode = (xyPadPitchMode == 4);
+    bool active = (xyPadPitchMode > 0);
+    uint16_t borderCol = roMode ? ILI9341_MAGENTA : (active ? ILI9341_GREEN : ILI9341_DARKGREY);
+    tft.fillRect(bx, by, bw, bh, (roMode || active) ? ILI9341_BLACK : ILI9341_BLACK);
+    tft.drawRect(bx, by, bw, bh, borderCol);
     tft.setFont(Arial_12);
-    tft.setTextColor(ILI9341_LIGHTGREY);
-    tft.setCursor(bx + 8, by + 6);
-    tft.print("PV");
+    tft.setTextColor(active ? borderCol : ILI9341_DARKGREY);
+    const char *lbl = labels[xyPadPitchMode];
+    int lw = (int)strlen(lbl) * 7;
+    tft.setCursor(bx + (bw - lw) / 2, by + 6);
+    tft.print(lbl);
 }
 
 void drawXYPadScreen(int setIdx){
@@ -1604,21 +1824,43 @@ void drawXYPadScreen(int setIdx){
     int y = 40;
     int w = 180;
     int h = 180;
-    tft.drawRect(x, y, w, h, ILI9341_DARKGREY);
+    bool roMode = (setIdx == 0 && xyPadPitchMode == 4);
+    tft.drawRect(x, y, w, h, roMode ? ILI9341_MAGENTA : ILI9341_DARKGREY);
 
-    // Raster: 10 Unterteilungen in x und y
-    for (int i = 1; i < 10; i++) {
-        tft.drawFastVLine(x + (i * w) / 10, y + 1, h - 2, XY_GRID_COLOR);
-        tft.drawFastHLine(x + 1, y + (i * h) / 10, w - 2, XY_GRID_COLOR);
+    if (roMode) {
+        // 4 Ratchet-Spalten × 7 Oktave-Zeilen
+        for (int i = 1; i <= 3; i++)
+            tft.drawFastVLine(x + i * 45, y + 1, h - 2, XY_GRID_COLOR);
+        for (int i = 1; i <= 6; i++)
+            tft.drawFastHLine(x + 1, y + (i * h) / 7, w - 2, XY_GRID_COLOR);
+        // Spaltenbeschriftung (Ratchet 1-4) oberhalb des Pads
+        tft.setFont(Arial_12);
+        tft.setTextColor(ILI9341_DARKGREY);
+        for (int r = 0; r < 4; r++)
+            tft.setCursor(x + r * 45 + 19, y - 12), tft.print(r + 1);
+        // Zeilenbeschriftung (Oktave +3..-3) links
+        static const char* octLbls[7] = {"+3","+2","+1"," 0","-1","-2","-3"};
+        for (int ri = 0; ri < 7; ri++) {
+            int rowCy = y + (2 * ri + 1) * 90 / 7;
+            tft.setCursor(68, rowCy - 6);
+            tft.print(octLbls[ri]);
+        }
+    } else {
+        // 10×10 Raster
+        for (int i = 1; i < 10; i++) {
+            tft.drawFastVLine(x + (i * w) / 10, y + 1, h - 2, XY_GRID_COLOR);
+            tft.drawFastHLine(x + 1, y + (i * h) / 10, w - 2, XY_GRID_COLOR);
+        }
     }
 
     tft.setFont(Arial_12);
     tft.setTextColor(ILI9341_LIGHTGREY);
-    tft.setCursor(x + 60, y + h + 8);
-    tft.print("Value");
+    tft.setCursor(roMode ? x + 52 : x + 60, y + h + 8);
+    tft.print(roMode ? "Ratchet" : "Value");
 
-    bool pitchMode = (setIdx == 0 && xyPadPitchMode);
-    drawVerticalLabel(x - 20, y + 34, pitchMode ? "Pitch    " : "Gatelength");
+    static const char* yLabels[5] = { "Gatelength", "1Oct Pitch", "3Oct Pitch", "5Oct Pitch", "Octave    " };
+    int yLabelIdx = (setIdx == 0 && xyPadPitchMode > 0) ? xyPadPitchMode : 0;
+    drawVerticalLabel(x - 20, y + 34, yLabels[yLabelIdx]);
 
     drawXYModeToggle(setIdx);
 
@@ -1632,20 +1874,25 @@ void drawXYPadScreen(int setIdx){
 // Zweck: Behandelt Touch-Events im XY-Pad-Screen.
 // Side Effects: wechselt GUIState und schreibt auf das TFT.
 // Assumptions: setIdx in 0..2; mapX/mapY sind gemappt; tipPos ist gueltig.
-void handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
+// Behandelt Button-Taps auf dem XY-Screen (sofort beim Erst-Touch aufrufen).
+// Gibt true zurück wenn ein Button getroffen wurde (kein Wert-Schreiben nötig).
+bool handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
     if(tipPos == UL){
         GUIState = (setIdx == 0) ? EUCLPARAM1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3;
         redrawParamFromPattern(setIdx);
-        return;
+        return true;
     }
-
-    // PV-Mode-Toggle (nur Kanal 1, oben rechts)
-    if (setIdx == 0 && hitBox(mapX, mapY, 270, 5, 44, 24, 4)) {
-        xyPadPitchMode = !xyPadPitchMode;
+    // PV-Mode-Toggle (nur Kanal 1, oben rechts): 0→1→2→3→0
+    if (setIdx == 0 && hitBox(mapX, mapY, 270, 5, 44, 24, 8)) {
+        xyPadPitchMode = (xyPadPitchMode + 1) % 5;
         drawXYPadScreen(setIdx);
-        return;
+        return true;
     }
+    return false;
+}
 
+// Schreibt Werte tick-synchron (aufrufen wenn Sequencer-Tick + Touch aktiv).
+void handleXYPADRecord(int setIdx, int mapX, int mapY){
     int x = 90;
     int y = 40;
     int w = 180;
@@ -1656,21 +1903,34 @@ void handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
 
     int len = clampVal(PatLen[setIdx], 1, 32);
     int idx = cntCh[setIdx] % len;
-    int writeValIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
 
-    int v = map(mapX, x, x + w - 1, 0, 255);
-    int g = map(mapY, y + h - 1, y, 0, 255);
-    v = clampVal(v, 0, 255);
-    g = clampVal(g, 0, 255);
-
-    ValuesArr[setIdx][writeValIdx] = (uint8_t)v;
-    if (setIdx == 0 && xyPadPitchMode) {
-        int writePitchIdx = pitchRotate ? patternRotatedSrc(0, idx) : idx;
-        PitchNote1[writePitchIdx] = (uint8_t)g;
-        scheduleSaveParams();
+    if (setIdx == 0 && xyPadPitchMode == 4) {
+        // RO-Modus: X→Ratchet (1-4), Y→Oktave (-3..+3), kontinuierlich (nicht quantisiert)
+        int rat = (mapX - x) * 4 / w + 1;
+        rat = clampVal(rat, 1, 4);
+        int oct = (y + h - 1 - mapY) * 7 / h - 3;  // unten=-3, oben=+3
+        oct = clampVal(oct, -3, 3);
+        int rWriteIdx = RotateRatchet[0] ? patternRotatedSrc(0, idx) : idx;
+        int oWriteIdx = RotateOctave[0]  ? patternRotatedSrc(0, idx) : idx;
+        RatchetArr[0][rWriteIdx] = (uint8_t)rat;
+        OctaveNote1[oWriteIdx] = (int8_t)oct;
     } else {
-        int writeGateIdx = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
-        GateLenArr[setIdx][writeGateIdx] = (uint8_t)g;
+        int writeValIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+        static const int pvMaxRaw[4] = { 255, 51, 153, 255 };
+        int v = map(mapX, x, x + w - 1, 0, 255);
+        v = clampVal(v, 0, 255);
+        ValuesArr[setIdx][writeValIdx] = (uint8_t)v;
+        if (setIdx == 0 && xyPadPitchMode > 0) {
+            int mr = pvMaxRaw[xyPadPitchMode];
+            int g = map(mapY, y + h - 1, y, 0, mr);
+            g = clampVal(g, 0, mr);
+            PitchNote1[idx] = (uint8_t)g;
+        } else {
+            int g = map(mapY, y + h - 1, y, 0, 255);
+            g = clampVal(g, 0, 255);
+            int writeGateIdx = RotateGateLen[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
+            GateLenArr[setIdx][writeGateIdx] = (uint8_t)g;
+        }
     }
 
     lastXYDotIdx[setIdx] = -1;
@@ -1832,7 +2092,8 @@ static void drawPitchBar(int idx) {
     int w  = xN - x - 1;
     if (w < 1) w = 1;
 
-    int effIdx = foldPitchIdx(idx, len, pitchFoldMode);
+    uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+    int effIdx = foldPitchIdx(idx, len, effFold);
     int src    = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
     bool hit   = patternIsHit(0, idx);
 
@@ -1999,18 +2260,37 @@ void drawPitchControls() {
 }
 
 static void drawPitchFoldBox() {
-    static const char* foldNames[5] = { "off", "m 1/2", "r 1/2", "m 1/4", "r 1/4" };
-    const char *label = foldNames[clampVal((int)pitchFoldMode, 0, 4)];
-    bool active = (pitchFoldMode > 0);
+    static const char* foldNames[13] = {
+        "off",
+        "m H1", "r H1", "m Q1", "r Q1",
+        "m H2", "r H2",
+        "m Q2", "m Q3", "m Q4",
+        "r Q2", "r Q3", "r Q4"
+    };
+    bool cvActive = (cvPitchFold >= 0);
+    uint8_t effFold = cvActive ? (uint8_t)cvPitchFold : pitchFoldMode;
+    const char *label = foldNames[clampVal((int)effFold, 0, 12)];
+    uint16_t col;
+    if (cvActive)             col = ILI9341_CYAN;
+    else if (pitchFoldMode > 0) col = ILI9341_GREEN;
+    else                        col = ILI9341_DARKGREY;
     tft.fillRect(PITCH_FOLD_BX + 1, PITCH_FOLD_BY + 1,
                  PITCH_FOLD_BW - 2, PITCH_FOLD_BH - 2, ILI9341_BLACK);
-    tft.drawRect(PITCH_FOLD_BX, PITCH_FOLD_BY, PITCH_FOLD_BW, PITCH_FOLD_BH,
-                 active ? ILI9341_GREEN : ILI9341_DARKGREY);
+    tft.drawRect(PITCH_FOLD_BX, PITCH_FOLD_BY, PITCH_FOLD_BW, PITCH_FOLD_BH, col);
     tft.setFont(Arial_12);
-    tft.setTextColor(active ? ILI9341_GREEN : ILI9341_LIGHTGREY);
+    tft.setTextColor(col == ILI9341_DARKGREY ? ILI9341_LIGHTGREY : col);
     int labelW = (int)strlen(label) * 7;
     tft.setCursor(PITCH_FOLD_BX + (PITCH_FOLD_BW - labelW) / 2, PITCH_FOLD_BY + 4);
     tft.print(label);
+}
+
+void tickPitchUi() {
+    static int8_t lastCvPitchFoldTick = -2;
+    if (cvPitchFold != lastCvPitchFoldTick) {
+        lastCvPitchFoldTick = cvPitchFold;
+        drawPitchFoldBox();
+        drawPitchBars();
+    }
 }
 
 void drawPitchScreen() {
@@ -2044,7 +2324,7 @@ void drawPitchScreen() {
 void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     // Fold-Box vor UL-Check prüfen (liegt in UL-Zone)
     if (hitBox(mapX, mapY, PITCH_FOLD_BX, PITCH_FOLD_BY, PITCH_FOLD_BW, PITCH_FOLD_BH, 4)) {
-        pitchFoldMode = (pitchFoldMode + 1) % 5;
+        pitchFoldMode = (pitchFoldMode + 1) % 13;
         scheduleSaveParams();
         drawPitchFoldBox();
         drawPitchBars();
@@ -2267,4 +2547,168 @@ void tickCvConfigUi() {
         tft.fillRect(CV_CFG_BAR_X, y + 6, barFill, CV_CFG_ROW_H - 12, ILI9341_CYAN);
         tft.fillRect(CV_CFG_BAR_X + barFill, y + 6, CV_CFG_BAR_W - barFill, CV_CFG_ROW_H - 12, ILI9341_BLACK);
     }
+}
+
+// ---------------------------------------------------------------------------
+// navigateToScreen: setzt GUIState und zeichnet den Ziel-Screen komplett neu.
+// ---------------------------------------------------------------------------
+void navigateToScreen(uint16_t target) {
+    GUIState = target;
+    switch (target) {
+        case EUCLCIRCS:
+            tft.fillScreen(ILI9341_BLACK);
+            setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
+            drawEncParamIndicators();
+            drawBpmControls();
+            drawBpmValue();
+            drawEucledianCircleFromPattern(R1, PatLen[0], PatRot[0], EPatArr[0]);
+            drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
+            drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
+            for (int i = 0; i < 3; i++) displayedPatLen[i] = PatLen[i];
+            break;
+        case PERFORMANCE:  drawPerformanceScreen(); break;
+        case PITCH1:       drawPitchScreen();        break;
+        case CV_CONFIG:    drawCvConfigScreen();     break;
+        case EUCLPARAM1:   redrawParamFromPattern(0); break;
+        case EUCLPARAM2:   redrawParamFromPattern(1); break;
+        case EUCLPARAM3:   redrawParamFromPattern(2); break;
+        case VALUES1:      drawValuesScreen(0);      break;
+        case VALUES2:      drawValuesScreen(1);      break;
+        case VALUES3:      drawValuesScreen(2);      break;
+        case GATELEN1:     drawGateLenScreen(0);     break;
+        case GATELEN2:     drawGateLenScreen(1);     break;
+        case GATELEN3:     drawGateLenScreen(2);     break;
+        case XY1:          drawXYPadScreen(0);       break;
+        case XY2:          drawXYPadScreen(1);       break;
+        case XY3:          drawXYPadScreen(2);       break;
+        default: break;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Navigation-Übersicht: 4×4-Grid aller Screens.
+// fromState = Screen von dem aus NAV geöffnet wurde (wird hervorgehoben).
+// ---------------------------------------------------------------------------
+static const int NAV_COLS = 4, NAV_ROWS = 4;
+static const int NAV_TW   = 80, NAV_TH  = 60;
+
+static const uint16_t NAV_STATE[NAV_ROWS][NAV_COLS] = {
+    { EUCLCIRCS,  PERFORMANCE, PITCH1,   CV_CONFIG },
+    { EUCLPARAM1, VALUES1,     GATELEN1, XY1       },
+    { EUCLPARAM2, VALUES2,     GATELEN2, XY2       },
+    { EUCLPARAM3, VALUES3,     GATELEN3, XY3       },
+};
+
+static const char* const NAV_L1[NAV_ROWS][NAV_COLS] = {
+    { "",    "",    "",    ""    },
+    { "Ch1", "Ch1", "Ch1", "Ch1" },
+    { "Ch2", "Ch2", "Ch2", "Ch2" },
+    { "Ch3", "Ch3", "Ch3", "Ch3" },
+};
+
+static const char* const NAV_L2[NAV_ROWS][NAV_COLS] = {
+    { "Circles", "Perform", "Pitch",  "CV Cfg" },
+    { "Param",   "Values",  "Gate",   "XY"     },
+    { "Param",   "Values",  "Gate",   "XY"     },
+    { "Param",   "Values",  "Gate",   "XY"     },
+};
+
+// Hintergrundfarben pro Zeile (global / Ch1 / Ch2 / Ch3)
+static const uint16_t NAV_BG[NAV_ROWS] = { 0x1088, 0x6180, 0x4000, 0x0180 };
+// Highlight-Farben: Cyan / Gelb / Rot / Grün
+static const uint16_t NAV_HL[NAV_ROWS] = {
+    ILI9341_CYAN, ILI9341_YELLOW, ILI9341_RED, ILI9341_GREEN
+};
+
+// Cursor-Zustand: welches Tile ist per Encoder markiert, von wo wurde NAV geöffnet
+static int      navCursor    = 0;
+static uint16_t navFromState = EUCLCIRCS;
+
+// isFrom: Tile des vorherigen Screens (farbiger Rahmen)
+// isCursor: aktuell per Encoder ausgewähltes Tile (weißer Außenrahmen)
+static void drawNavTile(int row, int col, bool isFrom, bool isCursor) {
+    int x = col * NAV_TW;
+    int y = row * NAV_TH;
+    tft.fillRect(x, y, NAV_TW, NAV_TH, NAV_BG[row]);
+    tft.drawRect(x, y, NAV_TW, NAV_TH, isCursor ? ILI9341_WHITE : ILI9341_BLACK);
+    if (isFrom) {
+        tft.drawRect(x + 2, y + 2, NAV_TW - 4, NAV_TH - 4, NAV_HL[row]);
+        tft.drawRect(x + 3, y + 3, NAV_TW - 6, NAV_TH - 6, NAV_HL[row]);
+    }
+    tft.setTextColor(isFrom ? NAV_HL[row] : ILI9341_WHITE);
+    if (NAV_L1[row][col][0] != '\0') {
+        tft.setFont(Arial_10);
+        tft.setCursor(x + 6, y + 10);
+        tft.print(NAV_L1[row][col]);
+        tft.setFont(Arial_12);
+        tft.setCursor(x + 6, y + 30);
+        tft.print(NAV_L2[row][col]);
+    } else {
+        tft.setFont(Arial_12);
+        tft.setCursor(x + 6, y + 22);
+        tft.print(NAV_L2[row][col]);
+    }
+}
+
+void drawNavScreen(uint16_t fromState) {
+    navFromState = fromState;
+    // Cursor startet auf dem Tile des aktuellen Screens
+    navCursor = 0;
+    for (int r = 0; r < NAV_ROWS; r++)
+        for (int c = 0; c < NAV_COLS; c++)
+            if (NAV_STATE[r][c] == fromState) navCursor = r * NAV_COLS + c;
+    tft.fillScreen(ILI9341_BLACK);
+    for (int r = 0; r < NAV_ROWS; r++)
+        for (int c = 0; c < NAV_COLS; c++)
+            drawNavTile(r, c, NAV_STATE[r][c] == fromState, (r * NAV_COLS + c) == navCursor);
+}
+
+// Enc3-Drehung auf NAV: Cursor verschieben, nur die zwei betroffenen Tiles neu zeichnen.
+void moveNavCursor(int delta) {
+    int oldCursor = navCursor;
+    navCursor = ((navCursor + delta) % 16 + 16) % 16;
+    if (navCursor == oldCursor) return;
+    int r1 = oldCursor / NAV_COLS, c1 = oldCursor % NAV_COLS;
+    int r2 = navCursor  / NAV_COLS, c2 = navCursor  % NAV_COLS;
+    drawNavTile(r1, c1, NAV_STATE[r1][c1] == navFromState, false);
+    drawNavTile(r2, c2, NAV_STATE[r2][c2] == navFromState, true);
+}
+
+// Gibt den GUIState des aktuell markierten Tiles zurück (für Enc3-Kurzdruck).
+uint16_t getNavCursorState() {
+    return NAV_STATE[navCursor / NAV_COLS][navCursor % NAV_COLS];
+}
+
+void handleNav(int mapX, int mapY) {
+    int col = mapX / NAV_TW;
+    int row = mapY / NAV_TH;
+    if (col < 0 || col >= NAV_COLS || row < 0 || row >= NAV_ROWS) return;
+    navigateToScreen(NAV_STATE[row][col]);
+}
+
+// Quick-Save Toast: kleines Overlay in Bildschirmmitte, verschwindet nach 1.2 s.
+static uint32_t saveToastUntilMs = 0;
+static const int TOAST_X = 60, TOAST_Y = 100, TOAST_W = 200, TOAST_H = 38;
+
+void showSaveToast(int slot) {
+    tft.fillRoundRect(TOAST_X, TOAST_Y, TOAST_W, TOAST_H, 6, ILI9341_DARKGREEN);
+    tft.setTextColor(ILI9341_WHITE, ILI9341_DARKGREEN);
+    tft.setFont(Arial_12);
+    if (slot < 0) {
+        tft.setCursor(TOAST_X + 18, TOAST_Y + 12);
+        tft.print("Alle Slots belegt!");
+    } else {
+        tft.setCursor(TOAST_X + 12, TOAST_Y + 12);
+        tft.printf("Gespeichert \x10 Slot %d", slot + 1);
+    }
+    saveToastUntilMs = millis() + 1200;
+}
+
+bool tickSaveToast() {
+    if (saveToastUntilMs == 0) return false;
+    if ((int32_t)(millis() - saveToastUntilMs) >= 0) {
+        saveToastUntilMs = 0;
+        return true;  // Aufrufer soll Screen neu zeichnen
+    }
+    return false;
 }

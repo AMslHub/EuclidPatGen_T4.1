@@ -23,7 +23,8 @@ enum {
   XY2,
   XY3,
   PITCH1,
-  CV_CONFIG
+  CV_CONFIG,
+  NAV
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
 
@@ -72,6 +73,10 @@ extern uint8_t GateLen1[32];
 extern uint8_t GateLen2[32];
 extern uint8_t GateLen3[32];
 extern uint8_t *GateLenArr[3];
+extern uint8_t Ratchet1[32];
+extern uint8_t Ratchet2[32];
+extern uint8_t Ratchet3[32];
+extern uint8_t *RatchetArr[3];
 extern bool GateHold1;
 extern bool GateHold2;
 extern bool GateHold3;
@@ -82,6 +87,8 @@ extern bool Hold3;
 extern bool *HoldArr[3];
 extern bool RotateValues[3];
 extern bool RotateGateLen[3];
+extern bool RotateRatchet[3];
+extern bool RotateOctave[3];
 
 // Performance (Mute/Solo)
 extern bool MuteSeq[3];
@@ -115,6 +122,7 @@ extern uint8_t autoRotateStep[3];
 
 // Pitch (nur Kanal 1 / Hardware-CV-Ausgang Pitch)
 extern uint8_t PitchNote1[32];   // Rohwert 0-255 pro Step
+extern int8_t  OctaveNote1[32];  // Oktav-Offset pro Step: -3..+3 (nur Kanal 1)
 extern uint8_t pitchSpread;      // Oktavbereich 1-5
 extern uint8_t pitchScale;       // Skalenindex (0..SCALE_COUNT-1)
 extern uint8_t pitchRoot;        // Grundton 0=C .. 11=H

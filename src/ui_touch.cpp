@@ -18,7 +18,7 @@ bool readTouchMapped(int &mapX, int &mapY){
 // Side Effects: keine.
 // Assumptions: mapX/mapY sind in Screen-Koordinaten (0..320/0..240).
 uint16_t getTipPositionFromXY(int mapX, int mapY){
-    if(mapX < 80 && mapY < 80){
+    if(mapX < 52 && mapY < 40){
       return UL;
     }else if(mapX > 240 && mapY < 80){
       return UR;
