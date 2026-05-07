@@ -62,6 +62,13 @@ void drawXYPlayhead(int setIdx, unsigned int step);
 void drawXYDotPlayhead(int setIdx, unsigned int step);
 void drawPitchScreen();
 void applyAllTransforms(); // Rotation+Fold aller Kanäle einfrieren (Enc1-Long-Press auf PITCH1)
+bool getPitchStepEditActive();
+int  getPitchStepEditCursor();
+void togglePitchStepEdit();
+void movePitchStepCursor(int delta);
+void adjustPitchStepNote(int delta);
+void adjustPitchStepOctave(int delta);
+void togglePitchStepChromatic();
 void handlePITCH(int mapX, int mapY, uint16_t tipPos);
 void handlePITCHDrag(int mapX, int mapY);
 void drawPitchPlayhead(unsigned int step);

@@ -2191,8 +2191,17 @@ static const int PITCH_FOLD_BY = 14;
 static const int PITCH_FOLD_BW = 60;
 static const int PITCH_FOLD_BH = 22;
 
-static bool pitchDisplayMode = false;
-static int lastPitchPlayIdx = -1;
+static bool pitchDisplayMode  = false;
+static bool stepEditActive      = false;
+static int  stepEditCursor      = 0;
+static bool stepEditChromatic   = false;
+static bool stepLabelShowOctave = false;
+static int  lastPitchPlayIdx  = -1;
+
+static const int PITCH_NLB_X  = PITCH_BAR_X + 2;
+static const int PITCH_NLB_Y  = PITCH_BAR_Y + 2;
+static const int PITCH_NLB_W  = 80;
+static const int PITCH_NLB_H  = 16;
 
 // Maps a MIDI note to a Y pixel in the bar area (C2=36 at bottom, C7=96 at top).
 static int pitchNoteToBarY(int midiNote) {
@@ -2220,11 +2229,14 @@ static void drawPitchBar(int idx) {
 
     int bottom = PITCH_BAR_Y + PITCH_BAR_H;
 
+    bool isCursor = stepEditActive && (idx == stepEditCursor);
+
     if (pitchDisplayMode) {
         // Raw PitchNote1[] value as proportional bar height for drawing
         int fillH = (int)((PitchNote1[src] * (long)PITCH_BAR_H) / 255L);
         if (fillH > 0) {
-            uint16_t col = hit ? ILI9341_WHITE : 0x4208;
+            uint16_t col = hit ? (isCursor ? ILI9341_YELLOW : ILI9341_WHITE)
+                               : (isCursor ? 0x8400         : 0x4208);
             tft.fillRect(x, bottom - fillH, w, fillH, col);
         }
     } else {
@@ -2234,7 +2246,8 @@ static void drawPitchBar(int idx) {
         int noteY = pitchNoteToBarY(midi);
         int fillH = bottom - noteY;
         if (fillH > 0) {
-            uint16_t col = hit ? ILI9341_WHITE : 0x4208;
+            uint16_t col = hit ? (isCursor ? ILI9341_YELLOW : ILI9341_WHITE)
+                               : (isCursor ? 0x8400         : 0x4208);
             tft.fillRect(x, noteY, w, fillH, col);
         }
         // Restore octave grid lines that pass through this column.
@@ -2412,6 +2425,103 @@ void tickPitchUi() {
     }
 }
 
+static void drawPitchStepNoteLabel() {
+    static const char* const NOTE_NAMES[12] = {
+        "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
+    int len = clampVal(PatLen[0], 1, 32);
+    uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+    int effIdx = foldPitchIdx(stepEditCursor, len, effFold);
+    int src    = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
+    int octSrc = RotateOctave[0] ? patternRotatedSrc(0, stepEditCursor) : stepEditCursor;
+    int midi   = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
+                                pitchRoot, pitchIntervalMask);
+    midi = clampVal(midi + ((int)pitchShift + (int)OctaveNote1[octSrc]) * 12, 0, 127);
+    tft.fillRect(PITCH_NLB_X, PITCH_NLB_Y, PITCH_NLB_W, PITCH_NLB_H, ILI9341_BLACK);
+    tft.setFont(Arial_12);
+    tft.setCursor(PITCH_NLB_X + 2, PITCH_NLB_Y + 3);
+    if (stepLabelShowOctave) {
+        int octSrcOct = RotateOctave[0] ? patternRotatedSrc(0, stepEditCursor) : stepEditCursor;
+        tft.setTextColor(ILI9341_GREEN);
+        tft.printf("S%d:o%+d", stepEditCursor + 1, (int)OctaveNote1[octSrcOct]);
+    } else {
+        tft.setTextColor(stepEditChromatic ? ILI9341_CYAN : ILI9341_YELLOW);
+        tft.printf("S%d:%s%d", stepEditCursor + 1,
+                   NOTE_NAMES[midi % 12], midi / 12 - 1);
+    }
+}
+
+bool getPitchStepEditActive()  { return stepEditActive; }
+int  getPitchStepEditCursor()  { return stepEditCursor; }
+
+void togglePitchStepEdit() {
+    stepEditActive = !stepEditActive;
+    if (stepEditActive) {
+        int len = clampVal(PatLen[0], 1, 32);
+        stepEditCursor = clampVal(stepEditCursor, 0, len - 1);
+        drawPitchStepNoteLabel();
+    } else {
+        // Label liegt in der Balkenbox — betroffene Balken neu zeichnen
+        stepLabelShowOctave = false;
+        int len = clampVal(PatLen[0], 1, 32);
+        int lastBar = ((PITCH_NLB_X + PITCH_NLB_W - PITCH_BAR_X) * len) / PITCH_BAR_W;
+        for (int i = 0; i <= lastBar && i < len; i++) drawPitchBar(i);
+    }
+    drawPitchBar(stepEditCursor);
+}
+
+void movePitchStepCursor(int delta) {
+    if (!stepEditActive) return;
+    int len  = clampVal(PatLen[0], 1, 32);
+    int prev = stepEditCursor;
+    stepEditCursor = ((stepEditCursor + delta) % len + len) % len;
+    if (stepEditCursor == prev) return;
+    stepLabelShowOctave = false;
+    drawPitchBar(prev);
+    drawPitchBar(stepEditCursor);
+    drawPitchStepNoteLabel();
+}
+
+void adjustPitchStepNote(int delta) {
+    if (!stepEditActive) return;
+    int len = clampVal(PatLen[0], 1, 32);
+    uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+    int effIdx = foldPitchIdx(stepEditCursor, len, effFold);
+    int src    = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
+    if (stepEditChromatic) {
+        int totalSt = (int)pitchSpread * 12;
+        int st = ((int)PitchNote1[src] * totalSt) / 256;
+        st = clampVal(st + delta, 0, totalSt - 1);
+        PitchNote1[src] = (uint8_t)clampVal(st * 256 / totalSt, 0, 255);
+    } else {
+        int noteList[60];
+        int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot,
+                               pitchIntervalMask, noteList);
+        if (nc == 0) return;
+        int k = clampVal(((int)PitchNote1[src] * nc) / 256, 0, nc - 1);
+        k = clampVal(k + delta, 0, nc - 1);
+        PitchNote1[src] = (uint8_t)clampVal((k * 256 + 128) / nc, 0, 255);
+    }
+    scheduleSaveParams();
+    stepLabelShowOctave = false;
+    drawPitchBar(stepEditCursor);
+    drawPitchStepNoteLabel();
+}
+
+void adjustPitchStepOctave(int delta) {
+    if (!stepEditActive) return;
+    int octSrc = RotateOctave[0] ? patternRotatedSrc(0, stepEditCursor) : stepEditCursor;
+    OctaveNote1[octSrc] = (int8_t)clampVal((int)OctaveNote1[octSrc] + delta, -3, 3);
+    scheduleSaveParams();
+    stepLabelShowOctave = true;
+    drawPitchStepNoteLabel();
+}
+
+void togglePitchStepChromatic() {
+    if (!stepEditActive) return;
+    stepEditChromatic = !stepEditChromatic;
+    drawPitchStepNoteLabel();
+}
+
 void drawPitchScreen() {
     tft.fillScreen(ILI9341_BLACK);
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
@@ -2427,6 +2537,7 @@ void drawPitchScreen() {
     drawPitchHoldCheckbox();
     drawPitchRotateCheckbox();
     drawPitchDisplayModeCheckbox();
+    if (stepEditActive) drawPitchStepNoteLabel();
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setCursor(287, 10);

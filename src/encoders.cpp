@@ -38,7 +38,8 @@ static uint32_t enc2PressStartMs    = 0;
 // Long Press Enc3: NAV-Screen Toggle
 static uint32_t enc3PressStartMs    = 0;
 static uint16_t navPrevState        = EUCLCIRCS;
-static const uint32_t LONG_PRESS_MS = 600;
+static const uint32_t LONG_PRESS_MS      =  600;
+static const uint32_t VERY_LONG_PRESS_MS = 2000;
 
 static const int ENC_STEPS_PER_DETENT = 4;
 static const int SLOT_COUNT = 7;
@@ -203,6 +204,13 @@ static void handlePerfButton2() {
 //   Enc3 (i=2): Intervall-Cursor 0..6 durchblättern
 // ---------------------------------------------------------------------------
 static void handlePitchEncoder(int enc, int delta) {
+    if (getPitchStepEditActive()) {
+        switch (enc) {
+            case 0: adjustPitchStepNote(delta);   return;
+            case 1: adjustPitchStepOctave(delta); return;
+            case 2: movePitchStepCursor(delta);   return;
+        }
+    }
     switch (enc) {
         case 0:
             if (!pitchBoxEditMode) {
@@ -262,6 +270,9 @@ static void handlePitchEncoder(int enc, int delta) {
 //   Enc3-Button: aktives Intervall am Cursor-Bit toggeln
 // ---------------------------------------------------------------------------
 static void handlePitchButton(int enc) {
+    if (getPitchStepEditActive()) {
+        if (enc == 2) { togglePitchStepChromatic(); return; }
+    }
     if (enc == 0) {
         pitchBoxEditMode = !pitchBoxEditMode;
         drawPitchControls();
@@ -384,15 +395,19 @@ void handleEncoders() {
                 enc3PressStartMs = now;
             } else {
                 uint32_t held = now - enc3PressStartMs;
-                if (held >= LONG_PRESS_MS) {
-                    if (GUIState == NAV) {
+                if (held >= VERY_LONG_PRESS_MS && GUIState == PITCH1) {
+                    togglePitchStepEdit();
+                } else if (held >= LONG_PRESS_MS) {
+                    if (GUIState == PITCH1 && getPitchStepEditActive()) {
+                        togglePitchStepEdit();
+                    } else if (GUIState == NAV) {
                         navigateToScreen(navPrevState);
                     } else {
                         navPrevState = GUIState;
                         GUIState = NAV;
                         drawNavScreen(navPrevState);
                     }
-                } else if (held < LONG_PRESS_MS) {
+                } else {
                     if (GUIState == NAV) {
                         navigateToScreen(getNavCursorState());
                     } else if (GUIState == PITCH1) {
