@@ -5,6 +5,7 @@
 #include <pitch.h>
 #include <storage.h>
 #include <ui_screens.h>
+#include <cv_inputs.h>
 #include <Encoder.h>
 
 static Encoder enc1(ENC1_CLK_PIN, ENC1_DT_PIN);
@@ -30,8 +31,18 @@ static uint32_t btnLastTime[3]  = { 0, 0, 0 };
 static bool     btnLastState[3] = { HIGH, HIGH, HIGH };
 static const uint32_t BTN_DEBOUNCE_MS = 30;
 
+// Long Press Enc1: Replace-by-Fold auf PITCH1
+static uint32_t enc1PressStartMs    = 0;
+// Long Press Enc2: Quick Save (alle Screens ausser PERFORMANCE)
+static uint32_t enc2PressStartMs    = 0;
+// Long Press Enc3: NAV-Screen Toggle
+static uint32_t enc3PressStartMs    = 0;
+static uint16_t navPrevState        = EUCLCIRCS;
+static const uint32_t LONG_PRESS_MS = 600;
+
 static const int ENC_STEPS_PER_DETENT = 4;
 static const int SLOT_COUNT = 7;
+static int nextSaveSlot = -1;  // Schreibzeiger fuer Quick-Save (-1 = normales Verhalten)
 
 // PITCH1 screen: Enc1 browse/edit state
 static int  pitchBoxCursor   = 0;   // 0=Scale, 1=Root, 2=Spread
@@ -131,6 +142,7 @@ static void handleNormalButton(int ch) {
 // ENC1-Dreh im PERFORMANCE-Screen: scrollt durch Preset-Slots.
 // ---------------------------------------------------------------------------
 static void handlePerfEncoder1(int delta) {
+    if (cvSlotSel >= 0) return;  // CV hat Kontrolle: manuelle Auswahl gesperrt
     if (!encBrowseActive) return;
     int prev = encBrowseSlot;
     encBrowseSlot = (encBrowseSlot + delta + SLOT_COUNT) % SLOT_COUNT;
@@ -145,6 +157,7 @@ static void handlePerfEncoder1(int delta) {
 //   2. Druck → Slot laden (wenn belegt), Browse-Modus beenden
 // ---------------------------------------------------------------------------
 static void handlePerfButton1() {
+    if (cvSlotSel >= 0) return;  // CV hat Kontrolle: manuelle Auswahl gesperrt
     if (!encBrowseActive) {
         encBrowseSlot = getActiveSlot();
         if (encBrowseSlot < 0) encBrowseSlot = 0;
@@ -156,6 +169,7 @@ static void handlePerfButton1() {
         uint8_t used = getSlotsUsedMask();
         if (used & (1u << encBrowseSlot)) {
             requestLoadSlot(encBrowseSlot);
+            nextSaveSlot = -1;
         }
     }
 }
@@ -266,6 +280,39 @@ static void handlePitchButton(int enc) {
 }
 
 // ---------------------------------------------------------------------------
+// Quick Save: aktiver Slot überschreiben, dann Schreibzeiger auf nächsten freien Slot.
+// ---------------------------------------------------------------------------
+void resetQuickSavePointer() { nextSaveSlot = -1; }
+
+static void performQuickSave() {
+    int slot;
+    if (nextSaveSlot >= 0) {
+        slot = nextSaveSlot;
+    } else {
+        slot = getActiveSlot();
+        if (slot < 0) {
+            uint8_t used = getSlotsUsedMask();
+            for (int s = 0; s < SLOT_COUNT; s++) {
+                if (!(used & (1u << s))) { slot = s; break; }
+            }
+        }
+    }
+    if (slot < 0) {
+        showSaveToast(-1);
+        return;
+    }
+    saveParamsSlot(slot);
+    showSaveToast(slot);
+
+    // Schreibzeiger auf nächsten freien Slot nach slot vorrücken
+    uint8_t used = getSlotsUsedMask();
+    nextSaveSlot = -1;
+    for (int s = slot + 1; s < SLOT_COUNT; s++) {
+        if (!(used & (1u << s))) { nextSaveSlot = s; break; }
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 void setupEncoders() {
     for (int i = 0; i < 3; i++) {
@@ -278,19 +325,10 @@ void setupEncoders() {
 }
 
 void handleEncoders() {
-    // Encoder nur auf den relevanten Screens aktiv
-    bool encActive = (GUIState == EUCLCIRCS   || GUIState == PERFORMANCE ||
-                      GUIState == EUCLPARAM1  || GUIState == EUCLPARAM2  || GUIState == EUCLPARAM3 ||
-                      GUIState == PITCH1);
-
     static uint16_t lastGUIState = 0xFFFF;
     if (GUIState != lastGUIState) {
-        if (lastGUIState == PERFORMANCE && encBrowseActive) {
-            encBrowseActive = false;
-        }
-        if (lastGUIState == PERFORMANCE) {
-            resetRhythmBrowseState();
-        }
+        if (lastGUIState == PERFORMANCE && encBrowseActive) encBrowseActive = false;
+        if (lastGUIState == PERFORMANCE) resetRhythmBrowseState();
         if (lastGUIState == PITCH1) {
             pitchBoxCursor   = 0;
             pitchBoxEditMode = false;
@@ -299,18 +337,82 @@ void handleEncoders() {
         lastGUIState = GUIState;
     }
 
-    if (!encActive) return;
-
     uint32_t now = millis();
+
+    // --- Enc2-Button: screen-unabhängig prüfen (Long Press = Quick Save) ---
+    {
+        bool s = digitalRead(swPins[1]);
+        if (s != btnLastState[1] && (now - btnLastTime[1]) > BTN_DEBOUNCE_MS) {
+            btnLastTime[1]  = now;
+            btnLastState[1] = s;
+            if (s == LOW) {
+                enc2PressStartMs = now;
+            } else {
+                uint32_t held = now - enc2PressStartMs;
+                if (held >= LONG_PRESS_MS && GUIState != PERFORMANCE) {
+                    performQuickSave();
+                } else if (held < LONG_PRESS_MS) {
+                    if (GUIState == PERFORMANCE) {
+                        handlePerfButton2();
+                    } else if (GUIState == PITCH1) {
+                        handlePitchButton(1);
+                    } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||
+                               GUIState == EUCLPARAM2 || GUIState == EUCLPARAM3) {
+                        handleNormalButton(1);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Enc3-Button: screen-unabhängig prüfen (Long Press = NAV-Toggle) ---
+    {
+        bool s = digitalRead(swPins[2]);
+        if (s != btnLastState[2] && (now - btnLastTime[2]) > BTN_DEBOUNCE_MS) {
+            btnLastTime[2]  = now;
+            btnLastState[2] = s;
+            if (s == LOW) {
+                enc3PressStartMs = now;
+            } else {
+                uint32_t held = now - enc3PressStartMs;
+                if (held >= LONG_PRESS_MS) {
+                    if (GUIState == NAV) {
+                        navigateToScreen(navPrevState);
+                    } else {
+                        navPrevState = GUIState;
+                        GUIState = NAV;
+                        drawNavScreen(navPrevState);
+                    }
+                } else if (held < LONG_PRESS_MS) {
+                    if (GUIState == NAV) {
+                        navigateToScreen(getNavCursorState());
+                    } else if (GUIState == PITCH1) {
+                        handlePitchButton(2);
+                    } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||
+                               GUIState == EUCLPARAM2 || GUIState == EUCLPARAM3) {
+                        handleNormalButton(2);
+                    }
+                }
+            }
+        }
+    }
+
+    // Rotation und Enc1-Button nur auf relevanten Screens
+    bool encActive = (GUIState == EUCLCIRCS   || GUIState == PERFORMANCE ||
+                      GUIState == EUCLPARAM1  || GUIState == EUCLPARAM2  || GUIState == EUCLPARAM3 ||
+                      GUIState == PITCH1      || GUIState == NAV);
+    if (!encActive) return;
 
     for (int i = 0; i < 3; i++) {
         // --- Rotation ---
         long pos      = encoders[i]->read();
         int  rawDelta = (int)((pos - encLastPos[i]) / ENC_STEPS_PER_DETENT);
-        int  delta    = -rawDelta;  // Rechtsdrehen = groessere Werte
+        int  delta    = -rawDelta;
         if (rawDelta != 0) {
             encLastPos[i] += (long)rawDelta * ENC_STEPS_PER_DETENT;
-            if (GUIState == PERFORMANCE && i == 0) {
+            if (GUIState == NAV) {
+                if (i == 2) moveNavCursor(delta);
+            } else if (GUIState == PERFORMANCE && i == 0) {
                 handlePerfEncoder1(delta);
             } else if (GUIState == PERFORMANCE && i == 1) {
                 handlePerfEncoder2(delta);
@@ -321,20 +423,27 @@ void handleEncoders() {
             }
         }
 
-        // --- Knopf (active-low, entprellt) ---
-        bool state = digitalRead(swPins[i]);
-        if (state != btnLastState[i] && (now - btnLastTime[i]) > BTN_DEBOUNCE_MS) {
-            btnLastTime[i]  = now;
-            btnLastState[i] = state;
-            if (state == LOW) {
-                if (GUIState == PERFORMANCE && i == 0) {
-                    handlePerfButton1();
-                } else if (GUIState == PERFORMANCE && i == 1) {
-                    handlePerfButton2();
-                } else if (GUIState == PITCH1) {
-                    handlePitchButton(i);
-                } else if (GUIState != PERFORMANCE) {
-                    handleNormalButton(i);
+        // --- Enc1-Button: Long Press auf PITCH1 = applyPitchFold ---
+        if (i != 0) continue;  // Enc2/Enc3 bereits oben behandelt
+        bool s = digitalRead(swPins[0]);
+        if (s != btnLastState[0] && (now - btnLastTime[0]) > BTN_DEBOUNCE_MS) {
+            btnLastTime[0]  = now;
+            btnLastState[0] = s;
+            if (s == LOW) {
+                enc1PressStartMs = now;
+                if (GUIState == PERFORMANCE) {
+                    handlePerfButton1();  // PERFORMANCE: sofort auf Key-Down
+                }
+            } else {
+                uint32_t held = now - enc1PressStartMs;
+                if (GUIState == PITCH1) {
+                    if (held >= LONG_PRESS_MS) {
+                        applyPitchFold();
+                    } else {
+                        handlePitchButton(0);
+                    }
+                } else if (GUIState != NAV && GUIState != PERFORMANCE) {
+                    handleNormalButton(0);
                 }
             }
         }

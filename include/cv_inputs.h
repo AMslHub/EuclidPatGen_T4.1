@@ -15,6 +15,8 @@ enum CvTarget : uint8_t {
     CV_TARGET_VALUE_MOD_CH1,
     CV_TARGET_VALUE_MOD_CH2,
     CV_TARGET_VALUE_MOD_CH3,
+    CV_TARGET_SLOT_SEL,
+    CV_TARGET_PITCH_FOLD,   // 0-4095 → pitchFoldMode 0-4 (off/Mir½/Rep½/Mir¼/Rep¼)
     CV_TARGET_COUNT
 };
 
@@ -27,6 +29,8 @@ extern uint8_t cvRatchetCount[3];    // 1–4 Sub-Hits pro Hit-Step, pro Sequenc
 extern uint8_t cvSwingPct;           // 0–50 (% von DurationOfOneStep)
 extern int8_t  cvPitchShiftOffset;   // –3..+3 Oktaven (addiert zu pitchShift)
 extern int8_t  cvPatRotOffset[3];    // Offset auf PatRot pro Kanal
+extern int8_t  cvSlotSel;            // -1=inaktiv, 0-6=Slot (CV_TARGET_SLOT_SEL)
+extern int8_t  cvPitchFold;          // -1=inaktiv, 0-4=pitchFoldMode (CV_TARGET_PITCH_FOLD)
 
 // Exponentieller Lautstärke-Faktor innerhalb eines Ratchet-Bursts.
 // ratchetIdx=0 → erster Hit, ratchetTotal = Gesamtzahl der Hits im Burst.

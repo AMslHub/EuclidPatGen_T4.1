@@ -16,6 +16,8 @@ static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
 static const uint16_t XY_GRID_COLOR = 0x2104;  // dunkles Grau fuer XY-Raster
 static int  xyPadPitchMode = 0;  // 0=GateLen, 1=Pitch 1oct, 2=Pitch 3oct, 3=Pitch 5oct
+static uint16_t keyBgCache[180];  // Hintergrundfarbe pro Y-Pixel (y=40..219)
+static bool     xyKeyboardMode = false;  // true wenn Klaviatur-BG aktiv
 
 static const int PARAM_BTN_W = 30;
 static const int PARAM_BTN_H = 30;
@@ -125,7 +127,7 @@ static const int RHY_Y = 18;
 static const int RHY_W = 140;
 static const int RHY_H = 26;
 
-static const int EXTCLK_X   = 175;
+static const int EXTCLK_X   = 170;
 static const int EXTCLK_Y   = 100;
 static const int EXTCLK_BOX = 14;
 
@@ -692,11 +694,12 @@ void drawPerformanceScreen(){
   rhythmBrowseActive = false;
   drawRhythmPresetWindow();
 
-  // CV-Config-Button (rechts, unter Rhythm-Preset)
+  // CV-Config-Button (fill-styled, links buendig mit EXTCLK_X)
   tft.setFont(Arial_12);
-  tft.drawRect(175, 50, 55, 24, ILI9341_DARKGREY);
-  tft.setTextColor(ILI9341_LIGHTGREY);
-  tft.setCursor(181, 58);
+  tft.fillRect(EXTCLK_X + 1, 51, 70, 22, 0x4208);
+  tft.drawRect(EXTCLK_X, 50, 72, 24, ILI9341_DARKGREY);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setCursor(EXTCLK_X + 7, 58);
   tft.print("CV Cfg");
 
   // Ext-Clock-Checkbox (rechte Seite, ueber Save/Del)
@@ -726,8 +729,8 @@ void drawPerformanceScreen(){
 // Return: true, wenn eine Aktion ausgefuehrt wurde.
 bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
   updatePerfButtonFlash();
-  // CV-Config-Button (x=175, y=50, w=55, h=24) — vor UL-Prüfung
-  if (hitBox(mapX, mapY, 175, 50, 55, 24, 5)) {
+  // CV-Config-Button (x=EXTCLK_X, y=50, w=72, h=24) — vor UL-Prüfung
+  if (hitBox(mapX, mapY, EXTCLK_X, 50, 72, 24, 5)) {
       GUIState = CV_CONFIG;
       drawCvConfigScreen();
       return true;
@@ -818,6 +821,7 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
     startPerfButtonFlash(0);
     if(perfSelected >= 0 && (perfUsedMask & (1u << perfSelected))){
       requestLoadSlot(perfSelected);
+      resetQuickSavePointer();
       int was = perfSelected;
       perfSelected = -1;
       drawPerfSlotBox(was);
@@ -956,7 +960,9 @@ void redrawParamFromPattern(int idx){
 // Assumptions: idx in 0..2.
 void drawValuesButton(int idx){
   tft.setFont(Arial_12);
+  tft.fillRect(261, 11, 48, 28, 0x4208);
   tft.drawRect(260, 10, 50, 30, ILI9341_DARKGREY);
+  tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(270, 18);
   if(idx == 0){
     tft.print("V1");
@@ -973,7 +979,9 @@ void drawValuesButton(int idx){
 void drawXYButton(int idx){
   (void)idx;
   tft.setFont(Arial_12);
+  tft.fillRect(261, 201, 48, 28, 0x4208);
   tft.drawRect(260, 200, 50, 30, ILI9341_DARKGREY);
+  tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(270, 208);
   tft.print("XY");
 }
@@ -1236,9 +1244,10 @@ void drawGateLenButton(){
     int y = 10;
     int w = 50;
     int h = 24;
+    tft.fillRect(x + 1, y + 1, w - 2, h - 2, 0x4208);
     tft.drawRect(x, y, w, h, ILI9341_DARKGREY);
     tft.setFont(Arial_12);
-    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setTextColor(ILI9341_WHITE);
     tft.setCursor(x + 6, y + 6);
     tft.print("GLen");
 }
@@ -1671,6 +1680,8 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
     drawGateLenBar(setIdx, idx);
 }
 
+static int calcPvMaxRaw();  // forward
+
 // Zweck: Zeichnet den XY-Pad-Screen fuer ein Pattern.
 // Side Effects: schreibt auf das TFT.
 // Assumptions: setIdx in 0..2.
@@ -1688,9 +1699,8 @@ static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
         int ri = 3 - oct;  // Zeilenindex: 0=oben(+3)..6=unten(-3)
         dotY = 40 + (2 * ri + 1) * 90 / 7;
     } else if (setIdx == 0 && xyPadPitchMode > 0) {
-        // Rohdaten anzeigen — Y-Bereich nach PV-Modus skaliert (PV1=51, PV3=153, PV5=255)
-        static const int maxRaw[4] = { 255, 51, 153, 255 };
-        int mr = maxRaw[xyPadPitchMode];
+        // Y-Bereich dynamisch nach PV-Modus und pitchSpread skaliert
+        int mr = calcPvMaxRaw();
         int scaledY = ((int)PitchNote1[stepIdx] * 179) / mr;
         if (scaledY > 179) scaledY = 179;
         dotY = 40 + 179 - scaledY;
@@ -1706,8 +1716,33 @@ static bool getXYDotIsHit(int setIdx, int stepIdx) {
         : patternIsHit(setIdx, stepIdx);
 }
 
-// Loescht einen Dot (r=3) und stellt die Gitterlinien im betroffenen Bereich wieder her.
+// Loescht einen Dot (r=3) und stellt den Hintergrund im betroffenen Bereich wieder her.
 static void eraseAndRestoreXYDot(int dotX, int dotY) {
+    if (xyKeyboardMode) {
+        // Klaviatur-Hintergrund: Scanlines aus Cache wiederherstellen
+        static const int halfW[7] = { 0, 2, 2, 3, 2, 2, 0 };  // Halbbreite fuer dy=-3..+3
+        for (int i = 0; i < 7; i++) {
+            int y = dotY - 3 + i;
+            if (y < 40 || y > 219) continue;
+            int hw = halfW[i];
+            int x0 = dotX - hw, x1 = dotX + hw;
+            if (x0 < 91)  x0 = 91;
+            if (x1 > 268) x1 = 268;
+            if (x0 > x1) continue;
+            tft.drawFastHLine(x0, y, x1 - x0 + 1, keyBgCache[y - 40]);
+        }
+        // Vertikale Gitterlinien im betroffenen Bereich wiederherstellen
+        for (int gi = 1; gi < 10; gi++) {
+            int gx = 90 + gi * 18;
+            int dx = gx - dotX; if (dx < 0) dx = -dx;
+            if (dx <= 3) {
+                int y0 = dotY - 3; if (y0 < 41)  y0 = 41;
+                int y1 = dotY + 3; if (y1 > 218) y1 = 218;
+                if (y1 >= y0) tft.drawFastVLine(gx, y0, y1 - y0 + 1, XY_GRID_COLOR);
+            }
+        }
+        return;
+    }
     tft.fillCircle(dotX, dotY, 3, ILI9341_BLACK);
     for (int i = 1; i < 10; i++) {
         int gx = 90 + (i * 18);
@@ -1727,7 +1762,10 @@ static void eraseAndRestoreXYDot(int dotX, int dotY) {
     }
 }
 
-// Loescht das Pad-Innere und zeichnet das Gitter neu (fuer vollstaendigen Dot-Refresh).
+static void buildKeyboardBgCache();  // forward
+static void drawKeyboardBg();        // forward
+
+// Loescht das Pad-Innere und zeichnet den Hintergrund neu (fuer vollstaendigen Dot-Refresh).
 static void clearXYPadContent() {
     tft.fillRect(91, 41, 178, 178, ILI9341_BLACK);
     if (xyPadPitchMode == 4) {
@@ -1735,7 +1773,11 @@ static void clearXYPadContent() {
             tft.drawFastVLine(90 + i * 45, 41, 178, XY_GRID_COLOR);
         for (int i = 1; i <= 6; i++)
             tft.drawFastHLine(91, 40 + (i * 180) / 7, 178, XY_GRID_COLOR);
+    } else if (xyPadPitchMode > 0) {
+        buildKeyboardBgCache();
+        drawKeyboardBg();
     } else {
+        xyKeyboardMode = false;
         for (int i = 1; i < 10; i++) {
             tft.drawFastVLine(90 + i * 18, 41, 178, XY_GRID_COLOR);
             tft.drawFastHLine(91, 40 + i * 18, 178, XY_GRID_COLOR);
@@ -1764,6 +1806,17 @@ static void eraseAndRestoreXYDotRO(int dotX, int dotY) {
             if (x1 >= x0) tft.drawFastHLine(x0, gy, x1 - x0 + 1, XY_GRID_COLOR);
         }
     }
+}
+
+// Berechnet das effektive Raw-Maximum fuer den aktuellen PV-Modus.
+// PV1/PV3/PV5 zeigen 1/3/5 Oktaven — unabhaengig von pitchSpread.
+// Formel: mr = min(255, pvOcts * 255 / pitchSpread)
+static int calcPvMaxRaw() {
+    static const int pvOcts[] = { 0, 1, 3, 5 };  // index = xyPadPitchMode
+    int pvO = pvOcts[xyPadPitchMode];
+    int sp  = (pitchSpread > 0) ? (int)pitchSpread : 1;
+    int mr  = pvO * 255 / sp;
+    return (mr > 255) ? 255 : (mr < 1 ? 1 : mr);
 }
 
 // Zeichnet alle Steps als kleine Punkte (Hits=weiss, Non-Hits=dunkelgrau).
@@ -1816,6 +1869,66 @@ static void drawXYModeToggle(int setIdx) {
     tft.print(lbl);
 }
 
+// Baut den Klaviatur-Hintergrund-Cache auf (ein Farbwert pro Y-Pixel 40..219).
+// Weisstöne → ILI9341_LIGHTGREY, Halbtöne → 0x4208, Trennlinie → BLACK/GREEN.
+static void buildKeyboardBgCache() {
+    xyKeyboardMode = (xyPadPitchMode > 0 && xyPadPitchMode < 4);
+    if (!xyKeyboardMode) return;
+    for (int i = 0; i < 180; i++) keyBgCache[i] = ILI9341_BLACK;
+
+    int noteList[60];
+    int noteCount = buildNoteList(pitchSpread, pitchScale, pitchRoot,
+                                  pitchIntervalMask, noteList);
+    if (noteCount == 0) return;
+
+    int mr = calcPvMaxRaw();
+
+    // Iteriere Y von oben (hohe Tonhöhe) nach unten (tiefe Tonhöhe)
+    int prevK = -1;
+    for (int y = 40; y <= 219; y++) {
+        int idx = y - 40;
+        int raw = (219 - y) * mr / 179;
+        if (raw < 0)   raw = 0;
+        if (raw > 255) raw = 255;
+
+        int k = (raw * noteCount) / 256;
+        if (k < 0)          k = 0;
+        if (k >= noteCount) k = noteCount - 1;
+
+        // Übergang: von Note prevK (oben) zu Note k (unten) → Trennlinie
+        bool isBoundary = (prevK >= 0 && k < prevK);
+        if (isBoundary) {
+            bool isRoot = ((noteList[prevK] % 12) == (pitchRoot % 12));
+            keyBgCache[idx] = isRoot ? ILI9341_GREEN : ILI9341_BLACK;
+        } else {
+            int nc = noteList[k] % 12;
+            bool isBlackKey = (nc==1||nc==3||nc==6||nc==8||nc==10);
+            keyBgCache[idx] = isBlackKey ? 0x4208 : ILI9341_LIGHTGREY;
+        }
+        prevK = k;
+    }
+}
+
+// Zeichnet den Klaviatur-Hintergrund aus dem Cache (Run-Length-optimiert).
+// Zeichnet danach vertikale Gitterlinien für den Value-Bezug darüber.
+static void drawKeyboardBg() {
+    if (!xyKeyboardMode) return;
+    // Streifen mit Run-Length-Encoding zeichnen (spart SPI-Transaktionen)
+    int runStart = 0;
+    uint16_t runColor = keyBgCache[0];
+    for (int idx = 1; idx <= 180; idx++) {
+        uint16_t c = (idx < 180) ? keyBgCache[idx] : (uint16_t)(~runColor);
+        if (c != runColor) {
+            tft.fillRect(91, 40 + runStart, 178, idx - runStart, runColor);
+            runStart = idx;
+            runColor = c;
+        }
+    }
+    // Vertikale Gitterlinien (Value-Bezug) oben drüber
+    for (int i = 1; i < 10; i++)
+        tft.drawFastVLine(90 + i * 18, 41, 178, XY_GRID_COLOR);
+}
+
 void drawXYPadScreen(int setIdx){
     tft.fillScreen(ILI9341_BLACK);
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
@@ -1845,8 +1958,13 @@ void drawXYPadScreen(int setIdx){
             tft.setCursor(68, rowCy - 6);
             tft.print(octLbls[ri]);
         }
+    } else if (setIdx == 0 && xyPadPitchMode > 0) {
+        // Klaviatur-Hintergrund fuer PV1/PV3/PV5
+        buildKeyboardBgCache();
+        drawKeyboardBg();
     } else {
-        // 10×10 Raster
+        // 10×10 Raster (GateLen oder Ch2/Ch3)
+        xyKeyboardMode = false;
         for (int i = 1; i < 10; i++) {
             tft.drawFastVLine(x + (i * w) / 10, y + 1, h - 2, XY_GRID_COLOR);
             tft.drawFastHLine(x + 1, y + (i * h) / 10, w - 2, XY_GRID_COLOR);
@@ -1916,12 +2034,11 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY){
         OctaveNote1[oWriteIdx] = (int8_t)oct;
     } else {
         int writeValIdx = RotateValues[setIdx] ? patternRotatedSrc(setIdx, idx) : idx;
-        static const int pvMaxRaw[4] = { 255, 51, 153, 255 };
         int v = map(mapX, x, x + w - 1, 0, 255);
         v = clampVal(v, 0, 255);
         ValuesArr[setIdx][writeValIdx] = (uint8_t)v;
         if (setIdx == 0 && xyPadPitchMode > 0) {
-            int mr = pvMaxRaw[xyPadPitchMode];
+            int mr = calcPvMaxRaw();
             int g = map(mapY, y + h - 1, y, 0, mr);
             g = clampVal(g, 0, mr);
             PitchNote1[idx] = (uint8_t)g;
@@ -2298,8 +2415,9 @@ void drawPitchScreen() {
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
     // V1-Button wie GateLen-Button auf dem Values-Screen
     tft.setFont(Arial_12);
+    tft.fillRect(160, 11, 48, 22, 0x4208);
     tft.drawRect(159, 10, 50, 24, ILI9341_DARKGREY);
-    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setTextColor(ILI9341_WHITE);
     tft.setCursor(176, 18);
     tft.print("V1");
     drawPitchFoldBox();
@@ -2319,6 +2437,27 @@ void drawPitchScreen() {
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
     drawPitchControls();
+}
+
+// Zweck: Ersetzt PitchNote1 durch das gefaltete Pattern (aktiver Fold-Modus).
+// Wird per Enc1-Long-Press auf dem Pitch-Screen ausgeloest.
+void applyPitchFold() {
+    uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+    if (effFold == 0) return;
+    int len = clampVal(PatLen[0], 1, 32);
+    uint8_t tmp[32];
+    for (int i = 0; i < len; i++)
+        tmp[i] = PitchNote1[foldPitchIdx(i, len, effFold)];
+    for (int i = 0; i < len; i++)
+        PitchNote1[i] = tmp[i];
+    scheduleSaveParams();
+    // Kurzer Cyan-Flash als Bestätigung, dann Bars neu zeichnen
+    tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
+                 PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_CYAN);
+    delayMicroseconds(120000);
+    tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
+                 PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_DARKGREY);
+    drawPitchBars();
 }
 
 void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
@@ -2453,8 +2592,9 @@ void handlePITCHDrag(int mapX, int mapY) {
 
 static void drawPitchButton() {
     tft.setFont(Arial_12);
-    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.fillRect(261, 11, 48, 26, 0x4208);
     tft.drawRect(260, 10, 50, 28, ILI9341_DARKGREY);
+    tft.setTextColor(ILI9341_WHITE);
     tft.setCursor(272, 18);
     tft.print("Pt");
 }

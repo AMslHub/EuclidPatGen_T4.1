@@ -393,6 +393,7 @@ void loop() {
       lastCvSlot = cvSlotSel;
       if (cvSlotSel >= 0 && (getSlotsUsedMask() & (1u << cvSlotSel))) {
         requestLoadSlot(cvSlotSel);
+        resetQuickSavePointer();
         PendingPerfRefresh = true;
       }
     }
@@ -409,6 +410,15 @@ void loop() {
     }
     uint32_t p = measuredPeriodUs;
     if (p > 0) DurationOfOneStep = p;
+  }
+
+  // Auto-Reset nach langer Pause (>2 s) im externen Clock-Modus.
+  // Stellt sicher, dass der Sequencer nach einem Stopp wieder bei Step 0 beginnt.
+  if (extClockMode && extClockActive) {
+    if ((uint32_t)(micros() - lastExtClockUs) > 2000000UL) {
+      pendingReset   = true;
+      extClockActive = false;  // Verhindert wiederholten Reset bis neuer Clock kommt
+    }
   }
 
   // ----------- R E S E T  ------------------------------------------

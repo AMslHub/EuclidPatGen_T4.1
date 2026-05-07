@@ -44,5 +44,6 @@ const char *getIntervalLabel(int i);
 bool intervalExists(uint8_t scaleIdx, int i);
 
 // Bildet Spielposition idx (0..len-1) per Faltungs-Modus auf effektive Quellposition ab.
-// foldMode: 0=off, 1=Spiegel½, 2=Repeat½, 3=Spiegel¼, 4=Repeat¼
+// foldMode: 0=off, 1=mH1, 2=rH1, 3=mQ1, 4=rQ1,
+//           5=mH2, 6=rH2, 7=mQ2, 8=mQ3, 9=mQ4, 10=rQ2, 11=rQ3, 12=rQ4
 int foldPitchIdx(int idx, int len, uint8_t foldMode);

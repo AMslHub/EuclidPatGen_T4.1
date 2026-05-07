@@ -11,17 +11,24 @@ uint8_t cvRatchetCount[3]  = {1, 1, 1};
 uint8_t cvSwingPct         = 0;
 int8_t  cvPitchShiftOffset = 0;
 int8_t  cvPatRotOffset[3]  = {0, 0, 0};
+int8_t  cvSlotSel          = -1;
+int8_t  cvPitchFold        = -1;
 
 // Index des CV-Eingangs der VALUE_MOD für Kanal ch steuert (-1 = inaktiv)
 static int8_t   cvValueModCvIdx[3] = {-1, -1, -1};
 // Geglätteter CV-Wert für Value-Modulation
 static uint16_t cvValueModRaw[3]   = {0, 0, 0};
 
+// Slot-Sel Hysterese: letzter bestätigter Slot (-1 = noch nicht initialisiert)
+static int8_t   cvSlotSelHyst      = -1;
+static const int CV_SLOT_ZONE      = 4096 / 7;   // ~585 ADC-Schritte pro Slot
+static const int CV_SLOT_HYST      = 40;          // Hysterese in ADC-Schritten
+
 static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 
 static const char* const CV_TARGET_LABELS[CV_TARGET_COUNT] = {
     "---", "Rat1", "Rat2", "Rat3", "Swing", "P.Sh",
-    "Rot1", "Rot2", "Rot3", "Val1", "Val2", "Val3"
+    "Rot1", "Rot2", "Rot3", "Val1", "Val2", "Val3", "Slot", "Fold"
 };
 
 const char* cvTargetLabel(uint8_t t) {
@@ -48,6 +55,8 @@ void applyCvTargets() {
     }
     cvSwingPct         = 0;
     cvPitchShiftOffset = 0;
+    cvSlotSel          = -1;
+    cvPitchFold        = -1;
 
     for (int ci = 0; ci < 3; ci++) {
         uint8_t  target = cvTargetMap[ci];
@@ -88,6 +97,28 @@ void applyCvTargets() {
                 int ch = target - CV_TARGET_VALUE_MOD_CH1;
                 cvValueModCvIdx[ch] = (int8_t)ci;
                 cvValueModRaw[ch]   = cv;
+                break;
+            }
+            case CV_TARGET_SLOT_SEL: {
+                // 0-4095 → Slot 0-6, Schmitt-Trigger-Hysterese gegen Zittern
+                int rawSlot = (int)cv / CV_SLOT_ZONE;
+                if (rawSlot > 6) rawSlot = 6;
+                if (cvSlotSelHyst < 0) {
+                    cvSlotSelHyst = (int8_t)rawSlot;
+                } else if (rawSlot > cvSlotSelHyst) {
+                    if ((int)cv >= (cvSlotSelHyst + 1) * CV_SLOT_ZONE + CV_SLOT_HYST)
+                        cvSlotSelHyst = (int8_t)rawSlot;
+                } else if (rawSlot < cvSlotSelHyst) {
+                    if ((int)cv < cvSlotSelHyst * CV_SLOT_ZONE - CV_SLOT_HYST)
+                        cvSlotSelHyst = (int8_t)rawSlot;
+                }
+                cvSlotSel = cvSlotSelHyst;
+                break;
+            }
+            case CV_TARGET_PITCH_FOLD: {
+                // 0-4095 → 0-12 (13 Faltungs-Modi)
+                int8_t f = (int8_t)((cv * 13u) / 4096u);
+                cvPitchFold = (f > 12) ? 12 : f;
                 break;
             }
             default:

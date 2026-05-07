@@ -110,14 +110,34 @@ static const PitchPreset PITCH_PRESETS[] = {
     { "Heartbeat",    {   // Stark/Schwach-Doppelschlag in zwei Oktaven
         0,36,0,18,0,36,0,18,127,163,127,108,127,163,127,108,
         0,36,0,18,0,36,0,18,127,163,127,108,127,163,127,108 } },
+    { "TD Phaedra",   {   // Langsam steigende Spannung, 2-Noten-Zelle (Phaedra 1974)
+        0,0,72,0, 0,72,0,36, 0,0,72,0, 36,72,36,72,
+        0,36,72,36, 72,108,72,108, 36,72,108,72, 108,145,72,36 } },
+    { "TD Rubycon",   {   // Hypnotische 3-Noten-Zelle mit kleiner Drift (Rubycon 1975)
+        0,72,145,72, 0,72,145,72, 0,72,145,108, 0,72,145,127,
+        0,72,145,72, 0,72,145,90, 0,36,72,108, 72,36,0,36 } },
+    { "TD Strato",    {   // Lyrischer Melodiebogen, auf/ab (Stratosfear 1976)
+        72,90,108,127, 145,127,108,90, 72,90,108,127, 163,145,127,108,
+        90,72,90,108, 127,108,90,72, 54,72,90,72, 54,36,54,72 } },
+    { "TD Ricochet",  {   // Weite Sprünge, rhythmisch-energetisch (Ricochet 1975)
+        0,181,72,218, 36,181,109,0, 0,181,72,218, 36,163,90,0,
+        0,181,72,218, 36,181,109,36, 0,163,72,200, 36,163,90,0 } },
+    { "TD Logos",     {   // Langsam driftender Arp, schwebend (Encore/Logos 1977)
+        0,36,72,108, 90,72,36,72, 108,127,108,90, 72,54,36,54,
+        72,90,127,145, 127,108,90,72, 54,72,90,108, 90,72,54,36 } },
 };
 const int PITCH_PRESET_COUNT = (int)(sizeof(PITCH_PRESETS) / sizeof(PITCH_PRESETS[0]));
 
 const char *getPitchPresetName(int idx) {
+    if (idx == PITCH_PRESET_COUNT) return "Random";
     return PITCH_PRESETS[((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT].name;
 }
 
 void getPitchPresetNotes(int idx, uint8_t *dest32) {
+    if (idx == PITCH_PRESET_COUNT) {
+        for (int i = 0; i < 32; i++) dest32[i] = (uint8_t)random(256);
+        return;
+    }
     const uint8_t *src = PITCH_PRESETS[((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT].note;
     for (int i = 0; i < 32; i++) dest32[i] = src[i];
 }
@@ -160,26 +180,38 @@ bool intervalExists(uint8_t scaleIdx, int i) {
     return (deg < sc.count && sc.semitones[deg] != 255);
 }
 
+// Hilfsfunktion: Spiegelung oder Wiederholung eines Segments [offset, offset+size)
+static int foldSegment(int idx, int offset, int size, bool mirror) {
+    if (size <= 0) return idx;
+    if (mirror) {
+        int cycle = size * 2;
+        int local = idx % cycle;
+        return offset + (local < size ? local : cycle - 1 - local);
+    } else {
+        return offset + (idx % size);
+    }
+}
+
 int foldPitchIdx(int idx, int len, uint8_t foldMode) {
     if (foldMode == 0 || len <= 0) return idx;
     int half    = len / 2;
     int quarter = len / 4;
+    // Modi 1-4: Quell-Segment = vorderer Bereich (Rückwärts-Kompatibilität)
+    // Modi 5-12: neue Segmente (2. Hälfte, Q2/Q3/Q4)
     switch (foldMode) {
-        case 1:  // Spiegel an der Haelfte (Palindrom)
-            return (half > 0 && idx >= half) ? len - 1 - idx : idx;
-        case 2:  // Wiederholung ab Haelfte
-            return (half > 0) ? idx % half : idx;
-        case 3:  // Spiegel am Viertel
-            if (quarter > 0) {
-                int cycle = quarter * 2;
-                int pos   = idx % cycle;
-                return (pos < quarter) ? pos : cycle - 1 - pos;
-            }
-            return idx;
-        case 4:  // Wiederholung ab Viertel
-            return (quarter > 0) ? idx % quarter : idx;
-        default:
-            return idx;
+        case  1: return foldSegment(idx, 0,          half,    true);
+        case  2: return foldSegment(idx, 0,          half,    false);
+        case  3: return foldSegment(idx, 0,          quarter, true);
+        case  4: return foldSegment(idx, 0,          quarter, false);
+        case  5: return foldSegment(idx, half,       half,    true);
+        case  6: return foldSegment(idx, half,       half,    false);
+        case  7: return foldSegment(idx, quarter,    quarter, true);
+        case  8: return foldSegment(idx, 2*quarter,  quarter, true);
+        case  9: return foldSegment(idx, 3*quarter,  quarter, true);
+        case 10: return foldSegment(idx, quarter,    quarter, false);
+        case 11: return foldSegment(idx, 2*quarter,  quarter, false);
+        case 12: return foldSegment(idx, 3*quarter,  quarter, false);
+        default: return idx;
     }
 }
 
