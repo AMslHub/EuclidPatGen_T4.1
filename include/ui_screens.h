@@ -61,7 +61,7 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY);
 void drawXYPlayhead(int setIdx, unsigned int step);
 void drawXYDotPlayhead(int setIdx, unsigned int step);
 void drawPitchScreen();
-void applyPitchFold();   // Ersetzt PitchNote1 durch gefaltetes Pattern (Enc1-Long-Press)
+void applyAllTransforms(); // Rotation+Fold aller Kanäle einfrieren (Enc1-Long-Press auf PITCH1)
 void handlePITCH(int mapX, int mapY, uint16_t tipPos);
 void handlePITCHDrag(int mapX, int mapY);
 void drawPitchPlayhead(unsigned int step);

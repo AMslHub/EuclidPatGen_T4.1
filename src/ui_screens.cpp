@@ -1701,7 +1701,8 @@ static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
     } else if (setIdx == 0 && xyPadPitchMode > 0) {
         // Y-Bereich dynamisch nach PV-Modus und pitchSpread skaliert
         int mr = calcPvMaxRaw();
-        int scaledY = ((int)PitchNote1[stepIdx] * 179) / mr;
+        int pitchSrc = pitchRotate ? patternRotatedSrc(0, stepIdx) : stepIdx;
+        int scaledY = ((int)PitchNote1[pitchSrc] * 179) / mr;
         if (scaledY > 179) scaledY = 179;
         dotY = 40 + 179 - scaledY;
     } else {
@@ -1766,14 +1767,14 @@ static void buildKeyboardBgCache();  // forward
 static void drawKeyboardBg();        // forward
 
 // Loescht das Pad-Innere und zeichnet den Hintergrund neu (fuer vollstaendigen Dot-Refresh).
-static void clearXYPadContent() {
+static void clearXYPadContent(int setIdx = 0) {
     tft.fillRect(91, 41, 178, 178, ILI9341_BLACK);
-    if (xyPadPitchMode == 4) {
+    if (setIdx == 0 && xyPadPitchMode == 4) {
         for (int i = 1; i <= 3; i++)
             tft.drawFastVLine(90 + i * 45, 41, 178, XY_GRID_COLOR);
         for (int i = 1; i <= 6; i++)
             tft.drawFastHLine(91, 40 + (i * 180) / 7, 178, XY_GRID_COLOR);
-    } else if (xyPadPitchMode > 0) {
+    } else if (setIdx == 0 && xyPadPitchMode > 0) {
         buildKeyboardBgCache();
         drawKeyboardBg();
     } else {
@@ -2041,7 +2042,8 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY){
             int mr = calcPvMaxRaw();
             int g = map(mapY, y + h - 1, y, 0, mr);
             g = clampVal(g, 0, mr);
-            PitchNote1[idx] = (uint8_t)g;
+            int pitchWriteIdx = pitchRotate ? patternRotatedSrc(0, idx) : idx;
+            PitchNote1[pitchWriteIdx] = (uint8_t)g;
         } else {
             int g = map(mapY, y + h - 1, y, 0, 255);
             g = clampVal(g, 0, 255);
@@ -2051,7 +2053,7 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY){
     }
 
     lastXYDotIdx[setIdx] = -1;
-    clearXYPadContent();
+    clearXYPadContent(setIdx);
     drawXYDots(setIdx);
     drawXYDotPlayhead(setIdx, cntCh[setIdx]);
 
@@ -2439,25 +2441,73 @@ void drawPitchScreen() {
     drawPitchControls();
 }
 
-// Zweck: Ersetzt PitchNote1 durch das gefaltete Pattern (aktiver Fold-Modus).
-// Wird per Enc1-Long-Press auf dem Pitch-Screen ausgeloest.
-void applyPitchFold() {
+// Hilfsfunktion: Rotation von Kanal ch in alle betroffenen Arrays einfrieren,
+// PatRot[ch] auf 0 setzen. Kein Redraw — Aufrufer ist zuständig.
+static void flattenChannelRotation(int ch) {
+    int len = clampVal(PatLen[ch], 1, 32);
+    int rot = PatRot[ch];
+    if (rot == 0) return;
+
+    bool    etmp[32];
+    uint8_t vtmp[32];
+
+    // EPat immer rotieren
+    for (int i = 0; i < len; i++) etmp[i] = EPatArr[ch][euclidRotatedSrc(i, len, rot)];
+    for (int i = 0; i < len; i++) EPatArr[ch][i] = etmp[i];
+    syncEPatBFromEPat(ch);
+
+    if (RotateValues[ch]) {
+        for (int i = 0; i < len; i++) vtmp[i] = ValuesArr[ch][euclidRotatedSrc(i, len, rot)];
+        for (int i = 0; i < len; i++) ValuesArr[ch][i] = vtmp[i];
+    }
+    if (RotateGateLen[ch]) {
+        for (int i = 0; i < len; i++) vtmp[i] = GateLenArr[ch][euclidRotatedSrc(i, len, rot)];
+        for (int i = 0; i < len; i++) GateLenArr[ch][i] = vtmp[i];
+    }
+    if (RotateRatchet[ch]) {
+        for (int i = 0; i < len; i++) vtmp[i] = RatchetArr[ch][euclidRotatedSrc(i, len, rot)];
+        for (int i = 0; i < len; i++) RatchetArr[ch][i] = vtmp[i];
+    }
+    if (ch == 0) {
+        if (RotateOctave[0]) {
+            int8_t otmp[32];
+            for (int i = 0; i < len; i++) otmp[i] = OctaveNote1[euclidRotatedSrc(i, len, rot)];
+            for (int i = 0; i < len; i++) OctaveNote1[i] = otmp[i];
+        }
+        if (pitchRotate) {
+            for (int i = 0; i < len; i++) vtmp[i] = PitchNote1[euclidRotatedSrc(i, len, rot)];
+            for (int i = 0; i < len; i++) PitchNote1[i] = vtmp[i];
+        }
+    }
+    PatRot[ch] = 0;
+    pendingCircleRedraw[ch] = true;
+}
+
+// Enc1-Long-Press auf PITCH1: Rotation aller Kanäle + Pitch-Fold einfrieren.
+// Danach klingt alles identisch, aber PatRot[*]=0 und pitchFoldMode=0.
+void applyAllTransforms() {
+    for (int ch = 0; ch < 3; ch++)
+        flattenChannelRotation(ch);
+
     uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
-    if (effFold == 0) return;
-    int len = clampVal(PatLen[0], 1, 32);
-    uint8_t tmp[32];
-    for (int i = 0; i < len; i++)
-        tmp[i] = PitchNote1[foldPitchIdx(i, len, effFold)];
-    for (int i = 0; i < len; i++)
-        PitchNote1[i] = tmp[i];
+    if (effFold != 0) {
+        int len = clampVal(PatLen[0], 1, 32);
+        uint8_t tmp[32];
+        for (int i = 0; i < len; i++)
+            tmp[i] = PitchNote1[foldPitchIdx(i, len, effFold)];
+        for (int i = 0; i < len; i++)
+            PitchNote1[i] = tmp[i];
+        pitchFoldMode = 0;
+    }
+
     scheduleSaveParams();
-    // Kurzer Cyan-Flash als Bestätigung, dann Bars neu zeichnen
     tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
                  PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_CYAN);
     delayMicroseconds(120000);
     tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
                  PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_DARKGREY);
     drawPitchBars();
+    drawPitchControls();
 }
 
 void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
@@ -2542,7 +2592,15 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
 
     // Spread — cycles 1..5
     if (hitBox(mapX, mapY, 190, PITCH_CTRL_Y, 60, PITCH_CTRL_H, 3)) {
+        uint8_t oldSpread = pitchSpread;
         pitchSpread = (uint8_t)(pitchSpread >= 5 ? 1 : pitchSpread + 1);
+        if (pitchSpread != oldSpread) {
+            int len = clampVal(PatLen[0], 1, 32);
+            for (int i = 0; i < len; i++) {
+                int v = ((int)PitchNote1[i] * pitchSpread + oldSpread / 2) / oldSpread;
+                PitchNote1[i] = (uint8_t)clampVal(v, 0, 255);
+            }
+        }
         scheduleSaveParams();
         drawPitchControls();
         drawPitchBars();
@@ -2567,7 +2625,10 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         if (idx >= 0 && idx < len) {
             int v = map(mapY, PITCH_BAR_Y + PITCH_BAR_H - 1, PITCH_BAR_Y, 0, 255);
             v = clampVal(v, 0, 255);
-            PitchNote1[idx] = (uint8_t)v;
+            uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+            int effIdx = foldPitchIdx(idx, len, effFold);
+            int src = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
+            PitchNote1[src] = (uint8_t)v;
             scheduleSaveParams();
             drawPitchBar(idx);
         }
@@ -2583,7 +2644,10 @@ void handlePITCHDrag(int mapX, int mapY) {
         if (idx >= 0 && idx < len) {
             int v = map(mapY, PITCH_BAR_Y + PITCH_BAR_H - 1, PITCH_BAR_Y, 0, 255);
             v = clampVal(v, 0, 255);
-            PitchNote1[idx] = (uint8_t)v;
+            uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+            int effIdx = foldPitchIdx(idx, len, effFold);
+            int src = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
+            PitchNote1[src] = (uint8_t)v;
             scheduleSaveParams();
             drawPitchBar(idx);
         }
