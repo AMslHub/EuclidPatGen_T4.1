@@ -2330,9 +2330,10 @@ void drawPitchDisplayModeCheckbox() {
 }
 
 void drawPitchControls() {
-    static const int SC_X = 0,   SC_W = 124;
-    static const int RT_X = 126, RT_W = 62;
-    static const int SP_X = 190, SP_W = 60;
+    static const int SC_X = 0,   SC_W = 100;
+    static const int RT_X = 102, RT_W = 58;
+    static const int SP_X = 162, SP_W = 52;
+    static const int IV_X = 216, IV_W = 34;
     static const int SH_X = 252, SH_W = 68;
     static const char *const ROOT_NAMES[12] = {
         "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
@@ -2342,6 +2343,7 @@ void drawPitchControls() {
     uint16_t scBorder = (boxCursor == 0) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
     uint16_t rtBorder = (boxCursor == 1) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
     uint16_t spBorder = (boxCursor == 2) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
+    uint16_t ivBorder = (boxCursor == 3) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
 
     tft.drawRect(SC_X, PITCH_CTRL_Y, SC_W, PITCH_CTRL_H, scBorder);
     tft.fillRect(SC_X+1, PITCH_CTRL_Y+1, SC_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
@@ -2359,6 +2361,11 @@ void drawPitchControls() {
     tft.fillRect(SP_X+1, PITCH_CTRL_Y+1, SP_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
     tft.setCursor(SP_X+3, PITCH_CTRL_Y+5);
     tft.printf("Spr:%d", pitchSpread);
+
+    tft.drawRect(IV_X, PITCH_CTRL_Y, IV_W, PITCH_CTRL_H, ivBorder);
+    tft.fillRect(IV_X+1, PITCH_CTRL_Y+1, IV_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
+    tft.setCursor(IV_X+3, PITCH_CTRL_Y+5);
+    tft.print("INV");
 
     tft.drawRect(SH_X, PITCH_CTRL_Y, SH_W, PITCH_CTRL_H, ILI9341_DARKGREY);
     tft.fillRect(SH_X+1, PITCH_CTRL_Y+1, SH_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
@@ -2489,17 +2496,23 @@ void adjustPitchStepNote(int delta) {
     int src    = pitchRotate ? patternRotatedSrc(0, effIdx) : effIdx;
     if (stepEditChromatic) {
         int totalSt = (int)pitchSpread * 12;
-        int st = ((int)PitchNote1[src] * totalSt) / 256;
-        st = clampVal(st + delta, 0, totalSt - 1);
-        PitchNote1[src] = (uint8_t)clampVal(st * 256 / totalSt, 0, 255);
+        int st_old  = ((int)PitchNote1[src] * totalSt) / 256;
+        int st_new  = clampVal(st_old + delta, 0, totalSt - 1);
+        if (st_new != st_old)
+            PitchNote1[src] = (uint8_t)(st_new * 256 / totalSt);
+        else if (delta > 0) PitchNote1[src] = 255;
+        else if (delta < 0) PitchNote1[src] = 0;
     } else {
         int noteList[60];
         int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot,
                                pitchIntervalMask, noteList);
         if (nc == 0) return;
-        int k = clampVal(((int)PitchNote1[src] * nc) / 256, 0, nc - 1);
-        k = clampVal(k + delta, 0, nc - 1);
-        PitchNote1[src] = (uint8_t)clampVal((k * 256 + 128) / nc, 0, 255);
+        int k_old = clampVal(((int)PitchNote1[src] * nc) / 256, 0, nc - 1);
+        int k_new = clampVal(k_old + delta, 0, nc - 1);
+        if (k_new != k_old)
+            PitchNote1[src] = (uint8_t)clampVal((k_new * 256 + 128) / nc, 0, 255);
+        else if (delta > 0) PitchNote1[src] = 255;
+        else if (delta < 0) PitchNote1[src] = 0;
     }
     scheduleSaveParams();
     stepLabelShowOctave = false;
@@ -2520,6 +2533,26 @@ void togglePitchStepChromatic() {
     if (!stepEditActive) return;
     stepEditChromatic = !stepEditChromatic;
     drawPitchStepNoteLabel();
+}
+
+void invertPitchSequence(int dir) {
+    int len = clampVal(PatLen[0], 1, 32);
+    int octRaw = 255 / (int)pitchSpread;
+    if (dir > 0) {
+        int minVal = 256, minIdx = 0;
+        for (int i = 0; i < len; i++)
+            if ((int)PitchNote1[i] < minVal) { minVal = PitchNote1[i]; minIdx = i; }
+        if (minVal + octRaw > 255) return;
+        PitchNote1[minIdx] = (uint8_t)(minVal + octRaw);
+    } else {
+        int maxVal = -1, maxIdx = 0;
+        for (int i = 0; i < len; i++)
+            if ((int)PitchNote1[i] > maxVal) { maxVal = PitchNote1[i]; maxIdx = i; }
+        if (maxVal - octRaw < 0) return;
+        PitchNote1[maxIdx] = (uint8_t)(maxVal - octRaw);
+    }
+    scheduleSaveParams();
+    drawPitchBars();
 }
 
 void drawPitchScreen() {
@@ -2735,6 +2768,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         int idx = ((mapX - PITCH_BAR_X) * len) / PITCH_BAR_W;
         if (idx >= 0 && idx < len) {
             int v = map(mapY, PITCH_BAR_Y + PITCH_BAR_H - 1, PITCH_BAR_Y, 0, 255);
+            v -= (int)pitchShift * 255 / (int)pitchSpread;
             v = clampVal(v, 0, 255);
             uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
             int effIdx = foldPitchIdx(idx, len, effFold);
@@ -2754,6 +2788,7 @@ void handlePITCHDrag(int mapX, int mapY) {
         int idx = ((mapX - PITCH_BAR_X) * len) / PITCH_BAR_W;
         if (idx >= 0 && idx < len) {
             int v = map(mapY, PITCH_BAR_Y + PITCH_BAR_H - 1, PITCH_BAR_Y, 0, 255);
+            v -= (int)pitchShift * 255 / (int)pitchSpread;
             v = clampVal(v, 0, 255);
             uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
             int effIdx = foldPitchIdx(idx, len, effFold);
