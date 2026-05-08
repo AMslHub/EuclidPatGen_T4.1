@@ -1,15 +1,25 @@
 #include <storage.h>
 
-#include <EEPROM.h>
+#include <LittleFS.h>
 
 #include <euclid.h>
 #include <cv_inputs.h>
 
-// EEPROM storage for persistent parameters
-// Hinweis: Bei Layout-Aenderungen EEPROM_MAGIC_* anpassen.
-#define EEPROM_MAGIC_CURRENT 0xEAE6
-#define EEPROM_MAGIC_SLOTS   0xEA5F
-#define EEPROM_ADDR_CURRENT  0
+// LittleFS on Teensy 4.1 (8 MB external QSPI flash)
+static LittleFS_QSPI myFS;
+static bool fsOK = false;
+
+static const uint16_t LITTLEFS_MAGIC_CURRENT = 0xEBE6;
+static const uint16_t LITTLEFS_MAGIC_SLOTS   = 0xEB5F;
+
+static const char *AUTOSAVE_PATH  = "/autosave.bin";
+static const char *SLOTS_HDR_PATH = "/slots.hdr";
+
+static const int SLOT_COUNT = 16;
+
+static void getSlotPath(int slot, char *buf) {
+    snprintf(buf, 20, "/slot_%02d.bin", slot);
+}
 
 struct ParamBlock {
     uint8_t len[3];
@@ -23,24 +33,24 @@ struct ParamBlock {
     uint8_t gateHold[3];
     uint8_t rotValues[3];
     uint8_t rotGateLen[3];
-    int8_t  speed[3];  // chSpeedIdx: -3..+3 (÷4..×4)
-    uint8_t autoRotate[3];  // 0=aus, 1-4=Schritte pro Zyklus
-    uint8_t ratchet[3][32]; // 1-4 Sub-Hits pro Hit-Step
+    int8_t  speed[3];
+    uint8_t autoRotate[3];
+    uint8_t ratchet[3][32];
     uint8_t rotRatchet[3];
     uint8_t rotOctave[3];
 };
 
 struct PitchBlock {
-    uint8_t note[32];       // Rohwerte 0-255 pro Step
-    uint8_t spread;         // Oktavbereich 1-5
-    uint8_t scale;          // Skalenindex
-    uint8_t root;           // Grundton 0-11
-    uint8_t intervalMask;   // Bitfeld aktiver Intervalle
-    int8_t  shift;          // Oktavtransposition -3..+3
-    uint8_t hold;           // pitchHold: 0=aus, 1=an
-    uint8_t rotate;         // pitchRotate: 0=aus, 1=an
-    uint8_t foldMode;       // pitchFoldMode: 0=off, 1-12
-    int8_t  octave[32];     // Oktav-Offset pro Step: -3..+3 (nur Kanal 1)
+    uint8_t note[32];
+    uint8_t spread;
+    uint8_t scale;
+    uint8_t root;
+    uint8_t intervalMask;
+    int8_t  shift;
+    uint8_t hold;
+    uint8_t rotate;
+    uint8_t foldMode;
+    int8_t  octave[32];
 };
 
 struct CurrentParams {
@@ -48,9 +58,9 @@ struct CurrentParams {
     ParamBlock data;
     uint8_t epatSavedMask;
     uint8_t epat[3][32];
-    uint8_t extClkMode;  // 0=intern, 1=extern
+    uint8_t extClkMode;
     PitchBlock pitch;
-    uint8_t cvTargetMap[3];  // CV-Eingang → Zielparameter (CvTarget enum)
+    uint8_t cvTargetMap[3];
 };
 
 struct SlotParams {
@@ -67,14 +77,8 @@ struct EucParams {
 
 struct SlotsHeader {
     uint16_t magic;
-    uint8_t usedMask;
-    uint8_t reserved;
+    uint16_t usedMask;
 };
-
-static const uint16_t EEPROM_ADDR_SLOTS = (uint16_t)(EEPROM_ADDR_CURRENT + sizeof(EucParams));
-static const uint16_t EEPROM_ADDR_SLOTS_HEADER = EEPROM_ADDR_SLOTS;
-static const uint16_t EEPROM_ADDR_SLOTS_DATA = (uint16_t)(EEPROM_ADDR_SLOTS_HEADER + sizeof(SlotsHeader));
-static const uint8_t SLOT_COUNT = 7;
 
 static int pendingSlot = -1;
 static bool pendingLoad = false;
@@ -243,67 +247,90 @@ static void unpackSlot(const SlotParams &p){
 
 static SlotsHeader readSlotsHeader(){
     SlotsHeader h;
-    EEPROM.get(EEPROM_ADDR_SLOTS_HEADER, h);
-    if(h.magic != EEPROM_MAGIC_SLOTS){
-        h.magic = EEPROM_MAGIC_SLOTS;
-        h.usedMask = 0;
-        h.reserved = 0;
-        EEPROM.put(EEPROM_ADDR_SLOTS_HEADER, h);
+    h.magic    = LITTLEFS_MAGIC_SLOTS;
+    h.usedMask = 0;
+    if (!fsOK) return h;
+    File f = myFS.open(SLOTS_HDR_PATH, FILE_READ);
+    if (f) {
+        if (f.size() == sizeof(h)) {
+            f.read((uint8_t*)&h, sizeof(h));
+        }
+        f.close();
+        if (h.magic != LITTLEFS_MAGIC_SLOTS) {
+            h.magic    = LITTLEFS_MAGIC_SLOTS;
+            h.usedMask = 0;
+        }
     }
     return h;
 }
 
 static void writeSlotsHeader(const SlotsHeader &h){
-    EEPROM.put(EEPROM_ADDR_SLOTS_HEADER, h);
+    if (!fsOK) return;
+    File f = myFS.open(SLOTS_HDR_PATH, FILE_WRITE);
+    if (f) {
+        f.write((uint8_t*)&h, sizeof(h));
+        f.close();
+    }
 }
 
-static uint16_t slotAddr(int slot){
-    return (uint16_t)(EEPROM_ADDR_SLOTS_DATA + slot * sizeof(SlotParams));
+void initStorage(){
+    fsOK = myFS.begin();
+    if (!fsOK) {
+        myFS.format();
+        fsOK = myFS.begin();
+    }
 }
 
-// Zweck: Speichert alle relevanten Parameter dauerhaft im EEPROM.
-// Side Effects: schreibt in den EEPROM.
-// Assumptions: EEPROM ist verfuegbar; Arrays haben Laenge 32.
 void saveParams(){
+    if (!fsOK) return;
     EucParams p;
-    p.magic = EEPROM_MAGIC_CURRENT;
+    p.magic = LITTLEFS_MAGIC_CURRENT;
     packCurrent(p.data);
-    EEPROM.put(EEPROM_ADDR_CURRENT, p);
+    File f = myFS.open(AUTOSAVE_PATH, FILE_WRITE);
+    if (f) {
+        f.write((uint8_t*)&p, sizeof(p));
+        f.close();
+    }
 }
 
-// Zweck: Laedt Parameter aus dem EEPROM oder setzt Defaults.
-// Side Effects: schreibt in globale Parameter-Arrays und Flags.
-// Assumptions: EEPROM-Layout passt zur aktuellen Struktur oder Defaults werden gesetzt.
 void loadParams(){
-    EucParams p;
-    EEPROM.get(EEPROM_ADDR_CURRENT, p);
-    if(p.magic == EEPROM_MAGIC_CURRENT){
-        unpackCurrent(p.data);
-    }else{
-        // Defaults when EEPROM layout changes
-        bpm = 120;
-        extClockMode     = false;
-        pitchSpread      = 2;
-        pitchScale       = 0;
-        pitchRoot        = 0;
-        pitchIntervalMask = 0x07;  // Root + Terz + Quinte
-        pitchShift       = 0;
-        pitchHold        = true;
-        pitchRotate      = true;
-        for (int i = 0; i < 32; i++) PitchNote1[i] = 0;
-        for(int i=0;i<3;i++){
-            *HoldArr[i] = true;
-            *GateHoldArr[i] = false;
-            RotateValues[i]  = false;
-            RotateGateLen[i] = false;
-            RotateRatchet[i] = false;
-            RotateOctave[i]  = false;
-            PatProb[i] = 10;
-            PatProbAuto[i] = false;
-            ProbEuclidRebuild[i] = false;
-            chSpeedIdx[i] = 0;
-            cvTargetMap[i] = CV_TARGET_NONE;
+    if (!fsOK) goto defaults;
+    {
+        EucParams p;
+        File f = myFS.open(AUTOSAVE_PATH, FILE_READ);
+        if (f) {
+            bool ok = (f.size() == sizeof(p));
+            if (ok) f.read((uint8_t*)&p, sizeof(p));
+            f.close();
+            if (ok && p.magic == LITTLEFS_MAGIC_CURRENT) {
+                unpackCurrent(p.data);
+                return;
+            }
         }
+    }
+    defaults:
+    bpm = 120;
+    extClockMode     = false;
+    pitchSpread      = 2;
+    pitchScale       = 0;
+    pitchRoot        = 0;
+    pitchIntervalMask = 0x07;
+    pitchShift       = 0;
+    pitchHold        = true;
+    pitchRotate      = true;
+    for (int i = 0; i < 32; i++) PitchNote1[i] = 0;
+    for(int i=0;i<3;i++){
+        *HoldArr[i] = true;
+        *GateHoldArr[i] = false;
+        RotateValues[i]  = false;
+        RotateGateLen[i] = false;
+        RotateRatchet[i] = false;
+        RotateOctave[i]  = false;
+        PatProb[i] = 10;
+        PatProbAuto[i] = false;
+        ProbEuclidRebuild[i] = false;
+        chSpeedIdx[i] = 0;
+        cvTargetMap[i] = CV_TARGET_NONE;
     }
 }
 
@@ -312,26 +339,35 @@ void scheduleSaveParams(){
     PendingSaveAt = millis() + SAVE_DEBOUNCE_MS;
 }
 
-uint8_t getSlotsUsedMask(){
+uint16_t getSlotsUsedMask(){
     SlotsHeader h = readSlotsHeader();
     return h.usedMask;
 }
 
 bool saveParamsSlot(int slot){
     if(slot < 0 || slot >= SLOT_COUNT) return false;
+    if(!fsOK) return false;
     SlotParams p;
     packSlot(p);
-    EEPROM.put(slotAddr(slot), p);
+    char path[20];
+    getSlotPath(slot, path);
+    File f = myFS.open(path, FILE_WRITE);
+    if (!f) return false;
+    f.write((uint8_t*)&p, sizeof(p));
+    f.close();
     SlotsHeader h = readSlotsHeader();
-    h.usedMask = (uint8_t)(h.usedMask | (1u << slot));
+    h.usedMask = (uint16_t)(h.usedMask | (1u << slot));
     writeSlotsHeader(h);
     return true;
 }
 
 bool deleteParamsSlot(int slot){
     if(slot < 0 || slot >= SLOT_COUNT) return false;
+    char path[20];
+    getSlotPath(slot, path);
+    if (fsOK) myFS.remove(path);
     SlotsHeader h = readSlotsHeader();
-    h.usedMask = (uint8_t)(h.usedMask & ~(1u << slot));
+    h.usedMask = (uint16_t)(h.usedMask & ~(1u << slot));
     writeSlotsHeader(h);
     if(activeSlot == slot){
         activeSlot = -1;
@@ -342,11 +378,17 @@ bool deleteParamsSlot(int slot){
 static bool loadParamsSlotNow(int slot){
     if(slot < 0 || slot >= SLOT_COUNT) return false;
     SlotsHeader h = readSlotsHeader();
-    if((h.usedMask & (1u << slot)) == 0){
-        return false;
-    }
+    if((h.usedMask & (1u << slot)) == 0) return false;
+    if(!fsOK) return false;
+    char path[20];
+    getSlotPath(slot, path);
     SlotParams p;
-    EEPROM.get(slotAddr(slot), p);
+    File f = myFS.open(path, FILE_READ);
+    if (!f) return false;
+    bool ok = (f.size() == sizeof(p));
+    if (ok) f.read((uint8_t*)&p, sizeof(p));
+    f.close();
+    if (!ok) return false;
     unpackSlot(p);
     activeSlot = slot;
     return true;

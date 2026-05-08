@@ -63,6 +63,10 @@ void drawXYDotPlayhead(int setIdx, unsigned int step);
 void drawPitchScreen();
 void applyAllTransforms(); // Rotation+Fold aller Kanäle einfrieren (Enc1-Long-Press auf PITCH1)
 void invertPitchSequence(int dir); // Akkord-Inversion: dir>0 tiefsten Ton +1 Okt, dir<0 höchsten -1 Okt
+bool getPitchChordMode();
+void flashPitchBars();             // VLP-Feedback: Balken schwarz→weiß→normal
+void togglePitchChordMode();       // Enc1 Very-Long-Press auf PITCH1
+void movePitchChordIdx(int delta); // Enc1 drehen im Chord-Modus
 bool getPitchStepEditActive();
 int  getPitchStepEditCursor();
 void togglePitchStepEdit();

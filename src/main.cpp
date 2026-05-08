@@ -353,6 +353,7 @@ void setup() {
   tft.fillScreen(ILI9341_BLACK);
 
   // Lade persistent gespeicherte Parameter (falls vorhanden)
+  initStorage();
   loadParams();
   applyBpm();
 

@@ -33,16 +33,18 @@ static const uint32_t BTN_DEBOUNCE_MS = 30;
 
 // Long Press Enc1: Replace-by-Fold auf PITCH1
 static uint32_t enc1PressStartMs    = 0;
+static bool     enc1VlpFlashed      = false;
 // Long Press Enc2: Quick Save (alle Screens ausser PERFORMANCE)
 static uint32_t enc2PressStartMs    = 0;
 // Long Press Enc3: NAV-Screen Toggle
 static uint32_t enc3PressStartMs    = 0;
+static bool     enc3VlpFlashed      = false;
 static uint16_t navPrevState        = EUCLCIRCS;
 static const uint32_t LONG_PRESS_MS      =  600;
 static const uint32_t VERY_LONG_PRESS_MS = 2000;
 
 static const int ENC_STEPS_PER_DETENT = 4;
-static const int SLOT_COUNT = 7;
+static const int SLOT_COUNT = 16;
 static int nextSaveSlot = -1;  // Schreibzeiger fuer Quick-Save (-1 = normales Verhalten)
 
 // PITCH1 screen: Enc1 browse/edit state
@@ -219,10 +221,14 @@ static void handlePitchEncoder(int enc, int delta) {
             } else {
                 switch (pitchBoxCursor) {
                     case 0:
-                        pitchScale = (uint8_t)((pitchScale + delta + SCALE_COUNT) % SCALE_COUNT);
-                        scheduleSaveParams();
-                        drawPitchControls();
-                        drawPitchBars();
+                        if (getPitchChordMode()) {
+                            movePitchChordIdx(delta);
+                        } else {
+                            pitchScale = (uint8_t)((pitchScale + delta + SCALE_COUNT) % SCALE_COUNT);
+                            scheduleSaveParams();
+                            drawPitchControls();
+                            drawPitchBars();
+                        }
                         break;
                     case 1:
                         pitchRoot = (uint8_t)((pitchRoot + delta + 12) % 12);
@@ -314,7 +320,7 @@ static void performQuickSave() {
     } else {
         slot = getActiveSlot();
         if (slot < 0) {
-            uint8_t used = getSlotsUsedMask();
+            uint16_t used = getSlotsUsedMask();
             for (int s = 0; s < SLOT_COUNT; s++) {
                 if (!(used & (1u << s))) { slot = s; break; }
             }
@@ -328,7 +334,7 @@ static void performQuickSave() {
     showSaveToast(slot);
 
     // Schreibzeiger auf nächsten freien Slot nach slot vorrücken
-    uint8_t used = getSlotsUsedMask();
+    uint16_t used = getSlotsUsedMask();
     nextSaveSlot = -1;
     for (int s = slot + 1; s < SLOT_COUNT; s++) {
         if (!(used & (1u << s))) { nextSaveSlot = s; break; }
@@ -396,9 +402,10 @@ void handleEncoders() {
             btnLastState[2] = s;
             if (s == LOW) {
                 enc3PressStartMs = now;
+                enc3VlpFlashed   = false;
             } else {
                 uint32_t held = now - enc3PressStartMs;
-                if (held >= VERY_LONG_PRESS_MS && GUIState == PITCH1) {
+                if (enc3VlpFlashed) {
                     togglePitchStepEdit();
                 } else if (held >= LONG_PRESS_MS) {
                     if (GUIState == PITCH1 && getPitchStepEditActive()) {
@@ -420,6 +427,14 @@ void handleEncoders() {
                         handleNormalButton(2);
                     }
                 }
+            }
+        }
+        // Continuous VLP-Check für Enc3 auf PITCH1
+        if (btnLastState[2] == LOW && GUIState == PITCH1 && !enc3VlpFlashed &&
+            !getPitchStepEditActive()) {
+            if (now - enc3PressStartMs >= VERY_LONG_PRESS_MS) {
+                enc3VlpFlashed = true;
+                flashPitchBars();
             }
         }
     }
@@ -458,13 +473,16 @@ void handleEncoders() {
             btnLastState[0] = s;
             if (s == LOW) {
                 enc1PressStartMs = now;
+                enc1VlpFlashed   = false;
                 if (GUIState == PERFORMANCE) {
                     handlePerfButton1();  // PERFORMANCE: sofort auf Key-Down
                 }
             } else {
                 uint32_t held = now - enc1PressStartMs;
                 if (GUIState == PITCH1) {
-                    if (held >= LONG_PRESS_MS) {
+                    if (enc1VlpFlashed) {
+                        togglePitchChordMode();
+                    } else if (held >= LONG_PRESS_MS) {
                         applyAllTransforms();
                     } else {
                         handlePitchButton(0);
@@ -472,6 +490,13 @@ void handleEncoders() {
                 } else if (GUIState != NAV && GUIState != PERFORMANCE) {
                     handleNormalButton(0);
                 }
+            }
+        }
+        // Continuous VLP-Check: Flash bei Erreichen der Schwelle (während gehalten)
+        if (btnLastState[0] == LOW && GUIState == PITCH1 && !enc1VlpFlashed) {
+            if (now - enc1PressStartMs >= VERY_LONG_PRESS_MS) {
+                enc1VlpFlashed = true;
+                flashPitchBars();
             }
         }
     }

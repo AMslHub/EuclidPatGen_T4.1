@@ -38,13 +38,13 @@ static const int PARAM_ERBOX_S = 24;
 static const int PARAM_ARBOX_X = 12;
 static const int PARAM_ARBOX_Y = 154;
 static const int PARAM_ARBOX_S = 24;
-static const int PERF_BOX_Y = 190;
-static const int PERF_BOX_W = 30;
-static const int PERF_BOX_H = 30;
+static const int PERF_BOX_W      = 40;   // 8 Slots × 40 px = 320 px
+static const int PERF_BOX_H      = 24;
+static const int PERF_BOX_ROW1_Y = 184;  // Slots 0-7
+static const int PERF_BOX_ROW2_Y = 210;  // Slots 8-15
 static const int PERF_BTN_Y = 150;
 static const int PERF_BTN_W = 60;
 static const int PERF_BTN_H = 30;
-static const int PERF_BOX_XS[7] = {0, 40, 80, 120, 160, 200, 240};
 static const int PERF_BTN_XS[3] = {0, 140, 210};
 static const int PERF_SEQ_X = 30;
 static const int PERF_SEQ_Y = 10;
@@ -58,7 +58,7 @@ static const int PERF_MS_H = 25;
 static const int PERF_MS_PAD = 0;
 static int perfSelected = -1;
 static int perfActive = -1;
-static uint8_t perfUsedMask = 0;
+static uint16_t perfUsedMask = 0;
 static int perfEncSlot = -1;   // Encoder-Browse-Hervorhebung (-1 = inaktiv)
 static bool perfButtonFlash[3] = { false, false, false };
 static uint32_t perfButtonFlashUntil[3] = { 0, 0, 0 };
@@ -495,24 +495,26 @@ void drawAutoRotateBox(int setIdx) {
 
 // Zweck: Zeichnet ein Patternnummer-Kaestchen (Status/Selection).
 // Side Effects: schreibt auf das TFT.
-// Assumptions: idx in 0..6.
+// Assumptions: idx in 0..15.
 static void drawPerfSlotBox(int idx){
-  int x = PERF_BOX_XS[idx];
+  int col = idx % 8;
+  int x   = col * PERF_BOX_W;
+  int y   = (idx < 8) ? PERF_BOX_ROW1_Y : PERF_BOX_ROW2_Y;
   bool selected   = (idx == perfSelected);
-  bool encBrowse  = (idx == perfEncSlot) && (cvSlotSel < 0);  // Browse nur wenn kein CV
+  bool encBrowse  = (idx == perfEncSlot) && (cvSlotSel < 0);
   bool cvCtrl     = (cvSlotSel >= 0) && (idx == (int)cvSlotSel);
   uint16_t border = cvCtrl ? ILI9341_CYAN : ILI9341_DARKGREY;
   uint16_t fill;
   if      (selected)  fill = ILI9341_GREEN;
   else if (cvCtrl)    fill = 0x0410;  // dunkles Cyan: CV-gesteuert
   else if (encBrowse) fill = ILI9341_CYAN;
-  else                fill = (perfUsedMask & (1u << idx)) ? ILI9341_WHITE : ILI9341_BLACK;
-  tft.fillRect(x + 1, PERF_BOX_Y + 1, PERF_BOX_W - 2, PERF_BOX_H - 2, fill);
-  tft.drawRect(x, PERF_BOX_Y, PERF_BOX_W, PERF_BOX_H, border);
+  else                fill = (perfUsedMask & (uint16_t)(1u << idx)) ? ILI9341_WHITE : ILI9341_BLACK;
+  tft.fillRect(x + 1, y + 1, PERF_BOX_W - 2, PERF_BOX_H - 2, fill);
+  tft.drawRect(x, y, PERF_BOX_W, PERF_BOX_H, border);
   if(idx == perfActive){
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_BLACK);
-    drawCenteredLabel(x, PERF_BOX_Y, PERF_BOX_W, PERF_BOX_H, "A", 8, 16, -5, 0);
+    drawCenteredLabel(x, y, PERF_BOX_W, PERF_BOX_H, "A", 8, 16, -4, 0);
   }
 }
 
@@ -617,8 +619,8 @@ void tickPerformanceUi(){
   if (cvSlotSel != lastCvSlotTick) {
     int8_t prev = lastCvSlotTick;
     lastCvSlotTick = cvSlotSel;
-    if (prev >= 0 && prev < 7) drawPerfSlotBox(prev);
-    if (cvSlotSel >= 0 && cvSlotSel < 7) drawPerfSlotBox(cvSlotSel);
+    if (prev >= 0 && prev < 16) drawPerfSlotBox(prev);
+    if (cvSlotSel >= 0 && cvSlotSel < 16) drawPerfSlotBox(cvSlotSel);
     drawCvSlotIndicator();
   }
 }
@@ -678,7 +680,7 @@ void drawPerformanceScreen(){
   perfSelected = -1;
   perfActive = getActiveSlot();
   perfUsedMask = getSlotsUsedMask();
-  for(int i=0;i<7;i++){
+  for(int i=0;i<16;i++){
     drawPerfSlotBox(i);
   }
   drawCvSlotIndicator();
@@ -755,9 +757,11 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
     return true;
   }
 
-  // Pattern-Boxen
-  for(int i=0;i<7;i++){
-    if(hitBox(mapX, mapY, PERF_BOX_XS[i], PERF_BOX_Y, PERF_BOX_W, PERF_BOX_H, 6)){
+  // Pattern-Boxen (2 Reihen à 8 Slots)
+  for(int i=0;i<16;i++){
+    int bx = (i % 8) * PERF_BOX_W;
+    int by = (i < 8) ? PERF_BOX_ROW1_Y : PERF_BOX_ROW2_Y;
+    if(hitBox(mapX, mapY, bx, by, PERF_BOX_W, PERF_BOX_H, 4)){
       int prev = perfSelected;
       perfSelected = (perfSelected == i) ? -1 : i;
       if(prev >= 0) drawPerfSlotBox(prev);
@@ -832,7 +836,7 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
     startPerfButtonFlash(1);
     if(perfSelected >= 0){
       if(saveParamsSlot(perfSelected)){
-        perfUsedMask = (uint8_t)(perfUsedMask | (1u << perfSelected));
+        perfUsedMask = (uint16_t)(perfUsedMask | (1u << perfSelected));
         int was = perfSelected;
         perfSelected = -1;
         drawPerfSlotBox(was);
@@ -844,7 +848,7 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
     startPerfButtonFlash(2);
     if(perfSelected >= 0){
       if(deleteParamsSlot(perfSelected)){
-        perfUsedMask = (uint8_t)(perfUsedMask & ~(1u << perfSelected));
+        perfUsedMask = (uint16_t)(perfUsedMask & ~(1u << perfSelected));
         int was = perfSelected;
         perfSelected = -1;
         drawPerfSlotBox(was);
@@ -2154,8 +2158,8 @@ void drawParamButtonHighlight(int ch) {
 void setPerfEncBrowseSlot(int slot) {
     int prev = perfEncSlot;
     perfEncSlot = slot;
-    if (prev >= 0 && prev < 7) drawPerfSlotBox(prev);
-    if (slot >= 0 && slot < 7) drawPerfSlotBox(slot);
+    if (prev >= 0 && prev < 16) drawPerfSlotBox(prev);
+    if (slot >= 0 && slot < 16) drawPerfSlotBox(slot);
 }
 
 // ============================================================================
@@ -2192,6 +2196,8 @@ static const int PITCH_FOLD_BW = 60;
 static const int PITCH_FOLD_BH = 22;
 
 static bool pitchDisplayMode  = false;
+static bool pitchChordMode    = false;
+static int  pitchChordIdx     = 0;
 static bool stepEditActive      = false;
 static int  stepEditCursor      = 0;
 static bool stepEditChromatic   = false;
@@ -2346,11 +2352,13 @@ void drawPitchControls() {
     uint16_t ivBorder = (boxCursor == 3) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
 
     tft.drawRect(SC_X, PITCH_CTRL_Y, SC_W, PITCH_CTRL_H, scBorder);
-    tft.fillRect(SC_X+1, PITCH_CTRL_Y+1, SC_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
+    tft.fillRect(SC_X+1, PITCH_CTRL_Y+1, SC_W-2, PITCH_CTRL_H-2,
+                 pitchChordMode ? 0x000F : ILI9341_BLACK);  // dark blue in chord mode
     tft.setFont(Arial_12);
-    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setTextColor(pitchChordMode ? ILI9341_CYAN : ILI9341_LIGHTGREY);
     tft.setCursor(SC_X+3, PITCH_CTRL_Y+5);
-    tft.print(getScaleName(pitchScale));
+    if (pitchChordMode) tft.print(getChordName(pitchChordIdx));
+    else                tft.print(getScaleName(pitchScale));
 
     tft.drawRect(RT_X, PITCH_CTRL_Y, RT_W, PITCH_CTRL_H, rtBorder);
     tft.fillRect(RT_X+1, PITCH_CTRL_Y+1, RT_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
@@ -2535,6 +2543,50 @@ void togglePitchStepChromatic() {
     drawPitchStepNoteLabel();
 }
 
+bool getPitchChordMode() { return pitchChordMode; }
+
+void flashPitchBars() {
+    tft.fillRect(PITCH_BAR_X, PITCH_BAR_Y, PITCH_BAR_W, PITCH_BAR_H, ILI9341_BLACK);
+    delay(60);
+    tft.fillRect(PITCH_BAR_X, PITCH_BAR_Y, PITCH_BAR_W, PITCH_BAR_H, ILI9341_WHITE);
+    delay(80);
+    drawPitchBars();
+}
+
+static int findBestChordMatch(uint8_t scaleIdx, uint8_t iMask) {
+    int bestIdx = 0, bestScore = -1;
+    for (int i = 0; i < CHORD_COUNT; i++) {
+        uint8_t cs, cm;
+        getChordPreset(i, cs, cm);
+        if (cs == scaleIdx && cm == iMask) return i;  // exakter Treffer
+        int score = (cs == scaleIdx ? 50 : 0);
+        uint8_t both = cm & iMask;
+        for (int b = 0; b < 7; b++) if (both & (1u << b)) score++;
+        if (score > bestScore) { bestScore = score; bestIdx = i; }
+    }
+    return bestIdx;
+}
+
+void togglePitchChordMode() {
+    pitchChordMode = !pitchChordMode;
+    if (pitchChordMode) {
+        pitchChordIdx = findBestChordMatch(pitchScale, pitchIntervalMask);
+        // scale+mask bleiben unverändert — Chord-Name ist nur Label für aktuellen Zustand
+    }
+    drawPitchControls();
+    drawPitchBars();
+}
+
+void movePitchChordIdx(int delta) {
+    pitchChordIdx = ((pitchChordIdx + delta) % CHORD_COUNT + CHORD_COUNT) % CHORD_COUNT;
+    uint8_t sc, mask;
+    getChordPreset(pitchChordIdx, sc, mask);
+    pitchScale = sc; pitchIntervalMask = mask;
+    scheduleSaveParams();
+    drawPitchControls();
+    drawPitchBars();
+}
+
 void invertPitchSequence(int dir) {
     int len = clampVal(PatLen[0], 1, 32);
     int octRaw = 255 / (int)pitchSpread;
@@ -2716,17 +2768,21 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         }
     }
 
-    // Scale — tap cycles forward
-    if (hitBox(mapX, mapY, 0, PITCH_CTRL_Y, 124, PITCH_CTRL_H, 3)) {
-        pitchScale = (uint8_t)((pitchScale + 1) % (uint8_t)SCALE_COUNT);
-        scheduleSaveParams();
-        drawPitchControls();
-        drawPitchBars();
+    // Scale/Chord box — tap cycles forward
+    if (hitBox(mapX, mapY, 0, PITCH_CTRL_Y, 100, PITCH_CTRL_H, 3)) {
+        if (pitchChordMode) {
+            movePitchChordIdx(1);
+        } else {
+            pitchScale = (uint8_t)((pitchScale + 1) % (uint8_t)SCALE_COUNT);
+            scheduleSaveParams();
+            drawPitchControls();
+            drawPitchBars();
+        }
         return;
     }
 
     // Root — tap cycles forward
-    if (hitBox(mapX, mapY, 126, PITCH_CTRL_Y, 62, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 102, PITCH_CTRL_Y, 58, PITCH_CTRL_H, 3)) {
         pitchRoot = (uint8_t)((pitchRoot + 1) % 12);
         scheduleSaveParams();
         drawPitchControls();
@@ -2735,7 +2791,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     }
 
     // Spread — cycles 1..5
-    if (hitBox(mapX, mapY, 190, PITCH_CTRL_Y, 60, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 162, PITCH_CTRL_Y, 52, PITCH_CTRL_H, 3)) {
         uint8_t oldSpread = pitchSpread;
         pitchSpread = (uint8_t)(pitchSpread >= 5 ? 1 : pitchSpread + 1);
         if (pitchSpread != oldSpread) {
