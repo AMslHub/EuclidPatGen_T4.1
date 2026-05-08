@@ -5,8 +5,9 @@
 #include <euclid.h>
 #include <cv_inputs.h>
 
-// LittleFS on Teensy 4.1 (8 MB external QSPI flash)
-static LittleFS_QSPI myFS;
+// LittleFS auf internem Program-Flash (immer verfügbar auf Teensy 4.1)
+static LittleFS_Program myFS;
+static const uint32_t FS_SIZE = 512 * 1024;
 static bool fsOK = false;
 
 static const uint16_t LITTLEFS_MAGIC_CURRENT = 0xEBE6;
@@ -274,10 +275,10 @@ static void writeSlotsHeader(const SlotsHeader &h){
 }
 
 void initStorage(){
-    fsOK = myFS.begin();
+    fsOK = myFS.begin(FS_SIZE);
     if (!fsOK) {
-        myFS.format();
-        fsOK = myFS.begin();
+        myFS.format(FS_SIZE);
+        fsOK = myFS.begin(FS_SIZE);
     }
 }
 

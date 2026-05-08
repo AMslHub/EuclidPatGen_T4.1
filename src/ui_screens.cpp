@@ -757,70 +757,7 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
     return true;
   }
 
-  // Pattern-Boxen (2 Reihen à 8 Slots)
-  for(int i=0;i<16;i++){
-    int bx = (i % 8) * PERF_BOX_W;
-    int by = (i < 8) ? PERF_BOX_ROW1_Y : PERF_BOX_ROW2_Y;
-    if(hitBox(mapX, mapY, bx, by, PERF_BOX_W, PERF_BOX_H, 4)){
-      int prev = perfSelected;
-      perfSelected = (perfSelected == i) ? -1 : i;
-      if(prev >= 0) drawPerfSlotBox(prev);
-      if(perfSelected >= 0) drawPerfSlotBox(perfSelected);
-      return true;
-    }
-  }
-
-  // Mute/Solo-Boxen
-  tft.setFont(Arial_16);
-  int msY[3];
-  calcPerfMsY(msY);
-
-  for(int row = 0; row < 3; row++){
-    if(hitBox(mapX, mapY, PERF_MS_X1, msY[row], PERF_MS_W, PERF_MS_H, PERF_MS_PAD)){
-      MuteSeq[row] = !MuteSeq[row];
-      if(MuteSeq[row]){
-        // Mute aktiviert -> alle Solos aus (gegenseitiger Ausschluss)
-        SoloSeq[0] = false;
-        SoloSeq[1] = false;
-        SoloSeq[2] = false;
-      }
-      drawPerfMsBox(row, false, msY[row]);
-      drawPerfMsBox(0, true, msY[0]);
-      drawPerfMsBox(1, true, msY[1]);
-      drawPerfMsBox(2, true, msY[2]);
-      return true;
-    }
-    if(hitBox(mapX, mapY, PERF_MS_X2, msY[row], PERF_MS_W, PERF_MS_H, PERF_MS_PAD)){
-      if(SoloSeq[row]){
-        SoloSeq[row] = false;
-      }else{
-        // Solo aktiviert -> alle Mutes aus (gegenseitiger Ausschluss)
-        MuteSeq[0] = false;
-        MuteSeq[1] = false;
-        MuteSeq[2] = false;
-        SoloSeq[0] = false;
-        SoloSeq[1] = false;
-        SoloSeq[2] = false;
-        SoloSeq[row] = true;
-      }
-      drawPerfMsBox(0, false, msY[0]);
-      drawPerfMsBox(1, false, msY[1]);
-      drawPerfMsBox(2, false, msY[2]);
-      drawPerfMsBox(0, true, msY[0]);
-      drawPerfMsBox(1, true, msY[1]);
-      drawPerfMsBox(2, true, msY[2]);
-      return true;
-    }
-  }
-
-  // Ext-Clock-Checkbox
-  if(hitBox(mapX, mapY, EXTCLK_X, EXTCLK_Y, EXTCLK_BOX + 70, EXTCLK_BOX, 6)){
-    setExtClockMode(!extClockMode);
-    drawExtClockCheckbox();
-    return true;
-  }
-
-  // Buttons: Load / Save / Del
+  // Buttons: Load / Save / Del — vor Slot-Boxen prüfen (geometrische Überlappung)
   if(hitBox(mapX, mapY, PERF_BTN_XS[0], PERF_BTN_Y, PERF_BTN_W, PERF_BTN_H, 6)){
     startPerfButtonFlash(0);
     if(perfSelected >= 0 && (perfUsedMask & (1u << perfSelected))){
@@ -856,6 +793,68 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
     }
     return true;
   }
+
+  // Pattern-Boxen (2 Reihen à 8 Slots)
+  for(int i=0;i<16;i++){
+    int bx = (i % 8) * PERF_BOX_W;
+    int by = (i < 8) ? PERF_BOX_ROW1_Y : PERF_BOX_ROW2_Y;
+    if(hitBox(mapX, mapY, bx, by, PERF_BOX_W, PERF_BOX_H, 4)){
+      int prev = perfSelected;
+      perfSelected = (perfSelected == i) ? -1 : i;
+      if(prev >= 0) drawPerfSlotBox(prev);
+      if(perfSelected >= 0) drawPerfSlotBox(perfSelected);
+      return true;
+    }
+  }
+
+  // Mute/Solo-Boxen
+  tft.setFont(Arial_16);
+  int msY[3];
+  calcPerfMsY(msY);
+
+  for(int row = 0; row < 3; row++){
+    if(hitBox(mapX, mapY, PERF_MS_X1, msY[row], PERF_MS_W, PERF_MS_H, PERF_MS_PAD)){
+      MuteSeq[row] = !MuteSeq[row];
+      if(MuteSeq[row]){
+        SoloSeq[0] = false;
+        SoloSeq[1] = false;
+        SoloSeq[2] = false;
+      }
+      drawPerfMsBox(row, false, msY[row]);
+      drawPerfMsBox(0, true, msY[0]);
+      drawPerfMsBox(1, true, msY[1]);
+      drawPerfMsBox(2, true, msY[2]);
+      return true;
+    }
+    if(hitBox(mapX, mapY, PERF_MS_X2, msY[row], PERF_MS_W, PERF_MS_H, PERF_MS_PAD)){
+      if(SoloSeq[row]){
+        SoloSeq[row] = false;
+      }else{
+        MuteSeq[0] = false;
+        MuteSeq[1] = false;
+        MuteSeq[2] = false;
+        SoloSeq[0] = false;
+        SoloSeq[1] = false;
+        SoloSeq[2] = false;
+        SoloSeq[row] = true;
+      }
+      drawPerfMsBox(0, false, msY[0]);
+      drawPerfMsBox(1, false, msY[1]);
+      drawPerfMsBox(2, false, msY[2]);
+      drawPerfMsBox(0, true, msY[0]);
+      drawPerfMsBox(1, true, msY[1]);
+      drawPerfMsBox(2, true, msY[2]);
+      return true;
+    }
+  }
+
+  // Ext-Clock-Checkbox
+  if(hitBox(mapX, mapY, EXTCLK_X, EXTCLK_Y, EXTCLK_BOX + 70, EXTCLK_BOX, 6)){
+    setExtClockMode(!extClockMode);
+    drawExtClockCheckbox();
+    return true;
+  }
+
   return false;
 }
 
