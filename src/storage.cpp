@@ -266,7 +266,7 @@ static SlotsHeader readSlotsHeader(){
 
 static void writeSlotsHeader(const SlotsHeader &h){
     if (!fsOK) return;
-    File f = myFS.open(SLOTS_HDR_PATH, FILE_WRITE);
+    File f = myFS.open(SLOTS_HDR_PATH, FILE_WRITE_BEGIN);
     if (f) {
         f.write((uint8_t*)&h, sizeof(h));
         f.close();
@@ -286,7 +286,7 @@ void saveParams(){
     EucParams p;
     p.magic = LITTLEFS_MAGIC_CURRENT;
     packCurrent(p.data);
-    File f = myFS.open(AUTOSAVE_PATH, FILE_WRITE);
+    File f = myFS.open(AUTOSAVE_PATH, FILE_WRITE_BEGIN);
     if (f) {
         f.write((uint8_t*)&p, sizeof(p));
         f.close();
@@ -351,7 +351,7 @@ bool saveParamsSlot(int slot){
     packSlot(p);
     char path[20];
     getSlotPath(slot, path);
-    File f = myFS.open(path, FILE_WRITE);
+    File f = myFS.open(path, FILE_WRITE_BEGIN);
     if (!f) return false;
     f.write((uint8_t*)&p, sizeof(p));
     f.close();
