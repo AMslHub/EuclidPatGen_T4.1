@@ -279,3 +279,59 @@ uint16_t computePitchDac(uint8_t rawValue, uint8_t spread, uint8_t scaleIdx,
                           uint8_t root, uint8_t intervalMask) {
     return midiToDac(quantizeToMidi(rawValue, spread, scaleIdx, root, intervalMask));
 }
+
+// ---------------------------------------------------------------------------
+// Chord Presets
+// Bit-Mask-Semantik: bit0=1(Deg0), bit1=3(Deg2), bit2=5(Deg4),
+//                   bit3=7(Deg6), bit4=9(Deg1), bit5=11(Deg3), bit6=13(Deg5)
+// ---------------------------------------------------------------------------
+struct ChordPreset {
+    const char *name;
+    uint8_t     scaleIdx;
+    uint8_t     intervalMask;
+};
+
+static const ChordPreset CHORD_PRESETS[] = {
+    // --- Basic Triads ---
+    { "Major",     0,   7 },   // Major:      1+3+5
+    { "Minor",     1,   7 },   // Minor:      1+b3+5
+    { "Dim",       6,   7 },   // Locrian:    1+b3+b5
+    { "Aug",      13,   7 },   // Whole Tone: 1+3+#5
+    { "Sus2",      0,  21 },   // Major:      1+2+5  (bits 0+4+2)
+    { "Sus4",      0,  37 },   // Major:      1+4+5  (bits 0+5+2)
+    // --- Seventh Chords ---
+    { "Maj7",      0,  15 },   // Major:      1+3+5+7
+    { "Min7",      2,  15 },   // Dorian:     1+b3+5+b7
+    { "Dom7",      5,  15 },   // Mixolydian: 1+3+5+b7
+    { "mMaj7",     7,  15 },   // Harm.Min:   1+b3+5+maj7
+    { "m7b5",      6,  15 },   // Locrian:    1+b3+b5+b7
+    // --- Jazz Extended ---
+    { "Maj9",      0,  31 },   // Major:      1+3+5+7+9
+    { "Min9",      2,  31 },   // Dorian:     1+b3+5+b7+9
+    { "Dom9",      5,  31 },   // Mixolydian: 1+3+5+b7+9
+    { "Maj7#11",   4,  47 },   // Lydian:     1+3+5+7+#11 (bits 0+1+2+3+5)
+    { "7#11",      8,  47 },   // Lydian Dom: 1+3+5+b7+#11
+    { "7b9",      16,  31 },   // Phryg.Dom:  1+3+5+b7+b9
+    { "7#9",       9,  31 },   // Altered:    1+3+5+b7+#9
+    { "Maj13",     0, 127 },   // Major:      all 7 degrees
+    { "Min13",     2, 127 },   // Dorian:     all 7 degrees
+    // --- Quartal / Modern ---
+    { "Quartal",   5,  41 },   // Mixolydian: 1+4+b7 (bits 0+5+3)
+    // --- World Music ---
+    { "Hijaz",    16,  23 },   // Phryg.Dom:  1+b2+3+5 (bits 0+4+1+2)
+    { "Byzantin", 17,  23 },   // Dbl Harm:   1+b2+3+5
+    { "Persian",  18,  23 },   // Persian:    1+b2+3+b5
+    { "Hirajoshi",22,  55 },   // Hirajoshi:  all 5 available (bits 0+1+2+4+5)
+    { "Yo",       24,  55 },   // Yo:         all 5 available
+};
+const int CHORD_COUNT = (int)(sizeof(CHORD_PRESETS) / sizeof(CHORD_PRESETS[0]));
+
+const char *getChordName(int idx) {
+    return CHORD_PRESETS[idx % CHORD_COUNT].name;
+}
+
+void getChordPreset(int idx, uint8_t &scaleOut, uint8_t &maskOut) {
+    const ChordPreset &c = CHORD_PRESETS[idx % CHORD_COUNT];
+    scaleOut = c.scaleIdx;
+    maskOut  = c.intervalMask;
+}

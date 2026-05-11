@@ -16,7 +16,8 @@ enum CvTarget : uint8_t {
     CV_TARGET_VALUE_MOD_CH2,
     CV_TARGET_VALUE_MOD_CH3,
     CV_TARGET_SLOT_SEL,
-    CV_TARGET_PITCH_FOLD,   // 0-4095 → pitchFoldMode 0-4 (off/Mir½/Rep½/Mir¼/Rep¼)
+    CV_TARGET_PITCH_FOLD,       // 0-4095 → pitchFoldMode 0-4 (off/Mir½/Rep½/Mir¼/Rep¼)
+    CV_TARGET_PITCH_TRANSPOSE,  // 1V/Okt → Halbtontransposition addiert nach Quantisierung
     CV_TARGET_COUNT
 };
 
@@ -31,6 +32,7 @@ extern int8_t  cvPitchShiftOffset;   // –3..+3 Oktaven (addiert zu pitchShift)
 extern int8_t  cvPatRotOffset[3];    // Offset auf PatRot pro Kanal
 extern int8_t  cvSlotSel;            // -1=inaktiv, 0-6=Slot (CV_TARGET_SLOT_SEL)
 extern int8_t  cvPitchFold;          // -1=inaktiv, 0-4=pitchFoldMode (CV_TARGET_PITCH_FOLD)
+extern int8_t  cvPitchTransposeST;  // 0-79 Halbtöne (1V/Okt; 0V=keine Transposition)
 
 // Exponentieller Lautstärke-Faktor innerhalb eines Ratchet-Bursts.
 // ratchetIdx=0 → erster Hit, ratchetTotal = Gesamtzahl der Hits im Burst.

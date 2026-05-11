@@ -169,7 +169,7 @@ static void handlePerfButton1() {
     } else {
         encBrowseActive = false;
         setPerfEncBrowseSlot(-1);
-        uint8_t used = getSlotsUsedMask();
+        uint16_t used = getSlotsUsedMask();
         if (used & (1u << encBrowseSlot)) {
             requestLoadSlot(encBrowseSlot);
             nextSaveSlot = -1;
@@ -217,7 +217,7 @@ static void handlePitchEncoder(int enc, int delta) {
         case 0:
             if (!pitchBoxEditMode) {
                 pitchBoxCursor = ((pitchBoxCursor + delta) % 4 + 4) % 4;
-                drawPitchControls();
+                pendingPitchDraw = true;
             } else {
                 switch (pitchBoxCursor) {
                     case 0:
@@ -226,15 +226,13 @@ static void handlePitchEncoder(int enc, int delta) {
                         } else {
                             pitchScale = (uint8_t)((pitchScale + delta + SCALE_COUNT) % SCALE_COUNT);
                             scheduleSaveParams();
-                            drawPitchControls();
-                            drawPitchBars();
+                            pendingPitchDraw = true;
                         }
                         break;
                     case 1:
                         pitchRoot = (uint8_t)((pitchRoot + delta + 12) % 12);
                         scheduleSaveParams();
-                        drawPitchControls();
-                        drawPitchBars();
+                        pendingPitchDraw = true;
                         break;
                     case 2: {
                         uint8_t oldSpread = pitchSpread;
@@ -247,8 +245,7 @@ static void handlePitchEncoder(int enc, int delta) {
                             }
                         }
                         scheduleSaveParams();
-                        drawPitchControls();
-                        drawPitchBars();
+                        pendingPitchDraw = true;
                         break;
                     }
                     case 3:
@@ -263,13 +260,12 @@ static void handlePitchEncoder(int enc, int delta) {
             } else {
                 pitchShift = (int8_t)clampVal((int)pitchShift + delta, -3, 3);
                 scheduleSaveParams();
-                drawPitchControls();
-                drawPitchBars();
+                pendingPitchDraw = true;
             }
             break;
         case 2:
             pitchItvlCursor = ((pitchItvlCursor + delta) % 7 + 7) % 7;
-            drawPitchControls();
+            pendingPitchDraw = true;
             break;
     }
 }
@@ -284,7 +280,7 @@ static void handlePitchButton(int enc) {
     }
     if (enc == 0) {
         pitchBoxEditMode = !pitchBoxEditMode;
-        drawPitchControls();
+        pendingPitchDraw = true;
         return;
     }
     if (enc == 1) {
@@ -303,8 +299,7 @@ static void handlePitchButton(int enc) {
     if (toggled != 0) {  // mindestens ein Intervall aktiv halten
         pitchIntervalMask = toggled;
         scheduleSaveParams();
-        drawPitchControls();
-        drawPitchBars();
+        pendingPitchDraw = true;
     }
 }
 
@@ -330,8 +325,9 @@ static void performQuickSave() {
         showSaveToast(-1);
         return;
     }
-    saveParamsSlot(slot);
+    // Toast sofort anzeigen; LittleFS-Write auf Main-Loop verschieben (kein Blocking im Encoder-Handler)
     showSaveToast(slot);
+    pendingSlotSaveSlot = slot;
 
     // Schreibzeiger auf nächsten freien Slot nach slot vorrücken
     uint16_t used = getSlotsUsedMask();

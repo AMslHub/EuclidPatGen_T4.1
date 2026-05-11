@@ -78,6 +78,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos);
 void handlePITCHDrag(int mapX, int mapY);
 void drawPitchPlayhead(unsigned int step);
 void drawPitchBars();
+void drawPitchBarRange(int from, int to);
 void drawPitchControls();
 void drawPitchHoldCheckbox();
 void drawPitchRotateCheckbox();

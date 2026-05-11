@@ -97,18 +97,40 @@ static void mutatePatternByMoveCount(const bool *src, bool *dst, int len, int hi
 // Side Effects: zeichnet direkt auf das TFT.
 // Assumptions: len > 0, cnthold/cnt sind gueltig.
 void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, bool *pattern, unsigned int prevStep, unsigned int curStep){
-    // remove current position point and restore base pattern
-    tft.fillCircle(CX+R*sin(2*M_PI/len*prevStep), CY-R*cos(2*M_PI/len*prevStep), r3+1, ILI9341_BLACK);
-    tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY);
-
     int idx = prevStep % len;
-    int src = euclidRotatedSrc(idx, len, PatRot);
-    if(pattern[src]==false){
-      tft.drawCircle(CX+R*sin(2*M_PI/len*idx), CY-R*cos(2*M_PI/len*idx), r2, ILI9341_WHITE);
-    }else{
-      tft.fillCircle(CX+R*sin(2*M_PI/len*idx), CY-R*cos(2*M_PI/len*idx), r2+2, ILI9341_WHITE);
+    double angleOld = 2.0 * M_PI / len * idx;
+    int ox = (int)(CX + R * sin(angleOld) + 0.5);
+    int oy = (int)(CY - R * cos(angleOld) + 0.5);
+
+    // Erase old playhead dot (overwrites ring pixels locally)
+    tft.fillCircle(ox, oy, r3+1, ILI9341_BLACK);
+
+    // Restore only the affected ring arc instead of the full drawCircle.
+    // The erased area has radius (r3+1), so we redraw ring pixels within (r3+2).
+    {
+        double step = 1.0 / R;  // ~1 pixel per arc step
+        int kmax = r3 + 3;
+        int lim2 = (r3+2) * (r3+2);
+        for (int k = -kmax; k <= kmax; k++) {
+            double a = angleOld + k * step;
+            int px = (int)(CX + R * sin(a) + 0.5);
+            int py = (int)(CY - R * cos(a) + 0.5);
+            int dx = px - ox, dy = py - oy;
+            if (dx*dx + dy*dy <= lim2) {
+                tft.drawPixel(px, py, ILI9341_LIGHTGREY);
+            }
+        }
     }
 
+    // Redraw old position's pattern dot (at ox,oy — same point as angleOld)
+    int src = euclidRotatedSrc(idx, len, PatRot);
+    if(pattern[src]==false){
+      tft.drawCircle(ox, oy, r2, ILI9341_WHITE);
+    }else{
+      tft.fillCircle(ox, oy, r2+2, ILI9341_WHITE);
+    }
+
+    // Draw new playhead dot
     int idx2 = curStep % len;
     tft.fillCircle(CX+R*sin(2*M_PI/len*idx2), CY-R*cos(2*M_PI/len*idx2), r3, color);
 }
@@ -215,6 +237,55 @@ void buildProbPattern(const bool *current, bool *dst, int len, int PatNum, int P
 void clearEucledianCircle(const int R, int len) {
     for(int i = 0; i < len; i++) {
         tft.fillCircle(CX + R*sin(2*M_PI/len*i), CY - R*cos(2*M_PI/len*i), r3+1, ILI9341_BLACK);
+    }
+}
+
+// Loescht eine Dot-Position und stellt den Ring-Arc wieder her.
+// Vermeidet das teure drawCircle(R) fuer den gesamten Ring.
+void clearAndRestoreRingArc(const int R, double ang, int ox, int oy) {
+    tft.fillCircle(ox, oy, r3+1, ILI9341_BLACK);
+    double step = 1.0 / R;
+    int kmax = r3 + 3, lim2 = (r3+2)*(r3+2);
+    for (int k = -kmax; k <= kmax; k++) {
+        double a = ang + k * step;
+        int px = (int)(CX + R * sin(a) + 0.5);
+        int py = (int)(CY - R * cos(a) + 0.5);
+        int dx = px-ox, dy = py-oy;
+        if (dx*dx+dy*dy <= lim2) tft.drawPixel(px, py, ILI9341_LIGHTGREY);
+    }
+}
+
+// Schnelle Variante von drawEucledianCircleFromPattern:
+// Kein drawCircle(R) fuer den gesamten Ring — Arc-Restore je Position stattdessen.
+// Fuer same-len Redraws (PatProb, PatRot-Aenderungen).
+void drawEucledianCircleFromPatternFast(const int R, int len, int PatRot, bool *pattern) {
+    for (int i = 0; i < len; i++) {
+        double ang = 2.0 * M_PI / len * i;
+        int ox = (int)(CX + R * sin(ang) + 0.5);
+        int oy = (int)(CY - R * cos(ang) + 0.5);
+        clearAndRestoreRingArc(R, ang, ox, oy);
+        int src = euclidRotatedSrc(i, len, PatRot);
+        if (pattern[src]) tft.fillCircle(ox, oy, r2+2, ILI9341_WHITE);
+        else              tft.drawCircle(ox, oy, r2, ILI9341_WHITE);
+    }
+}
+
+// Fuer Laengen-Aenderungen: loescht alle alten Positionen (mit Arc-Restore),
+// zeichnet dann alle neuen Positionen. Kein drawCircle(R) noetig.
+void redrawEucledianCircleLenChange(const int R, int oldLen, int newLen, int PatRot, bool *pattern) {
+    for (int i = 0; i < oldLen; i++) {
+        double ang = 2.0 * M_PI / oldLen * i;
+        int ox = (int)(CX + R * sin(ang) + 0.5);
+        int oy = (int)(CY - R * cos(ang) + 0.5);
+        clearAndRestoreRingArc(R, ang, ox, oy);
+    }
+    for (int i = 0; i < newLen; i++) {
+        int src = euclidRotatedSrc(i, newLen, PatRot);
+        double ang = 2.0 * M_PI / newLen * i;
+        int ox = (int)(CX + R * sin(ang) + 0.5);
+        int oy = (int)(CY - R * cos(ang) + 0.5);
+        if (pattern[src]) tft.fillCircle(ox, oy, r2+2, ILI9341_WHITE);
+        else              tft.drawCircle(ox, oy, r2, ILI9341_WHITE);
     }
 }
 

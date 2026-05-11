@@ -33,6 +33,9 @@ inline bool patternIsHit(int ch, int idx) {
 // Zeichnen / Pattern-Erzeugung
 // ---------------------------------------------------------------------------
 void clearEucledianCircle(const int R, int len);
+void clearAndRestoreRingArc(const int R, double ang, int ox, int oy);
+void drawEucledianCircleFromPatternFast(const int R, int len, int PatRot, bool *pattern);
+void redrawEucledianCircleLenChange(const int R, int oldLen, int newLen, int PatRot, bool *pattern);
 void drawEucledianCircle(const int R, int len, int PatNum, int PatRot, int PatProb, bool *pattern);
 void rebuildPattern(int len, int PatNum, int PatProb, bool *pattern);
 void drawEucledianCircleFromPattern(const int R, int len, int PatRot, bool *pattern);

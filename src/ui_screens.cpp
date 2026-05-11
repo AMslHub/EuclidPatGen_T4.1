@@ -226,7 +226,7 @@ void loadPitchPreset(int idx) {
     scheduleSaveParams();
     if (GUIState == PITCH1) {
         drawPitchPresetBox();
-        drawPitchBars();
+        pendingPitchDraw = true;
     }
 }
 
@@ -772,12 +772,12 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
   if(hitBox(mapX, mapY, PERF_BTN_XS[1], PERF_BTN_Y, PERF_BTN_W, PERF_BTN_H, 6)){
     startPerfButtonFlash(1);
     if(perfSelected >= 0){
-      if(saveParamsSlot(perfSelected)){
-        perfUsedMask = (uint16_t)(perfUsedMask | (1u << perfSelected));
-        int was = perfSelected;
-        perfSelected = -1;
-        drawPerfSlotBox(was);
-      }
+      // Deferred: SD-Write in den Main-Loop verlagern (nicht im Touch-Handler blockieren)
+      pendingSlotSaveSlot = perfSelected;
+      perfUsedMask = (uint16_t)(perfUsedMask | (1u << perfSelected));
+      int was = perfSelected;
+      perfSelected = -1;
+      drawPerfSlotBox(was);
     }
     return true;
   }
@@ -2273,6 +2273,13 @@ void drawPitchBars() {
     }
 }
 
+void drawPitchBarRange(int from, int to) {
+    int len = clampVal(PatLen[0], 1, 32);
+    for (int i = from; i < to && i < len; i++) {
+        drawPitchBar(i);
+    }
+}
+
 void drawPitchPlayhead(unsigned int step) {
     int len  = clampVal(PatLen[0], 1, 32);
     int idx  = (int)(step % (unsigned int)len);
@@ -2435,7 +2442,7 @@ void tickPitchUi() {
     if (cvPitchFold != lastCvPitchFoldTick) {
         lastCvPitchFoldTick = cvPitchFold;
         drawPitchFoldBox();
-        drawPitchBars();
+        pendingPitchDraw = true;  // drawPitchBars deferred: don't block tick loop
     }
 }
 
@@ -2572,8 +2579,7 @@ void togglePitchChordMode() {
         pitchChordIdx = findBestChordMatch(pitchScale, pitchIntervalMask);
         // scale+mask bleiben unverändert — Chord-Name ist nur Label für aktuellen Zustand
     }
-    drawPitchControls();
-    drawPitchBars();
+    pendingPitchDraw = true;
 }
 
 void movePitchChordIdx(int delta) {
@@ -2582,8 +2588,7 @@ void movePitchChordIdx(int delta) {
     getChordPreset(pitchChordIdx, sc, mask);
     pitchScale = sc; pitchIntervalMask = mask;
     scheduleSaveParams();
-    drawPitchControls();
-    drawPitchBars();
+    pendingPitchDraw = true;
 }
 
 void invertPitchSequence(int dir) {
@@ -2603,7 +2608,7 @@ void invertPitchSequence(int dir) {
         PitchNote1[maxIdx] = (uint8_t)(maxVal - octRaw);
     }
     scheduleSaveParams();
-    drawPitchBars();
+    pendingPitchDraw = true;
 }
 
 void drawPitchScreen() {
@@ -2711,7 +2716,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         pitchFoldMode = (pitchFoldMode + 1) % 13;
         scheduleSaveParams();
         drawPitchFoldBox();
-        drawPitchBars();
+        pendingPitchDraw = true;
         return;
     }
     if (tipPos == UL) {
@@ -2740,7 +2745,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         pitchRotate = !pitchRotate;
         scheduleSaveParams();
         drawPitchRotateCheckbox();
-        drawPitchBars();
+        pendingPitchDraw = true;
         return;
     }
 
@@ -2748,7 +2753,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     if (hitBox(mapX, mapY, PITCH_DP_BX, PITCH_DP_BY, PITCH_DP_BS, PITCH_DP_BS, 8)) {
         pitchDisplayMode = !pitchDisplayMode;
         drawPitchDisplayModeCheckbox();
-        drawPitchBars();
+        pendingPitchDraw = true;
         return;
     }
 
@@ -2760,8 +2765,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
             if (toggled != 0) {
                 pitchIntervalMask = toggled;
                 scheduleSaveParams();
-                drawPitchControls();
-                drawPitchBars();
+                pendingPitchDraw = true;
             }
             return;
         }
@@ -2774,8 +2778,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         } else {
             pitchScale = (uint8_t)((pitchScale + 1) % (uint8_t)SCALE_COUNT);
             scheduleSaveParams();
-            drawPitchControls();
-            drawPitchBars();
+            pendingPitchDraw = true;
         }
         return;
     }
@@ -2784,8 +2787,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     if (hitBox(mapX, mapY, 102, PITCH_CTRL_Y, 58, PITCH_CTRL_H, 3)) {
         pitchRoot = (uint8_t)((pitchRoot + 1) % 12);
         scheduleSaveParams();
-        drawPitchControls();
-        drawPitchBars();
+        pendingPitchDraw = true;
         return;
     }
 
@@ -2801,8 +2803,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
             }
         }
         scheduleSaveParams();
-        drawPitchControls();
-        drawPitchBars();
+        pendingPitchDraw = true;
         return;
     }
 
@@ -2810,8 +2811,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     if (hitBox(mapX, mapY, 252, PITCH_CTRL_Y, 68, PITCH_CTRL_H, 3)) {
         pitchShift = (int8_t)(pitchShift >= 3 ? -3 : pitchShift + 1);
         scheduleSaveParams();
-        drawPitchControls();
-        drawPitchBars();
+        pendingPitchDraw = true;
         return;
     }
 
@@ -2958,6 +2958,12 @@ void tickCvConfigUi() {
 // navigateToScreen: setzt GUIState und zeichnet den Ziel-Screen komplett neu.
 // ---------------------------------------------------------------------------
 void navigateToScreen(uint16_t target) {
+    // Screen-Wechsel ist ein sicherer Moment für Flash-Write:
+    // fillScreen() + Neuzeichnen dauert 50-100ms sowieso → 4-8ms Flash fällt nicht auf.
+    if (PendingSave) {
+        PendingSave = false;
+        saveParams();
+    }
     GUIState = target;
     switch (target) {
         case EUCLCIRCS:

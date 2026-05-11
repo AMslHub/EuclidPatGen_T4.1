@@ -11,5 +11,5 @@ uint16_t getSlotsUsedMask();
 bool saveParamsSlot(int slot);
 bool deleteParamsSlot(int slot);
 bool requestLoadSlot(int slot);
-bool applyPendingLoadIfReady(unsigned int step);
+bool applyPendingLoadIfReady(unsigned int step, bool forceNow = false);
 int getActiveSlot();

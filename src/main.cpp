@@ -72,6 +72,7 @@ bool SoloSeq[3] = { false, false, false };
 bool PendingSave = false;
 uint32_t PendingSaveAt = 0;
 const uint32_t SAVE_DEBOUNCE_MS = 400;
+int pendingSlotSaveSlot = -1;
 
 // Encoder: ausstehende Circle-Redraws (erst am Pattern-Ende anwenden)
 bool pendingCircleRedraw[3] = { false, false, false };
@@ -119,6 +120,8 @@ bool PendingPerfRefresh = false;
 
 // Deferred full-screen redraw nach Slot-Load (verhindert fillScreen() in der Tick-Schleife)
 bool PendingCircsRedraw = false;
+// Deferred Pitch-Controls+Bars Redraw (verhindert SPI-Block in Encoder-Handler und Tick-Schleife)
+bool pendingPitchDraw = false;
 
 // Performance touch gating
 bool PerfIgnoreUntilRelease = false;
@@ -180,9 +183,11 @@ void clockISR() {
     if (expected > 0) {
       isRestart = (period > expected * 2u);
     } else {
-      isRestart = (period > 500000UL);  // Fallback: >500 ms ohne gueltige Periode
+      isRestart = (period > 2000000UL);  // Fallback: >2 s = echter Stopp (war 500 ms = 120 BPM-Grenze)
     }
-    if (!isRestart && period > 500) {
+    if (isRestart) {
+      measuredPeriodUs = 0;  // Reset: Neukalibrierung ab nächstem Puls
+    } else if (period > 500) {
       measuredPeriodUs = period;
     }
   }
@@ -318,6 +323,13 @@ static void refreshUiForPatternUpdate(int idx){
 // Side Effects: konfiguriert Pins, TFT/Touch, EEPROM-Parameter, Timer und globale States.
 // Assumptions: Wird einmalig nach dem Start aufgerufen; Hardware ist korrekt verdrahtet.
 void setup() {
+  Serial.begin(115200);
+
+  // SD-Init zuerst: SD.begin() kann PLL2-Taktquellen umkonfigurieren und einen
+  // kurzen Stromspike erzeugen. Passiert hier vor tft.begin(), damit das Display
+  // danach in einem sauberen Zustand initialisiert wird.
+  initStorage();
+
   pinMode(GATE_OUT1_PIN, OUTPUT);
   pinMode(GATE_OUT2_PIN, OUTPUT);
   pinMode(GATE_OUT3_PIN, OUTPUT);
@@ -353,7 +365,6 @@ void setup() {
   tft.fillScreen(ILI9341_BLACK);
 
   // Lade persistent gespeicherte Parameter (falls vorhanden)
-  initStorage();
   loadParams();
   applyBpm();
 
@@ -425,9 +436,12 @@ void loop() {
   // ----------- R E S E T  ------------------------------------------
   if (pendingReset) {
     noInterrupts();
-    pendingReset = false;
-    pendingTicks = 0;
+    pendingReset    = false;
+    pendingTicks    = 0;
+    extClockReceived = false;  // Saubere Neukalibrierung ab nächstem Puls
+    measuredPeriodUs = 0;
     interrupts();
+    extClockActive = false;
     cnt     = 0;
     cnthold = 0;
     for (int ch = 0; ch < 3; ch++) {
@@ -592,8 +606,12 @@ void loop() {
     
 
   // ----------- I N T E R V A L L T I M E R  ------------------------------
-  // Wenn sich der Intervalltimer (BPM) gemeldet hat, dann folgendes durchführen 
+  // Wenn sich der Intervalltimer (BPM) gemeldet hat, dann folgendes durchführen
   // GUI-Aktionen hängen vom GUI-Zustand ab
+  // Deferred-Masken: schwere Kreis-Redraws werden nach der Tick-Schleife ausgefuehrt
+  uint8_t deferredRedrawMask = 0;   // bit → drawEucledianCircle (pendingCircleRedraw)
+  uint8_t deferredProbMask   = 0;   // bit → drawEucledianCircleFromPattern (pendingProbRegen)
+  int     deferredOldLen[3]  = {};
   while(consumePendingTick()){
     cnt++;
     lastGlobalTickUs = micros();
@@ -694,9 +712,10 @@ void loop() {
                   if(pendingCircleRedraw[ch]){
                       pendingCircleRedraw[ch] = false;
                       bool lenChanged = (PatLen[ch] != displayedPatLen[ch]);
-                      clearEucledianCircle(Rs[ch], displayedPatLen[ch]);
+                      // Clear+Draw auf nach der Tick-Schleife verschieben (verhindert Tick-Burst)
+                      deferredOldLen[ch] = displayedPatLen[ch];
                       displayedPatLen[ch] = PatLen[ch];
-                      drawEucledianCircle(Rs[ch], PatLen[ch], PatNum[ch], PatRot[ch], PatProb[ch], EPatArr[ch]);
+                      deferredRedrawMask |= (uint8_t)(1u << ch);
                       if(PatProbAuto[ch]) stageProbPatternFromCurrent(ch);
                       else                syncEPatBFromEPat(ch);
                       drawEncParamIndicator(ch);
@@ -708,10 +727,10 @@ void loop() {
                   }
                   if(pendingProbRegen[ch]){
                       pendingProbRegen[ch] = false;
-                      triggerProbAction(ch);
-                      clearEucledianCircle(Rs[ch], displayedPatLen[ch]);
+                      triggerProbAction(ch);  // Muster berechnen (kein SPI), Draw deferred
+                      deferredOldLen[ch] = displayedPatLen[ch];
                       displayedPatLen[ch] = PatLen[ch];
-                      drawEucledianCircleFromPattern(Rs[ch], PatLen[ch], PatRot[ch], EPatArr[ch]);
+                      deferredProbMask |= (uint8_t)(1u << ch);
                       drawEncParamIndicator(ch);
                   }
               }
@@ -721,6 +740,11 @@ void loop() {
           static const uint16_t CH_COLORS[3] = { ILI9341_YELLOW, ILI9341_RED, ILI9341_GREEN };
           for (int ch = 0; ch < 3; ch++) {
               if (!chFired[ch]) continue;
+              // Kanal mit ausstehend em Voll-Redraw ueberspringen; Hold nachfuehren
+              if ((deferredRedrawMask | deferredProbMask) & (uint8_t)(1u << ch)) {
+                  cntChHold[ch] = cntCh[ch];
+                  continue;
+              }
               updateEucledianCircle(Rs[ch], displayedPatLen[ch], PatRot[ch], CH_COLORS[ch], EPatArr[ch], cntChHold[ch], cntCh[ch]);
               cntChHold[ch] = cntCh[ch];
           }
@@ -832,6 +856,56 @@ void loop() {
     }
   }
 
+  // Deferred Kreis-Redraws nach der Tick-Schleife.
+  // clearEucledianCircle + drawEucledianCircle brauchen ~30 ms — ausserhalb der
+  // Tick-Schleife koennen waehrend dieser Zeit neue Ticks akkumulieren und werden
+  // im naechsten loop()-Durchlauf glatt abgearbeitet, statt als Burst.
+  if ((deferredRedrawMask | deferredProbMask) && GUIState == EUCLCIRCS) {
+    const int Rs[3] = { R1, R2, R3 };
+    for (int ch = 0; ch < 3; ch++) {
+      uint32_t t0 = micros();
+      if (deferredRedrawMask & (uint8_t)(1u << ch)) {
+        if (PatLen[ch] != deferredOldLen[ch]) {
+          // Length changed: arc-restore clears old positions, then draws new
+          rebuildPattern(PatLen[ch], PatNum[ch], PatProb[ch], EPatArr[ch]);
+          redrawEucledianCircleLenChange(Rs[ch], deferredOldLen[ch], PatLen[ch], PatRot[ch], EPatArr[ch]);
+        } else {
+          // Same length: only redraw changed dot positions (no full ring drawCircle)
+          int len = PatLen[ch];
+          bool oldPat[32];
+          for (int i = 0; i < len; i++) oldPat[i] = EPatArr[ch][i];
+          rebuildPattern(len, PatNum[ch], PatProb[ch], EPatArr[ch]);
+          for (int i = 0; i < len; i++) {
+            int src = euclidRotatedSrc(i, len, PatRot[ch]);
+            if (EPatArr[ch][src] == oldPat[src]) continue;
+            double ang = 2.0 * M_PI / len * i;
+            int ox = (int)(CX + Rs[ch] * sin(ang) + 0.5);
+            int oy = (int)(CY - Rs[ch] * cos(ang) + 0.5);
+            clearAndRestoreRingArc(Rs[ch], ang, ox, oy);
+            if (EPatArr[ch][src]) tft.fillCircle(ox, oy, r2+2, ILI9341_WHITE);
+            else                  tft.drawCircle(ox, oy, r2, ILI9341_WHITE);
+          }
+        }
+      } else if (deferredProbMask & (uint8_t)(1u << ch)) {
+        // Same-len prob redraw: no redundant outer clear, no full ring drawCircle
+        drawEucledianCircleFromPatternFast(Rs[ch], PatLen[ch], PatRot[ch], EPatArr[ch]);
+      } else {
+        continue;
+      }
+      Serial.printf("deferredRedraw ch%d: %u us\n", ch, micros() - t0);
+    }
+  }
+
+  // Deferred Pitch-Redraw: nach der Tick-Schleife, damit keine Ticks akkumulieren.
+  // Synchrones Rendern (21ms) ist mit schnellem EEPROM-Save wieder unproblematisch.
+  // Playhead wird direkt nach dem Render neu gesetzt → kein visueller "Stopp".
+  if (pendingPitchDraw && GUIState == PITCH1) {
+    pendingPitchDraw = false;
+    drawPitchControls();
+    drawPitchBars();
+    drawPitchPlayhead(cntCh[0]);
+  }
+
   // Sub-Ticks fuer ×N Kanaele (zwischen globalen Ticks, basiert auf micros())
   {
     uint32_t nowUs = micros();
@@ -921,12 +995,65 @@ void loop() {
     }
   }
 
-  // Deferred save (debounce)
-  if(PendingSave){
+  // Deferred save (debounce).
+  // Flash write blocks the main loop; only write when no tick is pending
+  // Flash-Write nur wenn Sequencer gestoppt (bpm==0).
+  // QSPI-Flash (EEPROM und LittleFS) braucht 0.4-150ms → stört den musikalischen Rhythmus.
+  // Parameter sind immer aktuell im RAM; Persistenz folgt beim nächsten sicheren Moment.
+  if(PendingSave && bpm == 0){
     uint32_t nowMs = millis();
     if((int32_t)(nowMs - PendingSaveAt) >= 0){
-      PendingSave = false;
-      saveParams();
+      noInterrupts();
+      uint32_t pt = pendingTicks;
+      interrupts();
+      if(pt == 0){
+        PendingSave = false;
+        saveParams();
+      } else {
+        PendingSaveAt = nowMs + 5;
+      }
+    }
+  }
+
+  // Deferred Slot-Save: LittleFS-Write vom Encoder-Handler in den Main-Loop verlagert.
+  // Kein bpm==0-Guard: Nutzer hat explizit gespeichert → im nächsten tick-freien Moment ausführen.
+  // Ticks, die während des LittleFS-Writes akkumulieren (ISR wird intern wieder freigegeben),
+  // werden danach verworfen, damit kein Gate-Burst folgt.
+  if (pendingSlotSaveSlot >= 0) {
+    noInterrupts();
+    uint32_t pt = pendingTicks;
+    interrupts();
+    if (pt == 0) {
+      int slot = pendingSlotSaveSlot;
+      pendingSlotSaveSlot = -1;
+      saveParamsSlot(slot);
+      noInterrupts();
+      pendingTicks = 0;
+      interrupts();
+    }
+  }
+
+  // Sofort-Load wenn Sequencer gestoppt: applyPendingLoadIfReady läuft sonst nur in der
+  // Tick-Schleife, die bei bpm==0 nie ausgeführt wird.
+  if (bpm == 0 && applyPendingLoadIfReady(0, true)) {
+    syncEPatBFromEPat(0);
+    syncEPatBFromEPat(1);
+    syncEPatBFromEPat(2);
+    for(int i=0;i<3;i++){
+      if(ProbEuclidRebuild[i] || PatProbAuto[i]){
+        stageProbPatternFromCurrent(i);
+      }
+    }
+    applyBpm();
+    PendingCircsRedraw = true;
+    PendingPerfRefresh = true;
+    cnt = 0;
+    cnthold = 0;
+    for (int ch = 0; ch < 3; ch++) {
+      cntCh[ch]          = 0;
+      cntChHold[ch]      = 0;
+      chDivPhase[ch]     = 0;
+      chSubTicksDone[ch] = 0;
     }
   }
 

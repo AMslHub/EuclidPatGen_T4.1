@@ -98,6 +98,7 @@ extern bool SoloSeq[3];
 extern bool PendingSave;
 extern uint32_t PendingSaveAt;
 extern const uint32_t SAVE_DEBOUNCE_MS;
+extern int pendingSlotSaveSlot;  // >=0: Slot-Save aufgeschoben (Encoder setzt, Main-Loop schreibt)
 
 extern uint32_t DurationOfOneStep;
 extern uint16_t bpm;
@@ -112,6 +113,8 @@ extern bool pendingProbRegen[3];
 extern int displayedPatLen[3];
 // Ausstehender Vollbild-Redraw nach Slot-Load
 extern bool PendingCircsRedraw;
+// Ausstehender Pitch-Screen-Redraw (controls + bars); erst nach Tick-Schleife
+extern bool pendingPitchDraw;
 
 // Per-Kanal Geschwindigkeit: -3=÷4, -2=÷3, -1=÷2, 0=×1, 1=×2, 2=×3, 3=×4
 extern int chSpeedIdx[3];

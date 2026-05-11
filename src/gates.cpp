@@ -183,7 +183,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                 int totalShift = (int)pitchShift + (int)cvPitchShiftOffset + (int)OctaveNote1[octSrc];
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);
-                midi = clampVal(midi + totalShift * 12, 36, 127);
+                midi = clampVal(midi + totalShift * 12 + (int)cvPitchTransposeST, 36, 127);
                 lastPitchDac = midiToDac(midi);
                 pitchDac = lastPitchDac;
             }
