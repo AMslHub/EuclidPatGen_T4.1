@@ -696,13 +696,17 @@ void drawPerformanceScreen(){
   rhythmBrowseActive = false;
   drawRhythmPresetWindow();
 
-  // CV-Config-Button (fill-styled, links buendig mit EXTCLK_X)
+  // CV-Config-Button und G.Config-Button (nebeneinander, y=50)
   tft.setFont(Arial_12);
   tft.fillRect(EXTCLK_X + 1, 51, 70, 22, 0x4208);
   tft.drawRect(EXTCLK_X, 50, 72, 24, ILI9341_DARKGREY);
   tft.setTextColor(ILI9341_WHITE);
   tft.setCursor(EXTCLK_X + 7, 58);
   tft.print("CV Cfg");
+  tft.fillRect(249, 51, 68, 22, 0x4208);
+  tft.drawRect(248, 50, 70, 24, ILI9341_DARKGREY);
+  tft.setCursor(255, 58);
+  tft.print("global");
 
   // Ext-Clock-Checkbox (rechte Seite, ueber Save/Del)
   drawExtClockCheckbox();
@@ -733,8 +737,12 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
   updatePerfButtonFlash();
   // CV-Config-Button (x=EXTCLK_X, y=50, w=72, h=24) — vor UL-Prüfung
   if (hitBox(mapX, mapY, EXTCLK_X, 50, 72, 24, 5)) {
-      GUIState = CV_CONFIG;
-      drawCvConfigScreen();
+      navigateToScreen(CV_CONFIG);
+      return true;
+  }
+  // G.Config-Button (x=248, y=50, w=70, h=24)
+  if (hitBox(mapX, mapY, 248, 50, 70, 24, 5)) {
+      navigateToScreen(GCONFIG);
       return true;
   }
   if(tipPos == UL){
@@ -2240,19 +2248,23 @@ static void drawPitchBar(int idx) {
         // Raw PitchNote1[] value as proportional bar height for drawing
         int fillH = (int)((PitchNote1[src] * (long)PITCH_BAR_H) / 255L);
         if (fillH > 0) {
-            uint16_t col = hit ? (isCursor ? ILI9341_YELLOW : ILI9341_WHITE)
-                               : (isCursor ? 0x8400         : 0x4208);
+            int midiQ = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
+                                       pitchRoot, pitchIntervalMask);
+            bool isRoot = ((midiQ % 12) == (int)pitchRoot);
+            uint16_t col = hit ? (isCursor ? ILI9341_YELLOW : (isRoot ? ILI9341_ORANGE : ILI9341_WHITE))
+                               : (isCursor ? 0x8400          : (isRoot ? 0x6200         : 0x4208));
             tft.fillRect(x, bottom - fillH, w, fillH, col);
         }
     } else {
         int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                    pitchRoot, pitchIntervalMask);
         midi = clampVal(midi + (int)pitchShift * 12, 36, 96);
+        bool isRoot = ((midi % 12) == (int)pitchRoot);
         int noteY = pitchNoteToBarY(midi);
         int fillH = bottom - noteY;
         if (fillH > 0) {
-            uint16_t col = hit ? (isCursor ? ILI9341_YELLOW : ILI9341_WHITE)
-                               : (isCursor ? 0x8400         : 0x4208);
+            uint16_t col = hit ? (isCursor ? ILI9341_YELLOW : (isRoot ? ILI9341_ORANGE : ILI9341_WHITE))
+                               : (isCursor ? 0x8400          : (isRoot ? 0x6200         : 0x4208));
             tft.fillRect(x, noteY, w, fillH, col);
         }
         // Restore octave grid lines that pass through this column.
@@ -2552,11 +2564,13 @@ void togglePitchStepChromatic() {
 bool getPitchChordMode() { return pitchChordMode; }
 
 void flashPitchBars() {
-    tft.fillRect(PITCH_BAR_X, PITCH_BAR_Y, PITCH_BAR_W, PITCH_BAR_H, ILI9341_BLACK);
-    delay(60);
-    tft.fillRect(PITCH_BAR_X, PITCH_BAR_Y, PITCH_BAR_W, PITCH_BAR_H, ILI9341_WHITE);
-    delay(80);
-    drawPitchBars();
+    // Nur den Rahmen der Balkenbox zweimal orange blinken lassen (kein Balken-Flackern)
+    for (int i = 0; i < 2; i++) {
+        tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1, PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_ORANGE);
+        delay(80);
+        tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1, PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_BLACK);
+        delay(60);
+    }
 }
 
 static int findBestChordMatch(uint8_t scaleIdx, uint8_t iMask) {
@@ -2955,12 +2969,166 @@ void tickCvConfigUi() {
 }
 
 // ---------------------------------------------------------------------------
+// Global Config Screen
+// ---------------------------------------------------------------------------
+static const int GC_DECAY_SLD_X  = 15;
+static const int GC_DECAY_SLD_Y  = 70;
+static const int GC_DECAY_SLD_W  = 250;
+static const int GC_DECAY_SLD_H  = 18;
+static const int GC_SONG_SEL_Y   = 155;
+static const int GC_SONG_BTN_Y   = 190;
+static const int GC_SONG_BTN_W   = 90;
+static const int GC_SONG_BTN_H   = 28;
+static int  gcSongNum        = 0;
+static bool gcSongUsedCached = false;  // cached used-bit; read once per navigation/op
+
+static void drawGcDecaySlider() {
+    int fill = (int)((uint32_t)ratchetDecay * GC_DECAY_SLD_W / 255u);
+    tft.fillRect(GC_DECAY_SLD_X, GC_DECAY_SLD_Y,     fill,                   GC_DECAY_SLD_H, ILI9341_CYAN);
+    tft.fillRect(GC_DECAY_SLD_X + fill, GC_DECAY_SLD_Y, GC_DECAY_SLD_W - fill, GC_DECAY_SLD_H, ILI9341_DARKGREY);
+    tft.drawRect(GC_DECAY_SLD_X - 1, GC_DECAY_SLD_Y - 1, GC_DECAY_SLD_W + 2, GC_DECAY_SLD_H + 2, ILI9341_LIGHTGREY);
+    // Percent label right of slider
+    tft.setFont(Arial_12);
+    tft.fillRect(GC_DECAY_SLD_X + GC_DECAY_SLD_W + 5, GC_DECAY_SLD_Y - 2, 44, GC_DECAY_SLD_H + 4, ILI9341_BLACK);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(GC_DECAY_SLD_X + GC_DECAY_SLD_W + 7, GC_DECAY_SLD_Y + 3);
+    tft.printf("%3d%%", (int)((uint32_t)ratchetDecay * 100u / 255u));
+}
+
+// Zeichnet den Song-Selektor; verwendet gcSongUsedCached (kein SD-Zugriff hier).
+static void drawGcSongSelector() {
+    // Song number display box
+    tft.fillRect(120, GC_SONG_SEL_Y, 80, 26, ILI9341_BLACK);
+    tft.drawRect(119, GC_SONG_SEL_Y - 1, 82, 28, ILI9341_DARKGREY);
+    tft.setFont(Arial_16);
+    tft.setTextColor(gcSongUsedCached ? ILI9341_GREEN : ILI9341_LIGHTGREY);
+    tft.setCursor(135, GC_SONG_SEL_Y + 5);
+    tft.printf("%02d", gcSongNum);
+    // Arrows
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.fillRect(90, GC_SONG_SEL_Y, 25, 26, 0x4208);
+    tft.drawRect(89, GC_SONG_SEL_Y - 1, 27, 28, ILI9341_DARKGREY);
+    tft.setCursor(95, GC_SONG_SEL_Y + 5);
+    tft.print("<");
+    tft.fillRect(206, GC_SONG_SEL_Y, 25, 26, 0x4208);
+    tft.drawRect(205, GC_SONG_SEL_Y - 1, 27, 28, ILI9341_DARKGREY);
+    tft.setCursor(210, GC_SONG_SEL_Y + 5);
+    tft.print(">");
+}
+
+// Öffentlich: vom Main-Loop nach Song-Op aufgerufen. Liest einmal von SD, dann
+// kein weiterer SD-Zugriff bis zur nächsten Navigation zum GCONFIG-Screen.
+void refreshGConfigSongSelector() {
+    gcSongUsedCached = getSongUsedBit(gcSongNum);
+    drawGcSongSelector();
+}
+
+static void drawGcSongButtons() {
+    // Save | Load | Del
+    static const char* lbls[3] = { "Save", "Load", "Del" };
+    static const uint16_t bcs[3] = { ILI9341_GREEN, ILI9341_WHITE, ILI9341_RED };
+    int xs[3] = { 10, 115, 220 };
+    for (int i = 0; i < 3; i++) {
+        tft.fillRect(xs[i] + 1, GC_SONG_BTN_Y + 1, GC_SONG_BTN_W - 2, GC_SONG_BTN_H - 2, ILI9341_BLACK);
+        tft.drawRect(xs[i], GC_SONG_BTN_Y, GC_SONG_BTN_W, GC_SONG_BTN_H, bcs[i]);
+        tft.setFont(Arial_16);
+        tft.setTextColor(bcs[i]);
+        int tx = xs[i] + (GC_SONG_BTN_W - (int)strlen(lbls[i]) * 9) / 2;
+        tft.setCursor(tx, GC_SONG_BTN_Y + 7);
+        tft.print(lbls[i]);
+    }
+}
+
+void drawGConfigScreen() {
+    gcSongUsedCached = getSongUsedBit(gcSongNum);  // einmalige SD-Abfrage beim Screen-Aufbau
+    tft.fillScreen(ILI9341_BLACK);
+
+    // Back arrow
+    tft.setFont(AwesomeF100_24);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(10, 15);
+    tft.print((char)18);
+
+    // Title
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(50, 18);
+    tft.print("Global Config");
+
+    // CV Cfg link button
+    tft.setFont(Arial_12);
+    tft.fillRect(221, 11, 88, 22, 0x4208);
+    tft.drawRect(220, 10, 90, 24, ILI9341_DARKGREY);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(227, 18);
+    tft.print("CV Config");
+
+    // Ratchet Decay section
+    tft.setFont(Arial_12);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(15, 52);
+    tft.print("Ratchet Decay:");
+    drawGcDecaySlider();
+
+    // Song Memory section
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(15, 130);
+    tft.print("Song Memory:");
+    drawGcSongSelector();
+    drawGcSongButtons();
+}
+
+void handleGConfig(int mapX, int mapY, uint16_t tipPos) {
+    if (tipPos == UL) {
+        navigateToScreen(PERFORMANCE);
+        return;
+    }
+    // CV Config button (x=220, y=10, w=90, h=24)
+    if (hitBox(mapX, mapY, 220, 10, 90, 24, 5)) {
+        navigateToScreen(CV_CONFIG);
+        return;
+    }
+    // Decay slider (full width touch)
+    if (hitBox(mapX, mapY, GC_DECAY_SLD_X - 1, GC_DECAY_SLD_Y - 8, GC_DECAY_SLD_W + 2, GC_DECAY_SLD_H + 16, 2)) {
+        int v = ((mapX - GC_DECAY_SLD_X) * 255 + GC_DECAY_SLD_W / 2) / GC_DECAY_SLD_W;
+        ratchetDecay = (uint8_t)clampVal(v, 0, 255);
+        drawGcDecaySlider();
+        scheduleSaveParams();
+        return;
+    }
+    // Song selector arrows: used-bit für neuen Song aus SD lesen (nur hier, nicht im Main-Loop)
+    if (hitBox(mapX, mapY, 89, GC_SONG_SEL_Y - 1, 27, 28, 4)) {
+        gcSongNum = (gcSongNum > 0) ? gcSongNum - 1 : 99;
+        gcSongUsedCached = getSongUsedBit(gcSongNum);  // SD-Read hier ok: keine Timer-Kritikalität
+        drawGcSongSelector();
+        return;
+    }
+    if (hitBox(mapX, mapY, 205, GC_SONG_SEL_Y - 1, 27, 28, 4)) {
+        gcSongNum = (gcSongNum < 99) ? gcSongNum + 1 : 0;
+        gcSongUsedCached = getSongUsedBit(gcSongNum);
+        drawGcSongSelector();
+        return;
+    }
+    // Song buttons: Save | Load | Del — DEFER zum Main-Loop (SD-Blocking!)
+    int xs[3] = { 10, 115, 220 };
+    for (int i = 0; i < 3; i++) {
+        if (hitBox(mapX, mapY, xs[i], GC_SONG_BTN_Y, GC_SONG_BTN_W, GC_SONG_BTN_H, 4)) {
+            pendingSongOp  = i + 1;  // 1=save, 2=load, 3=delete
+            pendingSongNum = gcSongNum;
+            return;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // navigateToScreen: setzt GUIState und zeichnet den Ziel-Screen komplett neu.
 // ---------------------------------------------------------------------------
 void navigateToScreen(uint16_t target) {
     // Screen-Wechsel ist ein sicherer Moment für Flash-Write:
     // fillScreen() + Neuzeichnen dauert 50-100ms sowieso → 4-8ms Flash fällt nicht auf.
-    if (PendingSave) {
+    if (PendingSave && bpm == 0) {
         PendingSave = false;
         saveParams();
     }
@@ -2980,6 +3148,7 @@ void navigateToScreen(uint16_t target) {
         case PERFORMANCE:  drawPerformanceScreen(); break;
         case PITCH1:       drawPitchScreen();        break;
         case CV_CONFIG:    drawCvConfigScreen();     break;
+        case GCONFIG:      drawGConfigScreen();      break;
         case EUCLPARAM1:   redrawParamFromPattern(0); break;
         case EUCLPARAM2:   redrawParamFromPattern(1); break;
         case EUCLPARAM3:   redrawParamFromPattern(2); break;
@@ -2994,6 +3163,7 @@ void navigateToScreen(uint16_t target) {
         case XY3:          drawXYPadScreen(2);       break;
         default: break;
     }
+    noInterrupts(); pendingTicks = 0; interrupts();
 }
 
 // ---------------------------------------------------------------------------

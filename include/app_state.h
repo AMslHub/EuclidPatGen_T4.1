@@ -24,6 +24,7 @@ enum {
   XY3,
   PITCH1,
   CV_CONFIG,
+  GCONFIG,
   NAV
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
@@ -99,6 +100,8 @@ extern bool PendingSave;
 extern uint32_t PendingSaveAt;
 extern const uint32_t SAVE_DEBOUNCE_MS;
 extern int pendingSlotSaveSlot;  // >=0: Slot-Save aufgeschoben (Encoder setzt, Main-Loop schreibt)
+extern int pendingSongOp;        // 0=none,1=save,2=load,3=delete; Main-Loop führt aus
+extern int pendingSongNum;       // Song-Nummer für pendingSongOp
 
 extern uint32_t DurationOfOneStep;
 extern uint16_t bpm;
@@ -134,6 +137,9 @@ extern int8_t  pitchShift;        // Oktavtransposition: -3..+3
 extern bool    pitchHold;         // true: Pitch-CV nur bei Hit aktualisieren
 extern bool    pitchRotate;       // true: Pitch-Pattern relativ zur Rotation
 extern uint8_t pitchFoldMode;    // 0=off, 1=Spiegel½, 2=Repeat½, 3=Spiegel¼, 4=Repeat¼
+
+// Globale Ratchet-Dämpfung: 0=flat, 255=max Decay (letzter Hit leise)
+extern uint8_t ratchetDecay;
 
 // Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)
 extern volatile bool extClockMode;

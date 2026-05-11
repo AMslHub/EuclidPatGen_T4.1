@@ -73,6 +73,8 @@ bool PendingSave = false;
 uint32_t PendingSaveAt = 0;
 const uint32_t SAVE_DEBOUNCE_MS = 400;
 int pendingSlotSaveSlot = -1;
+int pendingSongOp  = 0;
+int pendingSongNum = -1;
 
 // Encoder: ausstehende Circle-Redraws (erst am Pattern-Ende anwenden)
 bool pendingCircleRedraw[3] = { false, false, false };
@@ -151,6 +153,9 @@ unsigned int cnt     = 0;          // Zähler, nur im Main-Loop geschrieben
 volatile uint32_t pendingTicks = 0; // ISR-shared
 
 IntervalTimer myTimer;  // Interval-Timer Objekt
+
+// Globale Ratchet-Dämpfung: 0=flat, 255=max Decay
+uint8_t ratchetDecay = 0;
 
 // Clock-Modus: false=intern, true=extern (gespeichert im EEPROM)
 volatile bool extClockMode = false;
@@ -324,6 +329,10 @@ static void refreshUiForPatternUpdate(int idx){
 // Assumptions: Wird einmalig nach dem Start aufgerufen; Hardware ist korrekt verdrahtet.
 void setup() {
   Serial.begin(115200);
+  if (CrashReport) {
+    delay(2000);
+    Serial.print(CrashReport);
+  }
 
   // SD-Init zuerst: SD.begin() kann PLL2-Taktquellen umkonfigurieren und einen
   // kurzen Stromspike erzeugen. Passiert hier vor tft.begin(), damit das Display
@@ -347,7 +356,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
 
-  tft.begin(60000000); // SPI Speed 60 MHz
+  tft.begin(40000000); // SPI Speed 40 MHz (60 MHz führte zu DMA-Instabilität)
   tft.fillScreen(ILI9341_BLACK);
   tft.setRotation(3); // Screen rotation
 
@@ -562,6 +571,9 @@ void loop() {
                 break;
             case CV_CONFIG:
                 handleCvConfig(mapX, mapY, tipPos);
+                break;
+            case GCONFIG:
+                handleGConfig(mapX, mapY, tipPos);
                 break;
             case NAV:
                 handleNav(mapX, mapY);
@@ -863,7 +875,6 @@ void loop() {
   if ((deferredRedrawMask | deferredProbMask) && GUIState == EUCLCIRCS) {
     const int Rs[3] = { R1, R2, R3 };
     for (int ch = 0; ch < 3; ch++) {
-      uint32_t t0 = micros();
       if (deferredRedrawMask & (uint8_t)(1u << ch)) {
         if (PatLen[ch] != deferredOldLen[ch]) {
           // Length changed: arc-restore clears old positions, then draws new
@@ -892,7 +903,6 @@ void loop() {
       } else {
         continue;
       }
-      Serial.printf("deferredRedraw ch%d: %u us\n", ch, micros() - t0);
     }
   }
 
@@ -1033,6 +1043,20 @@ void loop() {
     }
   }
 
+  // Deferred Song-Op: Song-Save/Load/Delete in den Main-Loop verlagert (SD-Blocking).
+  // Ticks die während der Operation akkumulieren werden danach verworfen.
+  if (pendingSongOp > 0) {
+    int op  = pendingSongOp;
+    int num = pendingSongNum;
+    pendingSongOp  = 0;
+    pendingSongNum = -1;
+    if      (op == 1) saveSong(num);
+    else if (op == 2) loadSong(num);
+    else if (op == 3) deleteSong(num);
+    noInterrupts(); pendingTicks = 0; interrupts();
+    if (GUIState == GCONFIG) refreshGConfigSongSelector();
+  }
+
   // Sofort-Load wenn Sequencer gestoppt: applyPendingLoadIfReady läuft sonst nur in der
   // Tick-Schleife, die bei bpm==0 nie ausgeführt wird.
   if (bpm == 0 && applyPendingLoadIfReady(0, true)) {
@@ -1092,5 +1116,7 @@ void loop() {
     }
     PendingPerfRefresh = false;
   }
-    
+
+  // USB-Stack bedienen + WDOG3 kicken (verhindert Watchdog-Reset bei langem loop())
+  yield();
 }

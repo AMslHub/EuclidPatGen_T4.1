@@ -8,16 +8,23 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB43;
+static const uint16_t EEPROM_MAGIC   = 0xEB44;  // bumped: +ratchetDecay
 static const uint16_t SD_MAGIC_SLOTS = 0xEB5F;
+static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
 static bool sdOK = false;
 
 static const char *SLOTS_HDR_PATH = "slots.hdr";
 static const int   SLOT_COUNT     = 16;
+static const char *SONGS_HDR_PATH = "songs.hdr";
+static const int   SONG_COUNT     = 100;
 
 static void getSlotPath(int slot, char *buf) {
     snprintf(buf, 16, "slot_%02d.bin", slot);
+}
+
+static void getSongPath(int song, char *buf) {
+    snprintf(buf, 16, "song_%02d.bin", song);
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +71,7 @@ struct CurrentParams {
     uint8_t    extClkMode;
     PitchBlock pitch;
     uint8_t    cvTargetMap[3];
+    uint8_t    ratchetDecayVal;
 };
 
 struct SlotParams {
@@ -81,6 +89,11 @@ struct EucParams {
 struct SlotsHeader {
     uint16_t magic;
     uint16_t usedMask;
+};
+
+struct SongsHeader {
+    uint16_t magic;
+    uint8_t  usedBits[13];  // bit i → song i used (100 songs ≤ 104 bits)
 };
 
 static int  pendingSlot = -1;
@@ -181,6 +194,7 @@ static void packCurrent(CurrentParams &p) {
     p.extClkMode = extClockMode ? 1 : 0;
     packPitch(p.pitch);
     for (int i = 0; i < 3; i++) p.cvTargetMap[i] = cvTargetMap[i];
+    p.ratchetDecayVal = ratchetDecay;
 }
 
 static void unpackCurrent(const CurrentParams &p) {
@@ -200,6 +214,7 @@ static void unpackCurrent(const CurrentParams &p) {
     unpackPitch(p.pitch);
     for (int i = 0; i < 3; i++)
         cvTargetMap[i] = (p.cvTargetMap[i] < CV_TARGET_COUNT) ? p.cvTargetMap[i] : CV_TARGET_NONE;
+    ratchetDecay = p.ratchetDecayVal;
 }
 
 static void packSlot(SlotParams &p) {
@@ -252,6 +267,30 @@ static void writeSlotsHeader(const SlotsHeader &h) {
     if (f) { f.write((uint8_t*)&h, sizeof(h)); f.close(); }
 }
 
+static SongsHeader readSongsHeader() {
+    SongsHeader h;
+    h.magic = SD_MAGIC_SONG;
+    memset(h.usedBits, 0, sizeof(h.usedBits));
+    if (!sdOK) return h;
+    File f = SD.open(SONGS_HDR_PATH);
+    if (f) {
+        if (f.size() == sizeof(h)) f.read((uint8_t*)&h, sizeof(h));
+        f.close();
+        if (h.magic != SD_MAGIC_SONG) {
+            h.magic = SD_MAGIC_SONG;
+            memset(h.usedBits, 0, sizeof(h.usedBits));
+        }
+    }
+    return h;
+}
+
+static void writeSongsHeader(const SongsHeader &h) {
+    if (!sdOK) return;
+    SD.remove(SONGS_HDR_PATH);
+    File f = SD.open(SONGS_HDR_PATH, FILE_WRITE);
+    if (f) { f.write((uint8_t*)&h, sizeof(h)); f.close(); }
+}
+
 // ---------------------------------------------------------------------------
 // Öffentliche API
 // ---------------------------------------------------------------------------
@@ -278,6 +317,7 @@ void loadParams() {
     }
     // Fallback: Defaultwerte
     bpm               = 120;
+    ratchetDecay      = 0;
     extClockMode      = false;
     pitchSpread       = 2;
     pitchScale        = 0;
@@ -380,4 +420,97 @@ bool applyPendingLoadIfReady(unsigned int step, bool forceNow) {
 
 int getActiveSlot() {
     return activeSlot;
+}
+
+// ---------------------------------------------------------------------------
+// Song-Speicher (100 Songs × 16 Slots)
+// ---------------------------------------------------------------------------
+
+bool saveSong(int songNum) {
+    if (songNum < 0 || songNum >= SONG_COUNT) return false;
+    if (!sdOK) return false;
+
+    SlotsHeader sh = readSlotsHeader();
+    char path[16];
+    getSongPath(songNum, path);
+    SD.remove(path);
+    File f = SD.open(path, FILE_WRITE);
+    if (!f) return false;
+
+    // 4-byte header: magic + usedSlotMask
+    uint16_t hdr[2] = { SD_MAGIC_SONG, sh.usedMask };
+    f.write((uint8_t*)hdr, sizeof(hdr));
+
+    // 16 SlotParams, read from each slot_XX.bin if it exists
+    for (int i = 0; i < SLOT_COUNT; i++) {
+        SlotParams p;
+        memset(&p, 0, sizeof(p));
+        if (sh.usedMask & (uint16_t)(1u << i)) {
+            char sp[16];
+            getSlotPath(i, sp);
+            File sf = SD.open(sp);
+            if (sf) {
+                if (sf.size() == sizeof(p)) sf.read((uint8_t*)&p, sizeof(p));
+                sf.close();
+            }
+        }
+        f.write((uint8_t*)&p, sizeof(p));
+    }
+    f.close();
+
+    SongsHeader sh2 = readSongsHeader();
+    sh2.usedBits[songNum / 8] = (uint8_t)(sh2.usedBits[songNum / 8] | (1u << (songNum % 8)));
+    writeSongsHeader(sh2);
+    return true;
+}
+
+bool loadSong(int songNum) {
+    if (songNum < 0 || songNum >= SONG_COUNT) return false;
+    if (!sdOK) return false;
+
+    char path[16];
+    getSongPath(songNum, path);
+    File f = SD.open(path);
+    if (!f) return false;
+
+    uint16_t hdr[2];
+    if (f.size() < sizeof(hdr)) { f.close(); return false; }
+    f.read((uint8_t*)hdr, sizeof(hdr));
+    if (hdr[0] != SD_MAGIC_SONG) { f.close(); return false; }
+    uint16_t mask = hdr[1];
+
+    for (int i = 0; i < SLOT_COUNT; i++) {
+        SlotParams p;
+        f.read((uint8_t*)&p, sizeof(p));
+        char sp[16];
+        getSlotPath(i, sp);
+        SD.remove(sp);
+        if (mask & (uint16_t)(1u << i)) {
+            File sf = SD.open(sp, FILE_WRITE);
+            if (sf) { sf.write((uint8_t*)&p, sizeof(p)); sf.close(); }
+        }
+    }
+    f.close();
+
+    SlotsHeader sh = { SD_MAGIC_SLOTS, mask };
+    writeSlotsHeader(sh);
+    activeSlot = -1;
+    return true;
+}
+
+bool deleteSong(int songNum) {
+    if (songNum < 0 || songNum >= SONG_COUNT) return false;
+    char path[16];
+    getSongPath(songNum, path);
+    if (sdOK) SD.remove(path);
+    SongsHeader h = readSongsHeader();
+    h.usedBits[songNum / 8] = (uint8_t)(h.usedBits[songNum / 8] & ~(1u << (songNum % 8)));
+    writeSongsHeader(h);
+    return true;
+}
+
+bool getSongUsedBit(int songNum) {
+    if (songNum < 0 || songNum >= SONG_COUNT) return false;
+    SongsHeader h = readSongsHeader();
+    return (h.usedBits[songNum / 8] & (1u << (songNum % 8))) != 0;
 }

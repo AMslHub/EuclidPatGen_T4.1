@@ -13,3 +13,8 @@ bool deleteParamsSlot(int slot);
 bool requestLoadSlot(int slot);
 bool applyPendingLoadIfReady(unsigned int step, bool forceNow = false);
 int getActiveSlot();
+
+bool saveSong(int songNum);
+bool loadSong(int songNum);
+bool deleteSong(int songNum);
+bool getSongUsedBit(int songNum);

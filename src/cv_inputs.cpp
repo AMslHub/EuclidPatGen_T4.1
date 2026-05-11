@@ -22,8 +22,8 @@ static uint16_t cvValueModRaw[3]   = {0, 0, 0};
 
 // Slot-Sel Hysterese: letzter bestätigter Slot (-1 = noch nicht initialisiert)
 static int8_t   cvSlotSelHyst      = -1;
-static const int CV_SLOT_ZONE      = 4096 / 7;   // ~585 ADC-Schritte pro Slot
-static const int CV_SLOT_HYST      = 40;          // Hysterese in ADC-Schritten
+static const int CV_SLOT_ZONE      = 4096 / 16;  // ~256 ADC-Schritte pro Slot (0-15)
+static const int CV_SLOT_HYST      = 20;          // Hysterese in ADC-Schritten
 
 static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 
@@ -104,7 +104,7 @@ void applyCvTargets() {
             case CV_TARGET_SLOT_SEL: {
                 // 0-4095 → Slot 0-6, Schmitt-Trigger-Hysterese gegen Zittern
                 int rawSlot = (int)cv / CV_SLOT_ZONE;
-                if (rawSlot > 6) rawSlot = 6;
+                if (rawSlot > 15) rawSlot = 15;
                 if (cvSlotSelHyst < 0) {
                     cvSlotSelHyst = (int8_t)rawSlot;
                 } else if (rawSlot > cvSlotSelHyst) {
@@ -150,7 +150,14 @@ void applyCvTargets() {
 //   ratchetIdx  = Position im Burst (0 = erster Hit)
 //   ratchetTotal = Gesamtzahl der Hits im Burst
 float getValueModFactor(int ch, int ratchetIdx, int ratchetTotal) {
-    if (ch < 0 || ch > 2 || cvValueModCvIdx[ch] < 0 || ratchetTotal <= 1) return 1.0f;
+    if (ch < 0 || ch > 2 || ratchetTotal <= 1) return 1.0f;
+    if (cvValueModCvIdx[ch] < 0) {
+        // No CV mapped: apply global ratchet decay (0=flat, 255=max decay)
+        if (ratchetDecay == 0) return 1.0f;
+        float s = ratchetDecay / 255.0f;
+        float t = (float)ratchetIdx / (float)(ratchetTotal - 1);
+        return 1.0f - s * t;
+    }
     float cvNorm = cvValueModRaw[ch] / 4095.0f;
     float t = (float)ratchetIdx / (float)(ratchetTotal - 1);  // 0..1
     float s = fabsf(cvNorm - 0.5f) * 2.0f;  // 0..1 (Stärke)

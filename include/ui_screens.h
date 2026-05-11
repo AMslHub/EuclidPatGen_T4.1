@@ -92,6 +92,9 @@ void loadPitchPreset(int idx);
 void drawCvConfigScreen();
 void handleCvConfig(int mapX, int mapY, uint16_t tipPos);
 void tickCvConfigUi();
+void drawGConfigScreen();
+void handleGConfig(int mapX, int mapY, uint16_t tipPos);
+void refreshGConfigSongSelector();  // Main-Loop ruft nach Song-Op auf
 void showSaveToast(int slot);  // slot=-1: "Slots voll"-Meldung
 bool tickSaveToast();          // gibt true zurück wenn Toast gerade abgelaufen (→ Screen neu zeichnen)
 void drawNavScreen(uint16_t fromState);  // Navigation-Übersicht, fromState = vorheriger Screen
