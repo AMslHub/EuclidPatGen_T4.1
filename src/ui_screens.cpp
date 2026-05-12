@@ -129,7 +129,7 @@ static const int RHY_W = 140;
 static const int RHY_H = 26;
 
 static const int EXTCLK_X   = 170;
-static const int EXTCLK_Y   = 100;
+static const int EXTCLK_Y   = 115;
 static const int EXTCLK_BOX = 14;
 
 static void drawRhythmPresetWindow() {
@@ -753,8 +753,13 @@ void drawPerformanceScreen(){
   tft.drawRect(248, 50, 70, 24, ILI9341_DARKGREY);
   tft.setCursor(255, 58);
   tft.print("global");
+  // Song-Button (unter CV Cfg und global, gleiche Breite zusammen)
+  tft.fillRect(171, 79, 146, 22, songPlaying ? 0x03E0u : 0x4208u);
+  tft.drawRect(170, 78, 148, 24, songPlaying ? ILI9341_GREEN : ILI9341_DARKGREY);
+  tft.setCursor(225, 86);
+  tft.print("Song");
 
-  // Ext-Clock-Checkbox (rechte Seite, ueber Save/Del)
+  // Ext-Clock-Checkbox (rechte Seite, unter Song-Button)
   drawExtClockCheckbox();
 
   // Sequencer-Labels und Mute/Solo-Boxen
@@ -789,6 +794,12 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
   // G.Config-Button (x=248, y=50, w=70, h=24)
   if (hitBox(mapX, mapY, 248, 50, 70, 24, 5)) {
       navigateToScreen(GCONFIG);
+      return true;
+  }
+  // Song-Button (x=170, y=78, w=148, h=24)
+  if (hitBox(mapX, mapY, 170, 78, 148, 24, 5)) {
+      if (getPerfPickActive()) cancelPerfPick();
+      navigateToScreen(SONG);
       return true;
   }
   if(tipPos == UL){
@@ -3187,6 +3198,184 @@ void handleGConfig(int mapX, int mapY, uint16_t tipPos) {
 }
 
 // ---------------------------------------------------------------------------
+// Song Screen
+// ---------------------------------------------------------------------------
+static const int SONG_KEY_W   = 80;
+static const int SONG_KEY_H   = 34;
+static const int SONG_KEY_Y0  = 72;
+static const int SONG_KEY_GAP = 2;
+static const int SONG_SEQ_Y   = 40;
+static const int SONG_SEQ_H   = 28;
+static const int SONG_BTN_Y   = SONG_KEY_Y0 + 4 * (SONG_KEY_H + SONG_KEY_GAP);  // 216
+static const int SONG_BTN_H   = 24;
+static uint16_t songUsedMask  = 0;  // Cache: belegte Slots (beim Screen-Aufbau gesetzt)
+
+static void drawSongKey(int digit) {
+    int col = digit % 4;
+    int row = digit / 4;
+    int x   = col * SONG_KEY_W;
+    int y   = SONG_KEY_Y0 + row * (SONG_KEY_H + SONG_KEY_GAP);
+    bool used    = (songUsedMask & (uint16_t)(1u << digit)) != 0;
+    bool playing = songPlaying && (songSeq[songLoadedPos] == (uint8_t)digit);
+    uint16_t fill   = playing ? 0x000Fu :   // dunkelblau: aktiv
+                      used    ? 0x2104u :   // dunkelgrau: belegt
+                                0x0821u;    // fast schwarz: leer
+    uint16_t border = playing ? ILI9341_CYAN :
+                      used    ? ILI9341_DARKGREY :
+                                0x2104u;
+    uint16_t txtcol = playing ? ILI9341_CYAN :
+                      used    ? ILI9341_WHITE :
+                                0x4208u;    // gedimmt: nicht belegter Slot
+    tft.fillRect(x + 1, y + 1, SONG_KEY_W - 2, SONG_KEY_H - 2, fill);
+    tft.drawRect(x, y, SONG_KEY_W, SONG_KEY_H, border);
+    tft.setFont(Arial_16);
+    tft.setTextColor(txtcol);
+    char buf[2] = { (char)(digit < 10 ? '0' + digit : 'a' + digit - 10), 0 };
+    tft.setCursor(x + 32, y + 9);
+    tft.print(buf);
+}
+
+static void drawSongBottomButtons() {
+    static const struct { const char* lbl; int x; } btns[4] = {
+        { "BS",   0   },
+        { "CLR",  80  },
+        { "PLAY", 160 },
+        { "STOP", 240 },
+    };
+    static const uint16_t BASE_COLS[4] = {
+        ILI9341_YELLOW, ILI9341_RED, ILI9341_GREEN, ILI9341_DARKGREY
+    };
+    for (int i = 0; i < 4; i++) {
+        uint16_t col = BASE_COLS[i];
+        if (i == 2 && songPlaying) col = ILI9341_CYAN;
+        if (i == 3 && songHalted)  col = ILI9341_CYAN;
+        tft.fillRect(btns[i].x + 1, SONG_BTN_Y + 1, 78, SONG_BTN_H - 2, ILI9341_BLACK);
+        tft.drawRect(btns[i].x, SONG_BTN_Y, 80, SONG_BTN_H, col);
+        tft.setFont(Arial_16);
+        tft.setTextColor(col);
+        int tw = (int)strlen(btns[i].lbl) * 9;
+        tft.setCursor(btns[i].x + (80 - tw) / 2, SONG_BTN_Y + 5);
+        tft.print(btns[i].lbl);
+    }
+}
+
+static void drawSongSequence() {
+    tft.fillRect(1, SONG_SEQ_Y + 1, 318, SONG_SEQ_H - 2, ILI9341_BLACK);
+    tft.drawRect(0, SONG_SEQ_Y, 320, SONG_SEQ_H, ILI9341_DARKGREY);
+    // Zeige die letzten bis zu 19 Einträge (je 16px Abstand) + Cursor
+    int visCount = (songLen > 19) ? 19 : (int)songLen;
+    int startIdx = (int)songLen - visCount;
+    tft.setFont(Arial_16);
+    int cx = 6;
+    int cy = SONG_SEQ_Y + 7;
+    for (int i = startIdx; i < (int)songLen; i++) {
+        char c = (songSeq[i] < 10) ? ('0' + songSeq[i]) : ('a' + songSeq[i] - 10);
+        bool cur = songPlaying && ((int)songLoadedPos == i);
+        if (cur) {
+            tft.fillRect(cx - 1, SONG_SEQ_Y + 2, 14, SONG_SEQ_H - 4, 0x000Fu);  // blauer Marker
+        }
+        tft.setTextColor(cur ? ILI9341_CYAN : ILI9341_WHITE);
+        tft.setCursor(cx, cy);
+        tft.print(c);
+        cx += 16;
+    }
+    if (songLen < 64) {
+        tft.setTextColor(ILI9341_DARKGREY);
+        tft.setCursor(cx, cy);
+        tft.print("_");
+    }
+}
+
+void tickSongUi() {
+    drawSongSequence();
+    drawSongBottomButtons();
+    for (int i = 0; i < 16; i++) drawSongKey(i);
+}
+
+void drawSongScreen() {
+    songUsedMask = getSlotsUsedMask();
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setFont(AwesomeF100_24);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(10, 15);
+    tft.print((char)18);
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(50, 18);
+    tft.print("Song Sequencer");
+    drawSongSequence();
+    for (int i = 0; i < 16; i++) drawSongKey(i);
+    drawSongBottomButtons();
+}
+
+void handleSong(int mapX, int mapY, uint16_t tipPos) {
+    if (tipPos == UL) {
+        // Song-Modus beenden: normalen Slot-Spielmodus wiederherstellen
+        songPlaying = false;
+        songHalted  = false;
+        navigateToScreen(PERFORMANCE);
+        return;
+    }
+    // Hex-Tasten 0-f (nur belegte Slots annehmbar; nicht im laufenden Song editieren)
+    if (!songPlaying) {
+        for (int i = 0; i < 16; i++) {
+            if (!(songUsedMask & (uint16_t)(1u << i))) continue;
+            int col = i % 4;
+            int row = i / 4;
+            int x   = col * SONG_KEY_W;
+            int y   = SONG_KEY_Y0 + row * (SONG_KEY_H + SONG_KEY_GAP);
+            if (hitBox(mapX, mapY, x, y, SONG_KEY_W, SONG_KEY_H, 4)) {
+                if (songLen < 64) {
+                    songSeq[songLen++] = (uint8_t)i;
+                    drawSongSequence();
+                    scheduleSaveParams();
+                }
+                return;
+            }
+        }
+        // BS
+        if (hitBox(mapX, mapY, 0, SONG_BTN_Y, 80, SONG_BTN_H, 4)) {
+            if (songLen > 0) {
+                songLen--;
+                drawSongSequence();
+                scheduleSaveParams();
+            }
+            return;
+        }
+        // CLR
+        if (hitBox(mapX, mapY, 80, SONG_BTN_Y, 80, SONG_BTN_H, 4)) {
+            songLen     = 0;
+            songHalted  = false;
+            drawSongSequence();
+            drawSongBottomButtons();
+            scheduleSaveParams();
+            return;
+        }
+    }
+    // PLAY
+    if (hitBox(mapX, mapY, 160, SONG_BTN_Y, 80, SONG_BTN_H, 4)) {
+        if (!songPlaying && songLen > 0) {
+            songHalted    = false;
+            songPlaying   = true;
+            songPos       = 0;
+            songLoadedPos = 0;
+            requestLoadSlot((int)songSeq[0]);
+        }
+        drawSongBottomButtons();
+        drawSongSequence();
+        for (int i = 0; i < 16; i++) drawSongKey(i);
+        return;
+    }
+    // STOP
+    if (hitBox(mapX, mapY, 240, SONG_BTN_Y, 80, SONG_BTN_H, 4)) {
+        if (songPlaying) {
+            pendingSongHalt = true;
+        }
+        return;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // navigateToScreen: setzt GUIState und zeichnet den Ziel-Screen komplett neu.
 // ---------------------------------------------------------------------------
 void navigateToScreen(uint16_t target) {
@@ -3213,6 +3402,7 @@ void navigateToScreen(uint16_t target) {
         case PITCH1:       drawPitchScreen();        break;
         case CV_CONFIG:    drawCvConfigScreen();     break;
         case GCONFIG:      drawGConfigScreen();      break;
+        case SONG:         drawSongScreen();         break;
         case EUCLPARAM1:   redrawParamFromPattern(0); break;
         case EUCLPARAM2:   redrawParamFromPattern(1); break;
         case EUCLPARAM3:   redrawParamFromPattern(2); break;

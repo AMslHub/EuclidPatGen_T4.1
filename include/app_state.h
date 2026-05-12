@@ -25,6 +25,7 @@ enum {
   PITCH1,
   CV_CONFIG,
   GCONFIG,
+  SONG,
   NAV
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
@@ -140,6 +141,15 @@ extern int8_t  pitchShift;        // Oktavtransposition: -3..+3
 extern bool    pitchHold;         // true: Pitch-CV nur bei Hit aktualisieren
 extern bool    pitchRotate;       // true: Pitch-Pattern relativ zur Rotation
 extern uint8_t pitchFoldMode;    // 0=off, 1=Spiegel½, 2=Repeat½, 3=Spiegel¼, 4=Repeat¼
+
+// Song Sequencer
+extern uint8_t songSeq[64];      // Slot-Indices 0-15, max 64 Einträge
+extern uint8_t songLen;          // Anzahl gültiger Einträge (0 = leer)
+extern bool    songPlaying;      // true = Song läuft gerade
+extern bool    songHalted;       // true = Song angehalten (Ticks blockiert, Zähler auf 0)
+extern bool    pendingSongHalt;  // true = STOP-Anforderung (Haupt-Loop führt Zähler-Reset aus)
+extern uint8_t songPos;          // nächste Position zum Laden (Lookahead)
+extern uint8_t songLoadedPos;    // aktuell spielende Position (Anzeige)
 
 // Globale Ratchet-Dämpfung: 0=flat, 255=max Decay (letzter Hit leise)
 extern uint8_t ratchetDecay;

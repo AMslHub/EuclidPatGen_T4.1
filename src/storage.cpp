@@ -8,7 +8,7 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB44;  // bumped: +ratchetDecay
+static const uint16_t EEPROM_MAGIC   = 0xEB45;  // bumped: +songSeq/songLen
 static const uint16_t SD_MAGIC_SLOTS = 0xEB5F;
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
@@ -72,6 +72,8 @@ struct CurrentParams {
     PitchBlock pitch;
     uint8_t    cvTargetMap[3];
     uint8_t    ratchetDecayVal;
+    uint8_t    songSeq[64];
+    uint8_t    songLen;
 };
 
 struct SlotParams {
@@ -195,6 +197,8 @@ static void packCurrent(CurrentParams &p) {
     packPitch(p.pitch);
     for (int i = 0; i < 3; i++) p.cvTargetMap[i] = cvTargetMap[i];
     p.ratchetDecayVal = ratchetDecay;
+    p.songLen = songLen;
+    memcpy(p.songSeq, songSeq, 64);
 }
 
 static void unpackCurrent(const CurrentParams &p) {
@@ -215,6 +219,8 @@ static void unpackCurrent(const CurrentParams &p) {
     for (int i = 0; i < 3; i++)
         cvTargetMap[i] = (p.cvTargetMap[i] < CV_TARGET_COUNT) ? p.cvTargetMap[i] : CV_TARGET_NONE;
     ratchetDecay = p.ratchetDecayVal;
+    songLen = (p.songLen <= 64) ? p.songLen : 0;
+    memcpy(songSeq, p.songSeq, 64);
 }
 
 static void packSlot(SlotParams &p) {
@@ -318,6 +324,7 @@ void loadParams() {
     // Fallback: Defaultwerte
     bpm               = 120;
     ratchetDecay      = 0;
+    songLen           = 0;
     extClockMode      = false;
     pitchSpread       = 2;
     pitchScale        = 0;

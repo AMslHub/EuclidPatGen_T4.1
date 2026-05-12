@@ -109,6 +109,15 @@ static uint8_t  chDivPhase[3]     = { 0, 0, 0 };
 static uint8_t  chSubTicksDone[3] = { 0, 0, 0 };
 static uint32_t lastGlobalTickUs  = 0;
 
+// Song Sequencer
+uint8_t songSeq[64]    = { 0 };
+uint8_t songLen        = 0;
+bool    songPlaying    = false;
+bool    songHalted     = false;
+bool    pendingSongHalt = false;
+uint8_t songPos        = 0;
+uint8_t songLoadedPos  = 0;
+
 // Ratchet: Zusätzliche Sub-Hits innerhalb eines Steps (CV-gesteuert)
 static uint8_t  ratchetRemain[3]   = { 0, 0, 0 };
 static uint8_t  ratchetTotal[3]    = { 1, 1, 1 };  // Gesamtzahl Hits im Burst
@@ -127,6 +136,9 @@ bool PendingPerfRefresh = false;
 bool PendingCircsRedraw = false;
 // Deferred Pitch-Controls+Bars Redraw (verhindert SPI-Block in Encoder-Handler und Tick-Schleife)
 bool pendingPitchDraw = false;
+static bool pendingSongUiUpdate  = false;
+static bool pendingSongSlotLoad  = false;
+static bool pendingSongAutoStop  = false;  // letzter Slot geladen → nach 1 Zyklus anhalten
 
 // Performance touch gating
 bool PerfIgnoreUntilRelease = false;
@@ -579,6 +591,9 @@ void loop() {
             case GCONFIG:
                 handleGConfig(mapX, mapY, tipPos);
                 break;
+            case SONG:
+                handleSong(mapX, mapY, tipPos);
+                break;
             case NAV:
                 handleNav(mapX, mapY);
                 break;
@@ -625,10 +640,12 @@ void loop() {
   // Wenn sich der Intervalltimer (BPM) gemeldet hat, dann folgendes durchführen
   // GUI-Aktionen hängen vom GUI-Zustand ab
   // Deferred-Masken: schwere Kreis-Redraws werden nach der Tick-Schleife ausgefuehrt
-  uint8_t deferredRedrawMask = 0;   // bit → drawEucledianCircle (pendingCircleRedraw)
-  uint8_t deferredProbMask   = 0;   // bit → drawEucledianCircleFromPattern (pendingProbRegen)
+  // Song HALT: akkumulierte Ticks verwerfen, Schleife nicht betreten
+  if (songHalted) { noInterrupts(); pendingTicks = 0; interrupts(); }
+  uint8_t deferredRedrawMask = 0;
+  uint8_t deferredProbMask   = 0;
   int     deferredOldLen[3]  = {};
-  while(consumePendingTick()){
+  while(!songHalted && consumePendingTick()){
     cnt++;
     lastGlobalTickUs = micros();
 
@@ -675,6 +692,19 @@ void loop() {
           chDivPhase[ch]     = 0;
           chSubTicksDone[ch] = 0;
       }
+      // Song-Advance: Slot geladen → nächsten Slot vorbereiten
+      if (songPlaying && songLen > 0) {
+          songLoadedPos = songPos;
+          if (songLoadedPos == (uint8_t)(songLen - 1u)) {
+              // Letzter Eintrag geladen → einen Zyklus ausspielen, dann anhalten
+              songPos = 0;  // für nächsten PLAY-Durchlauf bereit
+              pendingSongAutoStop = true;
+          } else {
+              songPos = (uint8_t)(((unsigned int)songPos + 1u) % (unsigned int)songLen);
+              pendingSongSlotLoad = true;
+          }
+          pendingSongUiUpdate = true;
+      }
     }
 
     // P-Flag: Sequenzgrenze -> vorbereitete Mutation uebernehmen
@@ -705,6 +735,15 @@ void loop() {
             while (newRot > maxRot) newRot -= len;
             PatRot[ch] = newRot;
             refreshUiForPatternUpdate(ch);
+        }
+    }
+
+    // Song Auto-Stop: am Zyklusende des letzten Eintrags anhalten
+    if (pendingSongAutoStop && chFired[0]) {
+        int len0 = clampVal(PatLen[0], 1, 32);
+        if ((cntCh[0] % (unsigned int)len0) == 0) {
+            pendingSongAutoStop = false;
+            pendingSongHalt = true;
         }
     }
 
@@ -918,6 +957,38 @@ void loop() {
     drawPitchControls();
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
+  }
+
+  // Song-Slot-Load: erst nach der Tick-Schleife, um SD-Kaskaden zu verhindern.
+  // Egal wie viele Ticks akkumulieren, es wird immer nur ein requestLoadSlot pro
+  // loop()-Durchlauf ausgeführt.
+  if (pendingSongSlotLoad && songPlaying && songLen > 0) {
+    pendingSongSlotLoad = false;
+    requestLoadSlot((int)songSeq[songPos]);
+  }
+
+  if (pendingSongUiUpdate && GUIState == SONG) {
+    pendingSongUiUpdate = false;
+    tickSongUi();
+  }
+
+  if (pendingSongHalt) {
+    pendingSongHalt     = false;
+    songPlaying         = false;
+    songHalted          = true;
+    songPos             = 0;
+    songLoadedPos       = 0;
+    pendingSongAutoStop = false;
+    pendingSongSlotLoad = false;
+    noInterrupts(); pendingTicks = 0; interrupts();
+    cnt = 0; cnthold = 0;
+    for (int ch = 0; ch < 3; ch++) {
+        cntCh[ch]          = 0;
+        cntChHold[ch]      = 0;
+        chDivPhase[ch]     = 0;
+        chSubTicksDone[ch] = 0;
+    }
+    pendingSongUiUpdate = true;
   }
 
   // Sub-Ticks fuer ×N Kanaele (zwischen globalen Ticks, basiert auf micros())
