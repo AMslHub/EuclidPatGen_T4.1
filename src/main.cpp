@@ -1007,11 +1007,9 @@ void loop() {
   }
 
   // Deferred save (debounce).
-  // Flash write blocks the main loop; only write when no tick is pending
-  // Flash-Write nur wenn Sequencer gestoppt (bpm==0).
-  // QSPI-Flash (EEPROM und LittleFS) braucht 0.4-150ms → stört den musikalischen Rhythmus.
-  // Parameter sind immer aktuell im RAM; Persistenz folgt beim nächsten sicheren Moment.
-  if(PendingSave && bpm == 0){
+  // Schreibt nur wenn kein Tick aussteht (pt==0); akkumulierte Ticks danach verwerfen.
+  // EEPROM.put() schreibt nur geänderte Bytes → typisch <5ms für einzelne Parameteränderung.
+  if(PendingSave){
     uint32_t nowMs = millis();
     if((int32_t)(nowMs - PendingSaveAt) >= 0){
       noInterrupts();
@@ -1020,6 +1018,7 @@ void loop() {
       if(pt == 0){
         PendingSave = false;
         saveParams();
+        noInterrupts(); pendingTicks = 0; interrupts();
       } else {
         PendingSaveAt = nowMs + 5;
       }

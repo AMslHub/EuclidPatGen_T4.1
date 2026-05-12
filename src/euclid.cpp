@@ -102,13 +102,12 @@ void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, boo
     int ox = (int)(CX + R * sin(angleOld) + 0.5);
     int oy = (int)(CY - R * cos(angleOld) + 0.5);
 
-    // Erase old playhead dot (overwrites ring pixels locally)
+    // Erase old playhead dot
     tft.fillCircle(ox, oy, r3+1, ILI9341_BLACK);
 
-    // Restore only the affected ring arc instead of the full drawCircle.
-    // The erased area has radius (r3+1), so we redraw ring pixels within (r3+2).
+    // Restore the ring arc in the erased zone
     {
-        double step = 1.0 / R;  // ~1 pixel per arc step
+        double step = 1.0 / R;
         int kmax = r3 + 3;
         int lim2 = (r3+2) * (r3+2);
         for (int k = -kmax; k <= kmax; k++) {
@@ -122,17 +121,29 @@ void updateEucledianCircle(const int R, int len, int PatRot, uint16_t color, boo
         }
     }
 
-    // Redraw old position's pattern dot (at ox,oy — same point as angleOld)
-    int src = euclidRotatedSrc(idx, len, PatRot);
-    if(pattern[src]==false){
-      tft.drawCircle(ox, oy, r2, ILI9341_WHITE);
-    }else{
-      tft.fillCircle(ox, oy, r2+2, ILI9341_WHITE);
+    // Redraw every dot whose center fell within the erase zone.
+    // This covers the old position AND adjacent dots (important at high step counts
+    // on small circles where dot spacing < erase diameter).
+    {
+        int eraseLim2 = (r3+1) * (r3+1);
+        for (int i = 0; i < len; i++) {
+            double a = 2.0 * M_PI / len * i;
+            int px = (int)(CX + R * sin(a) + 0.5);
+            int py = (int)(CY - R * cos(a) + 0.5);
+            int dx = px - ox, dy = py - oy;
+            if (dx*dx + dy*dy > eraseLim2) continue;
+            int src = euclidRotatedSrc(i, len, PatRot);
+            if (pattern[src]) tft.fillCircle(px, py, r2+2, ILI9341_WHITE);
+            else              tft.drawCircle(px, py, r2,   ILI9341_WHITE);
+        }
     }
 
-    // Draw new playhead dot
+    // Draw new playhead dot (rounded coordinates — consistent with erase logic above)
     int idx2 = curStep % len;
-    tft.fillCircle(CX+R*sin(2*M_PI/len*idx2), CY-R*cos(2*M_PI/len*idx2), r3, color);
+    double angleNew = 2.0 * M_PI / len * idx2;
+    int nx = (int)(CX + R * sin(angleNew) + 0.5);
+    int ny = (int)(CY - R * cos(angleNew) + 0.5);
+    tft.fillCircle(nx, ny, r3, color);
 }
 
 // Zweck: Berechnet ein Euclid-Pattern und zeichnet den Kreis samt Hits.
@@ -290,17 +301,16 @@ void redrawEucledianCircleLenChange(const int R, int oldLen, int newLen, int Pat
 }
 
 void drawEucledianCircle(const int R, int len, int PatNum, int PatRot, int PatProb, bool *pattern){
-    // Berechne Eucledian-Pattern aus Parametern
     rebuildPattern(len, PatNum, PatProb, pattern);
-
-    // Zeichne Großkreis und Unterteilungspunkte
     tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY);
     for(int i=0; i<len; i++){
       int src = euclidRotatedSrc(i, len, PatRot);
+      int px = (int)(CX + R*sin(2*M_PI/len*i) + 0.5);
+      int py = (int)(CY - R*cos(2*M_PI/len*i) + 0.5);
       if(pattern[src]==false){
-        tft.drawCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2, ILI9341_WHITE);
+        tft.drawCircle(px, py, r2, ILI9341_WHITE);
       }else{
-        tft.fillCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2+2, ILI9341_WHITE);
+        tft.fillCircle(px, py, r2+2, ILI9341_WHITE);
       }
     }
 }
@@ -312,12 +322,13 @@ void drawEucledianCircleFromPattern(const int R, int len, int PatRot, bool *patt
     tft.drawCircle(CX, CY, R, ILI9341_LIGHTGREY);
     for(int i=0; i<len; i++){
       int src = euclidRotatedSrc(i, len, PatRot);
-      // Punktbereich inkl. Laufpunkt loeschen (r3+1 >= Laufpunkt-Radius r3)
-      tft.fillCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r3+1, ILI9341_BLACK);
+      int px = (int)(CX + R*sin(2*M_PI/len*i) + 0.5);
+      int py = (int)(CY - R*cos(2*M_PI/len*i) + 0.5);
+      tft.fillCircle(px, py, r3+1, ILI9341_BLACK);
       if(pattern[src]==false){
-        tft.drawCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2, ILI9341_WHITE);
+        tft.drawCircle(px, py, r2,   ILI9341_WHITE);
       }else{
-        tft.fillCircle(CX+R*sin(2*M_PI/len*i), CY-R*cos(2*M_PI/len*i), r2+2, ILI9341_WHITE);
+        tft.fillCircle(px, py, r2+2, ILI9341_WHITE);
       }
     }
 }
