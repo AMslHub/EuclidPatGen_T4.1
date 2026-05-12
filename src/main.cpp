@@ -330,8 +330,9 @@ static void refreshUiForPatternUpdate(int idx){
 void setup() {
   Serial.begin(115200);
   if (CrashReport) {
-    delay(2000);
-    Serial.print(CrashReport);
+    uint32_t t = millis();
+    while (!Serial && (millis() - t) < 2000) {}  // bis zu 2s auf USB-Host warten
+    if (Serial) Serial.print(CrashReport);
   }
 
   // SD-Init zuerst: SD.begin() kann PLL2-Taktquellen umkonfigurieren und einen

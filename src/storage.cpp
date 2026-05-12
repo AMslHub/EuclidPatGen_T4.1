@@ -297,7 +297,7 @@ static void writeSongsHeader(const SongsHeader &h) {
 
 void initStorage() {
     sdOK = SD.begin(BUILTIN_SDCARD);
-    Serial.printf("[storage] SD init: %s\n", sdOK ? "OK" : "FAIL");
+    if (Serial) Serial.printf("[storage] SD init: %s\n", sdOK ? "OK" : "FAIL");
 }
 
 void saveParams() {
