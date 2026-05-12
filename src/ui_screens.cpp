@@ -3315,9 +3315,8 @@ static void drawSongSequence() {
         if (maxStart < 0) maxStart = 0;
         if (songViewStart > maxStart) songViewStart = maxStart;
         if (songViewStart < 0) songViewStart = 0;
-    } else {
-        clampSongView();
     }
+    // Bereichs-Clamp (kein Cursor-Constraint hier — clampSongView nur bei Cursor-Bewegung)
 
     bool hasLeft  = (songViewStart > 0);
     bool hasRight = (songViewStart + SONG_VIS <= (int)songLen);
@@ -3376,7 +3375,11 @@ static void drawSongSequence() {
 
 void scrollSongView(int delta) {
     songViewStart += delta;
-    clampSongView();
+    // Nur Bereichs-Clamp — kein Cursor-Constraint, damit Encoder frei scrollen kann
+    int maxStart = (int)songLen - SONG_VIS + 1;
+    if (maxStart < 0) maxStart = 0;
+    if (songViewStart > maxStart) songViewStart = maxStart;
+    if (songViewStart < 0) songViewStart = 0;
     drawSongSequence();
 }
 
