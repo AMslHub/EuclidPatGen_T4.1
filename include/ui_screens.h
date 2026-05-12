@@ -10,6 +10,10 @@ void drawBpmValue();
 void drawPerformanceScreen();
 bool handlePerformance(int mapX, int mapY, uint16_t tipPos);
 void setPerfEncBrowseSlot(int slot);  // slot=-1: Browse-Modus beenden
+bool getPerfPickActive();             // true wenn P&P Pick-Modus aktiv
+void cancelPerfPick();                // Pick-Modus abbrechen + UI zurücksetzen
+void executePerfPickPlace(int dst);   // Move ausführen: src→dst, deferred SD-Op setzen
+void refreshPerfSlotState();          // Slot-Maske neu laden + alle Boxes neu zeichnen
 int  getRhythmPresetCount();
 int  getRhythmBrowseIdx();
 bool getRhythmBrowseActive();

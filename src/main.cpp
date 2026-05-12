@@ -75,6 +75,8 @@ const uint32_t SAVE_DEBOUNCE_MS = 400;
 int pendingSlotSaveSlot = -1;
 int pendingSongOp  = 0;
 int pendingSongNum = -1;
+int pendingSlotMoveFrom = -1;
+int pendingSlotMoveTo   = -1;
 
 // Encoder: ausstehende Circle-Redraws (erst am Pattern-Ende anwenden)
 bool pendingCircleRedraw[3] = { false, false, false };
@@ -1041,6 +1043,17 @@ void loop() {
       pendingTicks = 0;
       interrupts();
     }
+  }
+
+  // Deferred Slot-Move: P&P-Operation (SD-Datei kopieren + alte löschen).
+  if (pendingSlotMoveFrom >= 0) {
+    int from = pendingSlotMoveFrom;
+    int to   = pendingSlotMoveTo;
+    pendingSlotMoveFrom = -1;
+    pendingSlotMoveTo   = -1;
+    moveParamsSlot(from, to);
+    noInterrupts(); pendingTicks = 0; interrupts();
+    if (GUIState == PERFORMANCE) refreshPerfSlotState();
   }
 
   // Deferred Song-Op: Song-Save/Load/Delete in den Main-Loop verlagert (SD-Blocking).

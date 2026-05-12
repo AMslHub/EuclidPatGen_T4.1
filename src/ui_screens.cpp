@@ -43,9 +43,9 @@ static const int PERF_BOX_H      = 24;
 static const int PERF_BOX_ROW1_Y = 184;  // Slots 0-7
 static const int PERF_BOX_ROW2_Y = 210;  // Slots 8-15
 static const int PERF_BTN_Y = 150;
-static const int PERF_BTN_W = 60;
+static const int PERF_BTN_W = 55;
 static const int PERF_BTN_H = 30;
-static const int PERF_BTN_XS[3] = {0, 140, 210};
+static const int PERF_BTN_XS[4] = {0, 113, 172, 238};
 static const int PERF_SEQ_X = 30;
 static const int PERF_SEQ_Y = 10;
 static const int PERF_SEQ_W = 260;
@@ -60,8 +60,9 @@ static int perfSelected = -1;
 static int perfActive = -1;
 static uint16_t perfUsedMask = 0;
 static int perfEncSlot = -1;   // Encoder-Browse-Hervorhebung (-1 = inaktiv)
-static bool perfButtonFlash[3] = { false, false, false };
-static uint32_t perfButtonFlashUntil[3] = { 0, 0, 0 };
+static int perfPickSlot = -1;  // P&P: gepickter Quell-Slot (-1 = kein Pick aktiv)
+static bool perfButtonFlash[4] = { false, false, false, false };
+static uint32_t perfButtonFlashUntil[4] = { 0, 0, 0, 0 };
 static int perfSeq1LastStep = -1;
 static int perfSeq1LastX = -1;
 static bool probFlash[3] = { false, false, false };
@@ -162,6 +163,7 @@ void setRhythmBrowseActive(bool active) {
 void resetRhythmBrowseState() {
     rhythmBrowseActive = false;
 }
+
 
 void loadRhythmPreset(int idx) {
     if (idx < 0 || idx >= RHYTHM_PRESET_COUNT) return;
@@ -500,13 +502,15 @@ static void drawPerfSlotBox(int idx){
   int col = idx % 8;
   int x   = col * PERF_BOX_W;
   int y   = (idx < 8) ? PERF_BOX_ROW1_Y : PERF_BOX_ROW2_Y;
+  bool picked     = (idx == perfPickSlot);
   bool selected   = (idx == perfSelected);
   bool encBrowse  = (idx == perfEncSlot) && (cvSlotSel < 0);
   bool cvCtrl     = (cvSlotSel >= 0) && (idx == (int)cvSlotSel);
-  uint16_t border = cvCtrl ? ILI9341_CYAN : ILI9341_DARKGREY;
+  uint16_t border = cvCtrl ? ILI9341_CYAN : (picked ? ILI9341_ORANGE : ILI9341_DARKGREY);
   uint16_t fill;
-  if      (selected)  fill = ILI9341_GREEN;
-  else if (cvCtrl)    fill = 0x0410;  // dunkles Cyan: CV-gesteuert
+  if      (picked)    fill = ILI9341_ORANGE;
+  else if (selected)  fill = ILI9341_GREEN;
+  else if (cvCtrl)    fill = 0x0410;
   else if (encBrowse) fill = ILI9341_CYAN;
   else                fill = (perfUsedMask & (uint16_t)(1u << idx)) ? ILI9341_WHITE : ILI9341_BLACK;
   tft.fillRect(x + 1, y + 1, PERF_BOX_W - 2, PERF_BOX_H - 2, fill);
@@ -518,23 +522,26 @@ static void drawPerfSlotBox(int idx){
   }
 }
 
-// CV-Lock-Indikator: im freien Bereich zwischen Load (x=0..60) und Save (x=140..200)
+// CV-Lock-Indikator: im freien Bereich zwischen Load (x=0..55) und Save (x=113..168)
 static void drawCvSlotIndicator() {
-  tft.fillRect(62, PERF_BTN_Y + 2, 76, PERF_BTN_H - 4, ILI9341_BLACK);
+  tft.fillRect(57, PERF_BTN_Y + 2, 54, PERF_BTN_H - 4, ILI9341_BLACK);
   if (cvSlotSel >= 0) {
     tft.setFont(Arial_10);
     tft.setTextColor(ILI9341_CYAN);
-    tft.setCursor(67, PERF_BTN_Y + 10);
+    tft.setCursor(59, PERF_BTN_Y + 10);
     tft.print("CV\x10Slot");
   }
 }
 
-// Zweck: Zeichnet einen Performance-Button (Load/Save/Del) mit optionalem Flash.
+// Zweck: Zeichnet einen Performance-Button (Load/Save/Del/P&P) mit optionalem Flash.
 // Side Effects: schreibt auf das TFT.
-// Assumptions: idx in 0..2.
+// Assumptions: idx in 0..3.
 static void drawPerfButton(int idx){
   int x = PERF_BTN_XS[idx];
-  uint16_t border = (idx == 1 || idx == 2) ? ILI9341_RED : ILI9341_WHITE;
+  uint16_t border;
+  if      (idx == 1 || idx == 2)              border = ILI9341_RED;
+  else if (idx == 3 && perfPickSlot >= 0)     border = ILI9341_ORANGE;  // P&P im Pick-Modus
+  else                                         border = ILI9341_WHITE;
   uint16_t fill = perfButtonFlash[idx] ? ILI9341_LIGHTGREY : ILI9341_BLACK;
   tft.drawRect(x, PERF_BTN_Y, PERF_BTN_W, PERF_BTN_H, border);
   tft.drawRect(x + 1, PERF_BTN_Y + 1, PERF_BTN_W - 2, PERF_BTN_H - 2, border);
@@ -543,14 +550,15 @@ static void drawPerfButton(int idx){
   tft.fillRect(x + 4, PERF_BTN_Y + 4, PERF_BTN_W - 8, PERF_BTN_H - 8, fill);
   tft.setFont(Arial_16);
   tft.setTextColor(ILI9341_LIGHTGREY);
-  const char *labels[3] = { "Load", "Save", "Del" };
+  const char *labels[4] = { "Load", "Save", "Del", "P&P" };
   drawCenteredLabel(x, PERF_BTN_Y, PERF_BTN_W, PERF_BTN_H, labels[idx], 8, 16, -8, -1);
 }
 
 // Zweck: Startet nicht-blockierenden Flash fuer einen Button.
 // Side Effects: setzt Timer-Status.
-// Assumptions: idx in 0..2.
+// Assumptions: idx in 0..3.
 static void startPerfButtonFlash(int idx){
+  if (idx < 0 || idx > 3) return;
   perfButtonFlash[idx] = true;
   perfButtonFlashUntil[idx] = millis() + 80;
   drawPerfButton(idx);
@@ -560,12 +568,42 @@ static void startPerfButtonFlash(int idx){
 // Side Effects: schreibt auf das TFT.
 static void updatePerfButtonFlash(){
   uint32_t now = millis();
-  for(int i=0;i<3;i++){
+  for(int i=0;i<4;i++){
     if(perfButtonFlash[i] && (int32_t)(now - perfButtonFlashUntil[i]) >= 0){
       perfButtonFlash[i] = false;
       drawPerfButton(i);
     }
   }
+}
+
+bool getPerfPickActive() { return perfPickSlot >= 0; }
+
+void cancelPerfPick() {
+    if (perfPickSlot < 0) return;
+    int was = perfPickSlot;
+    perfPickSlot = -1;
+    drawPerfSlotBox(was);
+    drawPerfButton(3);
+}
+
+void executePerfPickPlace(int dst) {
+    if (perfPickSlot < 0 || dst < 0 || dst >= 16) return;
+    int src = perfPickSlot;
+    perfPickSlot = -1;
+    if (src != dst) {
+        perfUsedMask = (uint16_t)((perfUsedMask | (1u << dst)) & ~(1u << src));
+        pendingSlotMoveFrom = src;
+        pendingSlotMoveTo   = dst;
+    }
+    drawPerfSlotBox(src);
+    drawPerfSlotBox(dst);
+    drawPerfButton(3);
+}
+
+void refreshPerfSlotState() {
+    perfUsedMask = getSlotsUsedMask();
+    perfActive   = getActiveSlot();
+    for (int i = 0; i < 16; i++) drawPerfSlotBox(i);
 }
 
 // Zweck: Zeichnet das Fenster fuer die Sequencer-Position (Seq1).
@@ -685,8 +723,8 @@ void drawPerformanceScreen(){
   }
   drawCvSlotIndicator();
 
-  // Load/Save/Del Buttons
-  for(int i=0;i<3;i++){
+  // Load/Save/Del/P&P Buttons
+  for(int i=0;i<4;i++){
     perfButtonFlash[i] = false;
     perfButtonFlashUntil[i] = 0;
     drawPerfButton(i);
@@ -798,6 +836,24 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
         perfSelected = -1;
         drawPerfSlotBox(was);
       }
+    }
+    return true;
+  }
+  // P&P: Pick-Modus starten/beenden
+  if(hitBox(mapX, mapY, PERF_BTN_XS[3], PERF_BTN_Y, PERF_BTN_W, PERF_BTN_H, 6)){
+    startPerfButtonFlash(3);
+    if(perfPickSlot >= 0){
+      // Zweiter Druck: Pick-Modus abbrechen
+      int was = perfPickSlot;
+      perfPickSlot = -1;
+      drawPerfSlotBox(was);
+      drawPerfButton(3);
+    } else if(perfSelected >= 0 && (perfUsedMask & (1u << perfSelected))){
+      // Erster Druck: Pick-Modus aktivieren
+      perfPickSlot = perfSelected;
+      perfSelected = -1;
+      drawPerfSlotBox(perfPickSlot);
+      drawPerfButton(3);
     }
     return true;
   }

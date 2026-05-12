@@ -382,6 +382,33 @@ bool deleteParamsSlot(int slot) {
     return true;
 }
 
+bool moveParamsSlot(int src, int dst) {
+    if (src < 0 || src >= SLOT_COUNT || dst < 0 || dst >= SLOT_COUNT) return false;
+    if (src == dst) return true;
+    if (!sdOK) return false;
+    char srcPath[16], dstPath[16];
+    getSlotPath(src, srcPath);
+    getSlotPath(dst, dstPath);
+    File fin = SD.open(srcPath);
+    if (!fin) return false;
+    SD.remove(dstPath);
+    File fout = SD.open(dstPath, FILE_WRITE);
+    if (!fout) { fin.close(); return false; }
+    uint8_t buf[64];
+    while (fin.available()) {
+        int n = fin.read(buf, sizeof(buf));
+        if (n > 0) fout.write(buf, n);
+    }
+    fin.close();
+    fout.close();
+    SD.remove(srcPath);
+    SlotsHeader h = readSlotsHeader();
+    h.usedMask = (uint16_t)((h.usedMask | (1u << dst)) & ~(1u << src));
+    writeSlotsHeader(h);
+    if (activeSlot == src) activeSlot = dst;
+    return true;
+}
+
 static bool loadParamsSlotNow(int slot) {
     if (slot < 0 || slot >= SLOT_COUNT) return false;
     SlotsHeader h = readSlotsHeader();

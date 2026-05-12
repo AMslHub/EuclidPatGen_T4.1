@@ -156,11 +156,11 @@ static void handlePerfEncoder1(int delta) {
 
 // ---------------------------------------------------------------------------
 // ENC1-Knopf im PERFORMANCE-Screen:
-//   1. Druck → Browse-Modus aktivieren, Slot CYAN hervorheben
-//   2. Druck → Slot laden (wenn belegt), Browse-Modus beenden
+//   Normal: 1. Druck → Browse-Modus, Slot CYAN; 2. Druck → Slot laden
+//   P&P-Modus: 1. Druck → Browse starten; 2. Druck → Slot platzieren (Move)
 // ---------------------------------------------------------------------------
 static void handlePerfButton1() {
-    if (cvSlotSel >= 0) return;  // CV hat Kontrolle: manuelle Auswahl gesperrt
+    if (cvSlotSel >= 0) return;
     if (!encBrowseActive) {
         encBrowseSlot = getActiveSlot();
         if (encBrowseSlot < 0) encBrowseSlot = 0;
@@ -169,10 +169,14 @@ static void handlePerfButton1() {
     } else {
         encBrowseActive = false;
         setPerfEncBrowseSlot(-1);
-        uint16_t used = getSlotsUsedMask();
-        if (used & (1u << encBrowseSlot)) {
-            requestLoadSlot(encBrowseSlot);
-            nextSaveSlot = -1;
+        if (getPerfPickActive()) {
+            executePerfPickPlace(encBrowseSlot);
+        } else {
+            uint16_t used = getSlotsUsedMask();
+            if (used & (1u << encBrowseSlot)) {
+                requestLoadSlot(encBrowseSlot);
+                nextSaveSlot = -1;
+            }
         }
     }
 }
@@ -353,7 +357,7 @@ void handleEncoders() {
     static uint16_t lastGUIState = 0xFFFF;
     if (GUIState != lastGUIState) {
         if (lastGUIState == PERFORMANCE && encBrowseActive) encBrowseActive = false;
-        if (lastGUIState == PERFORMANCE) resetRhythmBrowseState();
+        if (lastGUIState == PERFORMANCE) { resetRhythmBrowseState(); cancelPerfPick(); }
         if (lastGUIState == PITCH1) {
             pitchBoxCursor   = 0;
             pitchBoxEditMode = false;
