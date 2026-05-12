@@ -3374,6 +3374,12 @@ static void drawSongSequence() {
     }
 }
 
+void scrollSongView(int delta) {
+    songViewStart += delta;
+    clampSongView();
+    drawSongSequence();
+}
+
 void tickSongUi() {
     drawSongSequence();
     drawSongMuteArm();
@@ -3411,25 +3417,14 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
         return;
     }
     if (!songPlaying) {
-        // Tap auf Sequenz-Zeile
+        // Tap auf Sequenz-Zeile → Cursor setzen (rechts vom getippten Zeichen)
         if (hitBox(mapX, mapY, 0, SONG_SEQ_Y, 320, SONG_SEQ_H, 2)) {
-            if (mapX < SONG_SEQ_X0) {
-                // ◄ Scroll links
-                songViewStart -= 5;
-                clampSongView();
-            } else if (mapX >= SONG_SEQ_X0 + SONG_VIS * SONG_STEP_W) {
-                // ► Scroll rechts
-                songViewStart += 5;
-                clampSongView();
-            } else {
-                // Cursor setzen: rechts vom getippten Zeichen
-                int col = (mapX - SONG_SEQ_X0) / SONG_STEP_W;
-                int tapped = songViewStart + col;
-                songCursor = tapped + 1;
-                if (songCursor > (int)songLen) songCursor = (int)songLen;
-                if (songCursor < 0) songCursor = 0;
-                clampSongView();
-            }
+            int col = (mapX - SONG_SEQ_X0) / SONG_STEP_W;
+            if (col < 0) col = 0;
+            songCursor = songViewStart + col + 1;
+            if (songCursor > (int)songLen) songCursor = (int)songLen;
+            if (songCursor < 0) songCursor = 0;
+            clampSongView();
             drawSongSequence();
             return;
         }

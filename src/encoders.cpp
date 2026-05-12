@@ -442,7 +442,7 @@ void handleEncoders() {
     // Rotation und Enc1-Button nur auf relevanten Screens
     bool encActive = (GUIState == EUCLCIRCS   || GUIState == PERFORMANCE ||
                       GUIState == EUCLPARAM1  || GUIState == EUCLPARAM2  || GUIState == EUCLPARAM3 ||
-                      GUIState == PITCH1      || GUIState == NAV);
+                      GUIState == PITCH1      || GUIState == NAV         || GUIState == SONG);
     if (!encActive) return;
 
     for (int i = 0; i < 3; i++) {
@@ -452,7 +452,9 @@ void handleEncoders() {
         int  delta    = -rawDelta;
         if (rawDelta != 0) {
             encLastPos[i] += (long)rawDelta * ENC_STEPS_PER_DETENT;
-            if (GUIState == NAV) {
+            if (GUIState == SONG && i == 0) {
+                scrollSongView(delta);
+            } else if (GUIState == NAV) {
                 if (i == 2) moveNavCursor(delta);
             } else if (GUIState == PERFORMANCE && i == 0) {
                 handlePerfEncoder1(delta);
@@ -487,7 +489,7 @@ void handleEncoders() {
                     } else {
                         handlePitchButton(0);
                     }
-                } else if (GUIState != NAV && GUIState != PERFORMANCE) {
+                } else if (GUIState != NAV && GUIState != PERFORMANCE && GUIState != SONG) {
                     handleNormalButton(0);
                 }
             }
