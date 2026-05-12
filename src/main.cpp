@@ -334,7 +334,7 @@ void setup() {
   Serial.begin(115200);
   if (CrashReport) {
     uint32_t t = millis();
-    while (!Serial && (millis() - t) < 2000) {}  // bis zu 2s auf USB-Host warten
+    while (!Serial && (millis() - t) < 2000) yield();  // kick watchdog while waiting
     if (Serial) Serial.print(CrashReport);
   }
 
