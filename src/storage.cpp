@@ -382,30 +382,80 @@ bool deleteParamsSlot(int slot) {
     return true;
 }
 
-bool moveParamsSlot(int src, int dst) {
+// Kopiert alle Felder eines Kanals i aus src-ParamBlock nach dst.
+static void copyParamChannel(ParamBlock &dst, const ParamBlock &src, int i) {
+    dst.len[i]       = src.len[i];
+    dst.num[i]       = src.num[i];
+    dst.rot[i]       = src.rot[i];
+    dst.prob[i]      = src.prob[i];
+    dst.probAuto[i]  = src.probAuto[i];
+    dst.hold[i]      = src.hold[i];
+    dst.gateHold[i]  = src.gateHold[i];
+    dst.rotValues[i] = src.rotValues[i];
+    dst.rotGateLen[i]= src.rotGateLen[i];
+    dst.rotRatchet[i]= src.rotRatchet[i];
+    dst.rotOctave[i] = src.rotOctave[i];
+    dst.speed[i]     = src.speed[i];
+    dst.autoRotate[i]= src.autoRotate[i];
+    for (int j = 0; j < 32; j++) {
+        dst.values[i][j]  = src.values[i][j];
+        dst.gateLen[i][j] = src.gateLen[i][j];
+        dst.ratchet[i][j] = src.ratchet[i][j];
+    }
+}
+
+// Kopiert Kanäle laut copyMask (bit i=1 → Kanal i von src übernehmen) in dst-Slot.
+// Quell-Slot bleibt erhalten. Wenn dst leer: kompletter Copy unabhängig von Maske.
+bool mergeParamsSlot(int src, int dst, uint8_t copyMask) {
     if (src < 0 || src >= SLOT_COUNT || dst < 0 || dst >= SLOT_COUNT) return false;
     if (src == dst) return true;
     if (!sdOK) return false;
     char srcPath[16], dstPath[16];
     getSlotPath(src, srcPath);
     getSlotPath(dst, dstPath);
-    File fin = SD.open(srcPath);
-    if (!fin) return false;
+
+    SlotParams srcP;
+    {
+        File f = SD.open(srcPath);
+        if (!f) return false;
+        bool ok = (f.size() == sizeof(srcP));
+        if (ok) f.read((uint8_t*)&srcP, sizeof(srcP));
+        f.close();
+        if (!ok) return false;
+    }
+
+    SlotParams result = srcP;  // default: vollständiger Copy
+    if (copyMask != 0x07) {
+        // Partieller Copy: Ziel laden und Kanäle selektiv überschreiben
+        File f = SD.open(dstPath);
+        if (f && f.size() == sizeof(result)) {
+            f.read((uint8_t*)&result, sizeof(result));
+            f.close();
+            for (int i = 0; i < 3; i++) {
+                if (!(copyMask & (1u << i))) continue;  // gemuted = Ziel behalten
+                copyParamChannel(result.data, srcP.data, i);
+                result.epatSavedMask &= ~(uint8_t)(1u << i);
+                if (srcP.epatSavedMask & (1u << i)) {
+                    result.epatSavedMask |= (uint8_t)(1u << i);
+                    for (int j = 0; j < 32; j++) result.epat[i][j] = srcP.epat[i][j];
+                }
+            }
+            if (copyMask & 0x01) result.pitch = srcP.pitch;  // Pitch gehört zu Ch1
+        } else {
+            if (f) f.close();
+            // Ziel leer/ungültig → kompletter Copy (result = srcP bereits)
+        }
+    }
+
     SD.remove(dstPath);
     File fout = SD.open(dstPath, FILE_WRITE);
-    if (!fout) { fin.close(); return false; }
-    uint8_t buf[64];
-    while (fin.available()) {
-        int n = fin.read(buf, sizeof(buf));
-        if (n > 0) fout.write(buf, n);
-    }
-    fin.close();
+    if (!fout) return false;
+    fout.write((uint8_t*)&result, sizeof(result));
     fout.close();
-    SD.remove(srcPath);
+
     SlotsHeader h = readSlotsHeader();
-    h.usedMask = (uint16_t)((h.usedMask | (1u << dst)) & ~(1u << src));
+    h.usedMask = (uint16_t)(h.usedMask | (1u << dst));
     writeSlotsHeader(h);
-    if (activeSlot == src) activeSlot = dst;
     return true;
 }
 

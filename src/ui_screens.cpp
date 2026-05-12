@@ -591,9 +591,17 @@ void executePerfPickPlace(int dst) {
     int src = perfPickSlot;
     perfPickSlot = -1;
     if (src != dst) {
-        perfUsedMask = (uint16_t)((perfUsedMask | (1u << dst)) & ~(1u << src));
+        // Kanal-Maske: gemutete Kanäle NICHT kopieren (bit i=1 → Kanal i übernehmen)
+        uint8_t mask = (uint8_t)(
+            (!MuteSeq[0] ? 0x01u : 0u) |
+            (!MuteSeq[1] ? 0x02u : 0u) |
+            (!MuteSeq[2] ? 0x04u : 0u));
+        if (mask == 0) mask = 0x07;  // alle gemutet → kompletter Copy als Fallback
+        perfUsedMask = (uint16_t)(perfUsedMask | (1u << dst));
+        // Quelle bleibt erhalten (kein Löschen aus perfUsedMask)
         pendingSlotMoveFrom = src;
         pendingSlotMoveTo   = dst;
+        pendingSlotCopyMask = mask;
     }
     drawPerfSlotBox(src);
     drawPerfSlotBox(dst);

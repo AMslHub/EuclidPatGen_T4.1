@@ -10,7 +10,7 @@ void scheduleSaveParams();
 uint16_t getSlotsUsedMask();
 bool saveParamsSlot(int slot);
 bool deleteParamsSlot(int slot);
-bool moveParamsSlot(int src, int dst);
+bool mergeParamsSlot(int src, int dst, uint8_t copyMask);
 bool requestLoadSlot(int slot);
 bool applyPendingLoadIfReady(unsigned int step, bool forceNow = false);
 int getActiveSlot();

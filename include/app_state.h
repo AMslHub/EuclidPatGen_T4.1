@@ -100,8 +100,9 @@ extern bool PendingSave;
 extern uint32_t PendingSaveAt;
 extern const uint32_t SAVE_DEBOUNCE_MS;
 extern int pendingSlotSaveSlot;  // >=0: Slot-Save aufgeschoben (Encoder setzt, Main-Loop schreibt)
-extern int pendingSlotMoveFrom;  // >=0: Slot-Move aufgeschoben (P&P setzt, Main-Loop führt aus)
-extern int pendingSlotMoveTo;    // Ziel-Slot des aufgeschobenen Move
+extern int     pendingSlotMoveFrom;   // >=0: P&P-Merge aufgeschoben (Quell-Slot)
+extern int     pendingSlotMoveTo;     // Ziel-Slot des aufgeschobenen Merge
+extern uint8_t pendingSlotCopyMask;  // Kanal-Maske: bit i=1 → Kanal i von Quelle kopieren
 extern int pendingSongOp;        // 0=none,1=save,2=load,3=delete; Main-Loop führt aus
 extern int pendingSongNum;       // Song-Nummer für pendingSongOp
 
