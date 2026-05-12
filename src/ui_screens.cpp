@@ -3201,14 +3201,17 @@ void handleGConfig(int mapX, int mapY, uint16_t tipPos) {
 // Song Screen
 // ---------------------------------------------------------------------------
 static const int SONG_KEY_W   = 80;
-static const int SONG_KEY_H   = 34;
-static const int SONG_KEY_Y0  = 72;
-static const int SONG_KEY_GAP = 2;
+static const int SONG_KEY_H   = 30;
+static const int SONG_KEY_Y0  = 89;
+static const int SONG_KEY_GAP = 1;
 static const int SONG_SEQ_Y   = 40;
 static const int SONG_SEQ_H   = 28;
-static const int SONG_BTN_Y   = SONG_KEY_Y0 + 4 * (SONG_KEY_H + SONG_KEY_GAP);  // 216
-static const int SONG_BTN_H   = 24;
-static uint16_t songUsedMask  = 0;  // Cache: belegte Slots (beim Screen-Aufbau gesetzt)
+static const int SONG_MUTE_Y  = 69;   // M1/M2/M3 Arm-Streifen
+static const int SONG_MUTE_H  = 18;
+static const int SONG_BTN_Y   = SONG_KEY_Y0 + 4 * (SONG_KEY_H + SONG_KEY_GAP);  // 89+124=213
+static const int SONG_BTN_H   = 26;
+static uint16_t songUsedMask  = 0;
+static uint8_t  songArmMask   = 0;  // bit0=M1 arm, bit1=M2 arm, bit2=M3 arm
 
 static void drawSongKey(int digit) {
     int col = digit % 4;
@@ -3216,22 +3219,22 @@ static void drawSongKey(int digit) {
     int x   = col * SONG_KEY_W;
     int y   = SONG_KEY_Y0 + row * (SONG_KEY_H + SONG_KEY_GAP);
     bool used    = (songUsedMask & (uint16_t)(1u << digit)) != 0;
-    bool playing = songPlaying && (songSeq[songLoadedPos] == (uint8_t)digit);
-    uint16_t fill   = playing ? 0x000Fu :   // dunkelblau: aktiv
-                      used    ? 0x2104u :   // dunkelgrau: belegt
-                                0x0821u;    // fast schwarz: leer
+    bool playing = songPlaying && ((songSeq[songLoadedPos] & 0x0F) == (uint8_t)digit);
+    uint16_t fill   = playing ? 0x000Fu :
+                      used    ? 0x2104u :
+                                0x0821u;
     uint16_t border = playing ? ILI9341_CYAN :
                       used    ? ILI9341_DARKGREY :
                                 0x2104u;
     uint16_t txtcol = playing ? ILI9341_CYAN :
                       used    ? ILI9341_WHITE :
-                                0x4208u;    // gedimmt: nicht belegter Slot
+                                0x4208u;
     tft.fillRect(x + 1, y + 1, SONG_KEY_W - 2, SONG_KEY_H - 2, fill);
     tft.drawRect(x, y, SONG_KEY_W, SONG_KEY_H, border);
     tft.setFont(Arial_16);
     tft.setTextColor(txtcol);
     char buf[2] = { (char)(digit < 10 ? '0' + digit : 'a' + digit - 10), 0 };
-    tft.setCursor(x + 32, y + 9);
+    tft.setCursor(x + 32, y + 7);
     tft.print(buf);
 }
 
@@ -3259,24 +3262,56 @@ static void drawSongBottomButtons() {
     }
 }
 
+static const uint16_t SONG_CH_COLS[3] = { ILI9341_YELLOW, ILI9341_RED, ILI9341_GREEN };
+static const int SONG_MUTE_XS[3] = { 0, 107, 214 };
+static const int SONG_MUTE_WS[3] = { 107, 107, 106 };
+
+static void drawSongMuteArm() {
+    // Im Spielmodus: aktuellen Step-Mute anzeigen; sonst: Arm-Zustand zeigen
+    uint8_t displayMask = songArmMask;
+    if (songPlaying && songLen > 0) {
+        displayMask = (songSeq[songLoadedPos] >> 4) & 0x07;
+    }
+    for (int ch = 0; ch < 3; ch++) {
+        bool muted = (displayMask >> ch) & 1;
+        uint16_t col = muted ? SONG_CH_COLS[ch] : 0x2104u;
+        tft.fillRect(SONG_MUTE_XS[ch] + 1, SONG_MUTE_Y + 1, SONG_MUTE_WS[ch] - 2, SONG_MUTE_H - 2, ILI9341_BLACK);
+        tft.drawRect(SONG_MUTE_XS[ch], SONG_MUTE_Y, SONG_MUTE_WS[ch], SONG_MUTE_H, col);
+        tft.setFont(Arial_16);
+        tft.setTextColor(col);
+        const char* lbl = (ch == 0) ? "M1" : (ch == 1) ? "M2" : "M3";
+        int tw = (int)strlen(lbl) * 9;
+        tft.setCursor(SONG_MUTE_XS[ch] + (SONG_MUTE_WS[ch] - tw) / 2, SONG_MUTE_Y + 2);
+        tft.print(lbl);
+    }
+}
+
 static void drawSongSequence() {
     tft.fillRect(1, SONG_SEQ_Y + 1, 318, SONG_SEQ_H - 2, ILI9341_BLACK);
     tft.drawRect(0, SONG_SEQ_Y, 320, SONG_SEQ_H, ILI9341_DARKGREY);
-    // Zeige die letzten bis zu 19 Einträge (je 16px Abstand) + Cursor
     int visCount = (songLen > 19) ? 19 : (int)songLen;
     int startIdx = (int)songLen - visCount;
     tft.setFont(Arial_16);
     int cx = 6;
-    int cy = SONG_SEQ_Y + 7;
+    int cy = SONG_SEQ_Y + 4;
     for (int i = startIdx; i < (int)songLen; i++) {
-        char c = (songSeq[i] < 10) ? ('0' + songSeq[i]) : ('a' + songSeq[i] - 10);
+        uint8_t raw  = songSeq[i];
+        uint8_t slot = raw & 0x0F;
+        uint8_t mute = (raw >> 4) & 0x07;
+        char c = (slot < 10) ? ('0' + slot) : ('a' + slot - 10);
         bool cur = songPlaying && ((int)songLoadedPos == i);
         if (cur) {
-            tft.fillRect(cx - 1, SONG_SEQ_Y + 2, 14, SONG_SEQ_H - 4, 0x000Fu);  // blauer Marker
+            tft.fillRect(cx - 1, SONG_SEQ_Y + 2, 14, SONG_SEQ_H - 4, 0x000Fu);
         }
         tft.setTextColor(cur ? ILI9341_CYAN : ILI9341_WHITE);
         tft.setCursor(cx, cy);
         tft.print(c);
+        // 3 Farbpunkte: hell = spielt, gedimmt = gemutet
+        for (int ch = 0; ch < 3; ch++) {
+            bool muted = (mute >> ch) & 1;
+            uint16_t dc = muted ? 0x2104u : SONG_CH_COLS[ch];
+            tft.fillRect(cx + 1 + ch * 4, SONG_SEQ_Y + 21, 3, 3, dc);
+        }
         cx += 16;
     }
     if (songLen < 64) {
@@ -3288,6 +3323,7 @@ static void drawSongSequence() {
 
 void tickSongUi() {
     drawSongSequence();
+    drawSongMuteArm();
     drawSongBottomButtons();
     for (int i = 0; i < 16; i++) drawSongKey(i);
 }
@@ -3304,20 +3340,29 @@ void drawSongScreen() {
     tft.setCursor(50, 18);
     tft.print("Song Sequencer");
     drawSongSequence();
+    drawSongMuteArm();
     for (int i = 0; i < 16; i++) drawSongKey(i);
     drawSongBottomButtons();
 }
 
 void handleSong(int mapX, int mapY, uint16_t tipPos) {
     if (tipPos == UL) {
-        // Song-Modus beenden: normalen Slot-Spielmodus wiederherstellen
         songPlaying = false;
         songHalted  = false;
+        for (int ch = 0; ch < 3; ch++) MuteSeq[ch] = false;
         navigateToScreen(PERFORMANCE);
         return;
     }
-    // Hex-Tasten 0-f (nur belegte Slots annehmbar; nicht im laufenden Song editieren)
     if (!songPlaying) {
+        // M-Arm Toggle: welche Kanäle beim nächsten Eintrag gemutet werden
+        for (int ch = 0; ch < 3; ch++) {
+            if (hitBox(mapX, mapY, SONG_MUTE_XS[ch], SONG_MUTE_Y, SONG_MUTE_WS[ch], SONG_MUTE_H, 4)) {
+                songArmMask ^= (uint8_t)(1u << ch);
+                drawSongMuteArm();
+                return;
+            }
+        }
+        // Hex-Tasten 0-f (nur belegte Slots)
         for (int i = 0; i < 16; i++) {
             if (!(songUsedMask & (uint16_t)(1u << i))) continue;
             int col = i % 4;
@@ -3326,7 +3371,7 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
             int y   = SONG_KEY_Y0 + row * (SONG_KEY_H + SONG_KEY_GAP);
             if (hitBox(mapX, mapY, x, y, SONG_KEY_W, SONG_KEY_H, 4)) {
                 if (songLen < 64) {
-                    songSeq[songLen++] = (uint8_t)i;
+                    songSeq[songLen++] = (uint8_t)((songArmMask << 4) | (uint8_t)i);
                     drawSongSequence();
                     scheduleSaveParams();
                 }
@@ -3346,7 +3391,9 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
         if (hitBox(mapX, mapY, 80, SONG_BTN_Y, 80, SONG_BTN_H, 4)) {
             songLen     = 0;
             songHalted  = false;
+            songArmMask = 0;
             drawSongSequence();
+            drawSongMuteArm();
             drawSongBottomButtons();
             scheduleSaveParams();
             return;
@@ -3359,7 +3406,7 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
             songPlaying   = true;
             songPos       = 0;
             songLoadedPos = 0;
-            requestLoadSlot((int)songSeq[0]);
+            requestLoadSlot((int)(songSeq[0] & 0x0F));
         }
         drawSongBottomButtons();
         drawSongSequence();

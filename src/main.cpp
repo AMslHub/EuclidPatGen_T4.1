@@ -695,6 +695,9 @@ void loop() {
       // Song-Advance: Slot geladen → nächsten Slot vorbereiten
       if (songPlaying && songLen > 0) {
           songLoadedPos = songPos;
+          // Mute-Maske des geladenen Eintrags sofort anwenden
+          uint8_t mute = (songSeq[songLoadedPos] >> 4) & 0x07;
+          for (int ch = 0; ch < 3; ch++) MuteSeq[ch] = (mute >> ch) & 1;
           if (songLoadedPos == (uint8_t)(songLen - 1u)) {
               // Letzter Eintrag geladen → einen Zyklus ausspielen, dann anhalten
               songPos = 0;  // für nächsten PLAY-Durchlauf bereit
@@ -964,7 +967,7 @@ void loop() {
   // loop()-Durchlauf ausgeführt.
   if (pendingSongSlotLoad && songPlaying && songLen > 0) {
     pendingSongSlotLoad = false;
-    requestLoadSlot((int)songSeq[songPos]);
+    requestLoadSlot((int)(songSeq[songPos] & 0x0F));
   }
 
   if (pendingSongUiUpdate && GUIState == SONG) {
@@ -980,6 +983,7 @@ void loop() {
     songLoadedPos       = 0;
     pendingSongAutoStop = false;
     pendingSongSlotLoad = false;
+    for (int ch = 0; ch < 3; ch++) MuteSeq[ch] = false;
     noInterrupts(); pendingTicks = 0; interrupts();
     cnt = 0; cnthold = 0;
     for (int ch = 0; ch < 3; ch++) {
