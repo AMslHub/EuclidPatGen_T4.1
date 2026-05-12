@@ -3213,6 +3213,7 @@ static const int SONG_BTN_H   = 26;
 static uint16_t songUsedMask  = 0;
 static uint8_t  songArmMask   = 0;  // bit0=M1 arm, bit1=M2 arm, bit2=M3 arm
 static int      songCursor    = 0;  // Caret-Position: 0..songLen (zwischen Zeichen)
+static int      songViewStart = 0;  // erster sichtbarer Index
 
 static void drawSongKey(int digit) {
     int col = digit % 4;
@@ -3287,23 +3288,56 @@ static void drawSongMuteArm() {
     }
 }
 
+static const int SONG_VIS     = 17;   // sichtbare Einträge (je 2 Zeichen für ◄/► reserviert)
+static const int SONG_SEQ_X0  = 18;   // Start der Zeichen-Area (nach ◄-Zone)
+static const int SONG_STEP_W  = 16;   // Pixel pro Eintrag
+
+// Hält songViewStart im gültigen Bereich und den Cursor im sichtbaren Fenster.
+static void clampSongView() {
+    int maxStart = (int)songLen - SONG_VIS + 1;
+    if (maxStart < 0) maxStart = 0;
+    if (songViewStart > maxStart) songViewStart = maxStart;
+    if (songViewStart < 0) songViewStart = 0;
+    // Cursor ins Fenster ziehen
+    if (songCursor < songViewStart) songViewStart = songCursor;
+    if (songCursor > songViewStart + SONG_VIS - 1) songViewStart = songCursor - SONG_VIS + 1;
+    if (songViewStart < 0) songViewStart = 0;
+}
+
 static void drawSongSequence() {
     tft.fillRect(1, SONG_SEQ_Y + 1, 318, SONG_SEQ_H - 2, ILI9341_BLACK);
     tft.drawRect(0, SONG_SEQ_Y, 320, SONG_SEQ_H, ILI9341_DARKGREY);
 
-    // Scroll-Fenster: 19 Zeichen, zentriert um Cursor (im Edit-Modus) bzw. um songLoadedPos
-    static const int VIS = 19;
-    int focus = songPlaying ? (int)songLoadedPos : songCursor;
-    int startIdx = focus - VIS / 2;
-    if (startIdx + VIS > (int)songLen + 1) startIdx = (int)songLen + 1 - VIS;
-    if (startIdx < 0) startIdx = 0;
-    int endIdx = startIdx + VIS;  // exklusiv; darf songLen überschreiten (→ Cursor-Symbol)
+    // Im Play-Modus: Fenster um spielende Position zentrieren
+    if (songPlaying) {
+        songViewStart = (int)songLoadedPos - SONG_VIS / 2;
+        int maxStart = (int)songLen - SONG_VIS + 1;
+        if (maxStart < 0) maxStart = 0;
+        if (songViewStart > maxStart) songViewStart = maxStart;
+        if (songViewStart < 0) songViewStart = 0;
+    } else {
+        clampSongView();
+    }
 
+    bool hasLeft  = (songViewStart > 0);
+    bool hasRight = (songViewStart + SONG_VIS <= (int)songLen);
+
+    // ◄ Scroll-Indikator
+    tft.setTextColor(hasLeft ? ILI9341_DARKGREY : ILI9341_BLACK);
     tft.setFont(Arial_16);
-    int cx = 6;
+    tft.setCursor(2, SONG_SEQ_Y + 4);
+    tft.print("<");
+
+    // ► Scroll-Indikator
+    tft.setTextColor(hasRight ? ILI9341_DARKGREY : ILI9341_BLACK);
+    tft.setCursor(306, SONG_SEQ_Y + 4);
+    tft.print(">");
+
+    int cx = SONG_SEQ_X0;
     int cy = SONG_SEQ_Y + 4;
 
-    for (int i = startIdx; i < endIdx; i++) {
+    for (int vi = 0; vi < SONG_VIS; vi++) {
+        int i = songViewStart + vi;
         if (i < (int)songLen) {
             uint8_t raw  = songSeq[i];
             uint8_t slot = raw & 0x0F;
@@ -3311,38 +3345,31 @@ static void drawSongSequence() {
             bool invalid = !(songUsedMask & (uint16_t)(1u << slot));
             char c = (slot < 10) ? ('0' + slot) : ('a' + slot - 10);
 
-            // Spielposition: blauer Marker
             bool playing = songPlaying && ((int)songLoadedPos == i);
             if (playing) tft.fillRect(cx - 1, SONG_SEQ_Y + 2, 14, SONG_SEQ_H - 4, 0x000Fu);
 
-            // Cursor-Caret rechts vom Zeichen (nur Edit-Modus)
             bool caretHere = !songPlaying && (songCursor == i + 1);
             if (caretHere) tft.fillRect(cx + 12, SONG_SEQ_Y + 18, 2, 7, ILI9341_YELLOW);
 
-            uint16_t txtcol = playing  ? ILI9341_CYAN :
-                              invalid  ? ILI9341_RED  :
-                                         ILI9341_WHITE;
-            tft.setTextColor(txtcol);
+            tft.setTextColor(playing ? ILI9341_CYAN : invalid ? ILI9341_RED : ILI9341_WHITE);
+            tft.setFont(Arial_16);
             tft.setCursor(cx, cy);
             tft.print(c);
 
-            // 3 Mute-Dots
             for (int ch = 0; ch < 3; ch++) {
                 bool muted = (mute >> ch) & 1;
-                uint16_t dc = muted ? 0x2104u : SONG_CH_COLS[ch];
-                tft.fillRect(cx + 1 + ch * 4, SONG_SEQ_Y + 21, 3, 3, dc);
+                tft.fillRect(cx + 1 + ch * 4, SONG_SEQ_Y + 21, 3, 3,
+                             muted ? (uint16_t)0x2104u : SONG_CH_COLS[ch]);
             }
-            cx += 16;
+            cx += SONG_STEP_W;
         } else if (i == (int)songLen && songLen < 64) {
-            // Cursor am Ende / Append-Position
             bool caretHere = !songPlaying && (songCursor == (int)songLen);
-            if (caretHere) {
-                tft.fillRect(cx - 2, SONG_SEQ_Y + 18, 2, 7, ILI9341_YELLOW);
-            }
+            if (caretHere) tft.fillRect(cx - 2, SONG_SEQ_Y + 18, 2, 7, ILI9341_YELLOW);
             tft.setTextColor(ILI9341_DARKGREY);
+            tft.setFont(Arial_16);
             tft.setCursor(cx, cy);
             tft.print("_");
-            cx += 16;
+            cx += SONG_STEP_W;
         }
     }
 }
@@ -3356,7 +3383,10 @@ void tickSongUi() {
 
 void drawSongScreen() {
     songUsedMask = getSlotsUsedMask();
-    if (!songPlaying) songCursor = (int)songLen;  // Cursor ans Ende → Append-Modus
+    if (!songPlaying) {
+        songCursor    = (int)songLen;  // Cursor ans Ende → Append-Modus
+        clampSongView();
+    }
     tft.fillScreen(ILI9341_BLACK);
     tft.setFont(AwesomeF100_24);
     tft.setTextColor(ILI9341_LIGHTGREY);
@@ -3381,21 +3411,25 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
         return;
     }
     if (!songPlaying) {
-        // Tap auf Sequenz-Zeile → Cursor positionieren
+        // Tap auf Sequenz-Zeile
         if (hitBox(mapX, mapY, 0, SONG_SEQ_Y, 320, SONG_SEQ_H, 2)) {
-            // Sichtbares Fenster rekonstruieren (gleiche Logik wie drawSongSequence)
-            static const int VIS = 19;
-            int startIdx = songCursor - VIS / 2;
-            if (startIdx + VIS > (int)songLen + 1) startIdx = (int)songLen + 1 - VIS;
-            if (startIdx < 0) startIdx = 0;
-            // Welches Zeichen wurde getippt? (je 16px ab x=6)
-            int col = (mapX - 6) / 16;
-            if (col < 0) col = 0;
-            int tapped = startIdx + col;
-            // Cursor rechts vom getippten Zeichen setzen
-            songCursor = tapped + 1;
-            if (songCursor > (int)songLen) songCursor = (int)songLen;
-            if (songCursor < 0) songCursor = 0;
+            if (mapX < SONG_SEQ_X0) {
+                // ◄ Scroll links
+                songViewStart -= 5;
+                clampSongView();
+            } else if (mapX >= SONG_SEQ_X0 + SONG_VIS * SONG_STEP_W) {
+                // ► Scroll rechts
+                songViewStart += 5;
+                clampSongView();
+            } else {
+                // Cursor setzen: rechts vom getippten Zeichen
+                int col = (mapX - SONG_SEQ_X0) / SONG_STEP_W;
+                int tapped = songViewStart + col;
+                songCursor = tapped + 1;
+                if (songCursor > (int)songLen) songCursor = (int)songLen;
+                if (songCursor < 0) songCursor = 0;
+                clampSongView();
+            }
             drawSongSequence();
             return;
         }
@@ -3442,10 +3476,11 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
         }
         // CLR
         if (hitBox(mapX, mapY, 80, SONG_BTN_Y, 80, SONG_BTN_H, 4)) {
-            songLen     = 0;
-            songCursor  = 0;
-            songHalted  = false;
-            songArmMask = 0;
+            songLen       = 0;
+            songCursor    = 0;
+            songViewStart = 0;
+            songHalted    = false;
+            songArmMask   = 0;
             drawSongSequence();
             drawSongMuteArm();
             drawSongBottomButtons();
