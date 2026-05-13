@@ -416,6 +416,7 @@ void handleEncoders() {
                         navPrevState = GUIState;
                         GUIState = NAV;
                         drawNavScreen(navPrevState);
+                        noInterrupts(); pendingTicks = 0; interrupts();
                     }
                 } else {
                     if (GUIState == NAV) {

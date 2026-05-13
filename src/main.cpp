@@ -692,6 +692,8 @@ void loop() {
           chDivPhase[ch]     = 0;
           chSubTicksDone[ch] = 0;
       }
+      // SD-Read dauert 10–20ms → akkumulierte Ticks verwerfen, um Burst zu verhindern
+      noInterrupts(); pendingTicks = 0; interrupts();
       // Song-Advance: Slot geladen → nächsten Slot vorbereiten
       if (songPlaying && songLen > 0) {
           songLoadedPos = songPos;
@@ -914,10 +916,8 @@ void loop() {
     }
   }
 
-  // Deferred Kreis-Redraws nach der Tick-Schleife.
-  // clearEucledianCircle + drawEucledianCircle brauchen ~30 ms — ausserhalb der
-  // Tick-Schleife koennen waehrend dieser Zeit neue Ticks akkumulieren und werden
-  // im naechsten loop()-Durchlauf glatt abgearbeitet, statt als Burst.
+  // Deferred Kreis-Redraws nach der Tick-Schleife (~30ms SPI).
+  // Akkumulierte Ticks danach verwerfen, um Burst im naechsten Durchlauf zu verhindern.
   if ((deferredRedrawMask | deferredProbMask) && GUIState == EUCLCIRCS) {
     const int Rs[3] = { R1, R2, R3 };
     for (int ch = 0; ch < 3; ch++) {
@@ -950,16 +950,16 @@ void loop() {
         continue;
       }
     }
+    noInterrupts(); pendingTicks = 0; interrupts();
   }
 
-  // Deferred Pitch-Redraw: nach der Tick-Schleife, damit keine Ticks akkumulieren.
-  // Synchrones Rendern (21ms) ist mit schnellem EEPROM-Save wieder unproblematisch.
-  // Playhead wird direkt nach dem Render neu gesetzt → kein visueller "Stopp".
+  // Deferred Pitch-Redraw: nach der Tick-Schleife (~21ms SPI).
   if (pendingPitchDraw && GUIState == PITCH1) {
     pendingPitchDraw = false;
     drawPitchControls();
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
+    noInterrupts(); pendingTicks = 0; interrupts();
   }
 
   // Song-Slot-Load: erst nach der Tick-Schleife, um SD-Kaskaden zu verhindern.
