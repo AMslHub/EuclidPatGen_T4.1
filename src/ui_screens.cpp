@@ -1478,21 +1478,21 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         RotateRatchet[setIdx] = !RotateRatchet[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
-        if (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
+        if (valuesEditMode[setIdx] == 1) { drawRatchetBars(setIdx); discardPendingTicks(); }
         return;
     }
     if(setIdx == 0 && hitBox(mapX, mapY, 188, 43, 20, 20, 6)){
         RotateOctave[setIdx] = !RotateOctave[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
-        if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+        if (valuesEditMode[setIdx] == 2) { drawOctaveBars(setIdx); discardPendingTicks(); }
         return;
     }
     if(hitBox(mapX, mapY, 260, 42, 24, 24, 8)){
         RotateValues[setIdx] = !RotateValues[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
-        if (valuesEditMode[setIdx] == 0) drawValuesBars(setIdx);
+        if (valuesEditMode[setIdx] == 0) { drawValuesBars(setIdx); discardPendingTicks(); }
         return;
     }
     if(hitBox(mapX, mapY, 260, 10, 24, 24, 8)){
@@ -1513,6 +1513,7 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
         else                                  drawValuesBars(setIdx);
+        discardPendingTicks();
         return;
     }
     if(setIdx == 0 && hitBox(mapX, mapY, 140, 42, 46, 24, 6)){
@@ -1521,6 +1522,7 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
         else                                  drawValuesBars(setIdx);
+        discardPendingTicks();
         return;
     }
 
@@ -3562,6 +3564,7 @@ void navigateToScreen(uint16_t target) {
         case XY3:          drawXYPadScreen(2);       break;
         default: break;
     }
+    discardPendingTicks();
   }
 
 // ---------------------------------------------------------------------------
@@ -3640,6 +3643,7 @@ void drawNavScreen(uint16_t fromState) {
     for (int r = 0; r < NAV_ROWS; r++)
         for (int c = 0; c < NAV_COLS; c++)
             drawNavTile(r, c, NAV_STATE[r][c] == fromState, (r * NAV_COLS + c) == navCursor);
+    discardPendingTicks();
 }
 
 // Enc3-Drehung auf NAV: Cursor verschieben, nur die zwei betroffenen Tiles neu zeichnen.
