@@ -1191,9 +1191,7 @@ void loop() {
       int slot = pendingSlotSaveSlot;
       pendingSlotSaveSlot = -1;
       saveParamsSlot(slot);
-      noInterrupts();
-      pendingTicks = 0;
-      interrupts();
+      discardPendingTicks();
     }
   }
 
@@ -1274,6 +1272,7 @@ void loop() {
       drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
       drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
       for(int i = 0; i < 3; i++) displayedPatLen[i] = PatLen[i];
+      discardPendingTicks();
     }
   }
 
@@ -1281,6 +1280,7 @@ void loop() {
   if(PendingPerfRefresh){
     if(GUIState == PERFORMANCE){
       drawPerformanceScreen();
+      discardPendingTicks();
     }
     PendingPerfRefresh = false;
   }
