@@ -1218,6 +1218,7 @@ void drawValuesScreen(int setIdx){
     else                                  drawValuesBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
+    discardPendingTicks();
   }
 
 // Zweck: Zeichnet alle Werte-Balken fuer ein Pattern.
@@ -1618,6 +1619,7 @@ void drawGateLenScreen(int setIdx){
     drawGateLenBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
+    discardPendingTicks();
   }
 
 // Zweck: Zeichnet alle GateLen-Balken fuer ein Pattern.
@@ -2733,6 +2735,7 @@ void drawPitchScreen() {
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
     drawPitchControls();
+    discardPendingTicks();
   }
 
 // Hilfsfunktion: Rotation von Kanal ch in alle betroffenen Arrays einfrieren,
