@@ -1013,7 +1013,7 @@ void redrawParam(int idx){
       drawAutoRotateBox(idx);
       if(idx == 0) drawPitchButton();
     }
-}
+  }
 
 // Zweck: Zeichnet das Parameter-Menue neu, ohne das Pattern erneut zu erzeugen.
 // Side Effects: schreibt auf das TFT.
@@ -1039,7 +1039,7 @@ void redrawParamFromPattern(int idx){
     drawProbEuclidRebuildCheckbox(idx);
     drawAutoRotateBox(idx);
     if(idx == 0) drawPitchButton();
-}
+  }
 
 // Zweck: Zeichnet den V1/V2/V3-Button im Parameter-Menue.
 // Side Effects: schreibt auf das TFT.
@@ -1218,7 +1218,7 @@ void drawValuesScreen(int setIdx){
     else                                  drawValuesBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
-}
+  }
 
 // Zweck: Zeichnet alle Werte-Balken fuer ein Pattern.
 // Side Effects: schreibt auf das TFT.
@@ -1616,7 +1616,7 @@ void drawGateLenScreen(int setIdx){
     drawGateLenBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
-}
+  }
 
 // Zweck: Zeichnet alle GateLen-Balken fuer ein Pattern.
 // Side Effects: schreibt auf das TFT.
@@ -2074,7 +2074,7 @@ void drawXYPadScreen(int setIdx){
     lastXYDotIdx[setIdx] = -1;
     drawXYDots(setIdx);
     drawXYDotPlayhead(setIdx, cntCh[setIdx]);
-}
+  }
 
 // Zweck: Behandelt Touch-Events im XY-Pad-Screen.
 // Side Effects: wechselt GUIState und schreibt auf das TFT.
@@ -2172,19 +2172,20 @@ void drawEncParamIndicator(int ch) {
     tft.setTextColor(ILI9341_YELLOW);
     tft.setCursor(lx, by);
 
-    if (encParamSel[ch] == 4) {
+    if (encParamSel[ch] == 5) {
         static const char* speedLabels[7] = { "/4", "/3", "/2", "x1", "x2", "x3", "x4" };
         int si = clampVal(chSpeedIdx[ch] + 3, 0, 6);
         tft.print("S");
         snprintf(buf, sizeof(buf), "%s", speedLabels[si]);
     } else {
-        static const char *letters[4] = { "L", "H", "R", "P" };
+        static const char *letters[5] = { "L", "H", "R", "r", "P" };
         int val;
         switch (encParamSel[ch]) {
-            case 0: val = PatLen[ch];         break;
-            case 1: val = PatNum[ch];         break;
-            case 2: val = PatRot[ch];         break;
-            default: val = (int)PatProb[ch];  break;
+            case 0: val = PatLen[ch];          break;
+            case 1: val = PatNum[ch];          break;
+            case 2: val = PatRot[ch];          break;
+            case 3: val = PatRotSel[ch];       break;
+            default: val = (int)PatProb[ch];   break;
         }
         tft.print(letters[encParamSel[ch]]);
         snprintf(buf, sizeof(buf), "%d", val);
@@ -2204,7 +2205,7 @@ void drawSpeedIndicator(int ch) {
     if (ch < 0 || ch > 2) return;
     static const char* speedLabels[7] = { "/4", "/3", "/2", "x1", "x2", "x3", "x4" };
     int si = clampVal(chSpeedIdx[ch] + 3, 0, 6);
-    bool selected = (encParamSel[ch] == 4);
+    bool selected = (encParamSel[ch] == 5);
     uint16_t col  = selected ? ILI9341_RED : ILI9341_LIGHTGREY;
 
     int x = 10, y = 200, w = 58, h = 22;
@@ -2226,8 +2227,10 @@ void drawEncParamIndicators() {
 // Assumptions: Wird auf dem EUCLPARAM-Screen aufgerufen; ch in 0..2.
 void drawParamButtonHighlight(int ch) {
     if (ch < 0 || ch > 2) return;
+    // Columns 0..3 map to enc values L=0, H=1, R=2, P=4 (r=3 has no dedicated button)
+    static const int COL_TO_ENC[4] = { 0, 1, 2, 4 };
     for (int col = 0; col < 4; col++) {
-        uint16_t c = (col == encParamSel[ch]) ? ILI9341_RED : ILI9341_DARKGREY;
+        uint16_t c = (COL_TO_ENC[col] == encParamSel[ch]) ? ILI9341_RED : ILI9341_DARKGREY;
         tft.drawRect(PARAM_COLX[col], PARAM_BTN_TOPY, PARAM_BTN_W, PARAM_BTN_H, c);
         tft.drawRect(PARAM_COLX[col], PARAM_BTN_BOTY, PARAM_BTN_W, PARAM_BTN_H, c);
     }
@@ -2728,47 +2731,54 @@ void drawPitchScreen() {
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
     drawPitchControls();
-}
+  }
 
 // Hilfsfunktion: Rotation von Kanal ch in alle betroffenen Arrays einfrieren,
 // PatRot[ch] auf 0 setzen. Kein Redraw — Aufrufer ist zuständig.
 static void flattenChannelRotation(int ch) {
-    int len = clampVal(PatLen[ch], 1, 32);
-    int rot = PatRot[ch];
-    if (rot == 0) return;
+    int len    = clampVal(PatLen[ch], 1, 32);
+    int rot    = PatRot[ch];
+    int rotSel = PatRotSel[ch];
+    if (rot == 0 && rotSel == 0) return;
 
     bool    etmp[32];
     uint8_t vtmp[32];
+    // Combined rotation for EPat: R + r applied together
+    int combined = clampVal(rot + rotSel, -(len - 1), len - 1);
 
-    // EPat immer rotieren
-    for (int i = 0; i < len; i++) etmp[i] = EPatArr[ch][euclidRotatedSrc(i, len, rot)];
-    for (int i = 0; i < len; i++) EPatArr[ch][i] = etmp[i];
-    syncEPatBFromEPat(ch);
+    // EPat immer rotieren (Global R bestimmt die Muster-Verschiebung)
+    if (rot != 0) {
+        for (int i = 0; i < len; i++) etmp[i] = EPatArr[ch][euclidRotatedSrc(i, len, rot)];
+        for (int i = 0; i < len; i++) EPatArr[ch][i] = etmp[i];
+        syncEPatBFromEPat(ch);
+    }
 
+    // Selective-Rot-Arrays mit kombinierter Rotation einfrieren
     if (RotateValues[ch]) {
-        for (int i = 0; i < len; i++) vtmp[i] = ValuesArr[ch][euclidRotatedSrc(i, len, rot)];
+        for (int i = 0; i < len; i++) vtmp[i] = ValuesArr[ch][euclidRotatedSrc(i, len, combined)];
         for (int i = 0; i < len; i++) ValuesArr[ch][i] = vtmp[i];
     }
     if (RotateGateLen[ch]) {
-        for (int i = 0; i < len; i++) vtmp[i] = GateLenArr[ch][euclidRotatedSrc(i, len, rot)];
+        for (int i = 0; i < len; i++) vtmp[i] = GateLenArr[ch][euclidRotatedSrc(i, len, combined)];
         for (int i = 0; i < len; i++) GateLenArr[ch][i] = vtmp[i];
     }
     if (RotateRatchet[ch]) {
-        for (int i = 0; i < len; i++) vtmp[i] = RatchetArr[ch][euclidRotatedSrc(i, len, rot)];
+        for (int i = 0; i < len; i++) vtmp[i] = RatchetArr[ch][euclidRotatedSrc(i, len, combined)];
         for (int i = 0; i < len; i++) RatchetArr[ch][i] = vtmp[i];
     }
     if (ch == 0) {
         if (RotateOctave[0]) {
             int8_t otmp[32];
-            for (int i = 0; i < len; i++) otmp[i] = OctaveNote1[euclidRotatedSrc(i, len, rot)];
+            for (int i = 0; i < len; i++) otmp[i] = OctaveNote1[euclidRotatedSrc(i, len, combined)];
             for (int i = 0; i < len; i++) OctaveNote1[i] = otmp[i];
         }
         if (pitchRotate) {
-            for (int i = 0; i < len; i++) vtmp[i] = PitchNote1[euclidRotatedSrc(i, len, rot)];
+            for (int i = 0; i < len; i++) vtmp[i] = PitchNote1[euclidRotatedSrc(i, len, combined)];
             for (int i = 0; i < len; i++) PitchNote1[i] = vtmp[i];
         }
     }
-    PatRot[ch] = 0;
+    PatRot[ch]    = 0;
+    PatRotSel[ch] = 0;
     pendingCircleRedraw[ch] = true;
 }
 
@@ -3552,8 +3562,7 @@ void navigateToScreen(uint16_t target) {
         case XY3:          drawXYPadScreen(2);       break;
         default: break;
     }
-    noInterrupts(); pendingTicks = 0; interrupts();
-}
+  }
 
 // ---------------------------------------------------------------------------
 // Navigation-Übersicht: 4×4-Grid aller Screens.

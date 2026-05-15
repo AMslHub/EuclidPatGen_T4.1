@@ -51,7 +51,8 @@ extern bool stillPressed;
 // Pattern parameters
 extern int PatLen[3];
 extern int PatNum[3];
-extern int PatRot[3];
+extern int PatRot[3];    // Global Rot (R): verschiebt alles gleichmäßig
+extern int PatRotSel[3]; // Selective Rot (r): verschiebt nur Checkbox-markierte Schichten
 extern uint8_t PatProb[3];
 extern bool PatProbAuto[3];
 extern bool ProbEuclidRebuild[3];
@@ -181,3 +182,8 @@ inline bool isSeqActive(int ch) {
   if (anySolo) return SoloSeq[ch] && !MuteSeq[ch];
   return !MuteSeq[ch];
 }
+
+// Verwirft akkumulierte Ticks atomar und löscht den ISR-Gate-Fired-Flag.
+// Überall verwenden wo bisher noInterrupts(); pendingTicks=0; interrupts() stand,
+// damit kein gateWasFiredByISR-Überläufer in den nächsten Tick durchsickert.
+void discardPendingTicks();

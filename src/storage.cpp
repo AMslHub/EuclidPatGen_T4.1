@@ -8,7 +8,7 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB45;  // bumped: +songSeq/songLen
+static const uint16_t EEPROM_MAGIC   = 0xEB46;  // bumped: +PatRotSel[3]
 static const uint16_t SD_MAGIC_SLOTS = 0xEB5F;
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
@@ -35,6 +35,7 @@ struct ParamBlock {
     uint8_t len[3];
     uint8_t num[3];
     int8_t  rot[3];
+    int8_t  rotSel[3];
     uint8_t prob[3];
     uint8_t probAuto[3];
     uint8_t values[3][32];
@@ -110,9 +111,10 @@ static void packParamsCore(ParamBlock &p) {
     for (int i = 0; i < 3; i++) {
         p.len[i]  = (uint8_t)clampVal(PatLen[i], 1, 32);
         p.num[i]  = (uint8_t)clampVal(PatNum[i], 0, PatLen[i]);
-        int rmax  = PatLen[i] > 0 ? PatLen[i] : 0;
-        p.rot[i]  = (int8_t)clampVal(PatRot[i], -rmax, rmax);
-        p.prob[i] = (uint8_t)clampVal(PatProb[i], 0, 20);
+        int rmax   = PatLen[i] > 0 ? PatLen[i] : 0;
+        p.rot[i]   = (int8_t)clampVal(PatRot[i],    -rmax, rmax);
+        p.rotSel[i]= (int8_t)clampVal(PatRotSel[i], -rmax, rmax);
+        p.prob[i]  = (uint8_t)clampVal(PatProb[i], 0, 20);
         p.probAuto[i] = PatProbAuto[i] ? 1 : 0;
         if (ProbEuclidRebuild[i])
             p.probAuto[i] = (uint8_t)(p.probAuto[i] | 0x02);
@@ -136,9 +138,10 @@ static void unpackParamsCore(const ParamBlock &p) {
     for (int i = 0; i < 3; i++) {
         PatLen[i]  = clampVal(p.len[i], 1, 32);
         PatNum[i]  = clampVal(p.num[i], 0, PatLen[i]);
-        int rmax   = PatLen[i] > 0 ? PatLen[i] : 0;
-        PatRot[i]  = clampVal((int)p.rot[i], -rmax, rmax);
-        PatProb[i] = clampVal(p.prob[i], 0, 20);
+        int rmax     = PatLen[i] > 0 ? PatLen[i] : 0;
+        PatRot[i]    = clampVal((int)p.rot[i],    -rmax, rmax);
+        PatRotSel[i] = clampVal((int)p.rotSel[i], -rmax, rmax);
+        PatProb[i]   = clampVal(p.prob[i], 0, 20);
         PatProbAuto[i]     = (p.probAuto[i] & 0x01) != 0;
         ProbEuclidRebuild[i] = (p.probAuto[i] & 0x02) != 0;
         for (int j = 0; j < 32; j++) {
@@ -345,6 +348,7 @@ void loadParams() {
         PatProbAuto[i]     = false;
         ProbEuclidRebuild[i] = false;
         chSpeedIdx[i]      = 0;
+        PatRotSel[i]       = 0;
         cvTargetMap[i]     = CV_TARGET_NONE;
     }
 }

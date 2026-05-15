@@ -80,9 +80,9 @@ uint32_t gateLenForStep(int ch, unsigned int step) {
     if (!(*GateHoldArr[ch])) {
         return GATE_PULSE_US;
     }
-    int idx = step % len;
-    int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
-    int src = RotateGateLen[ch] ? euclidRotatedSrc(idx, len, effRot) : idx;
+    int idx       = step % len;
+    int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+    int src = RotateGateLen[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
     uint8_t v = GateLenArr[ch][src];
     if (v == 0) {
         return GATE_PULSE_US;
@@ -129,6 +129,11 @@ void triggerGateForCh(int ch) {
 static uint8_t  lastOutUnmod[3] = { 0, 0, 0 };
 static uint16_t lastPitchDacVal = 0;
 
+// Set by resetGateCvCache(); cleared on next outputValuesForStep call.
+static bool s_resetCvCache = false;
+
+void resetGateCvCache() { s_resetCvCache = true; }
+
 // DAC-Zustand-Cache: was zuletzt tatsächlich auf den DAC geschrieben wurde.
 // Wird von outputValuesForStep UND outputRatchetValue gepflegt, damit
 // Swing-Steps den alten Wert halten können bis das Gate feuert.
@@ -139,7 +144,15 @@ static uint16_t sDacOut[3] = { 0, 0, 0 };
 // swingMask: Bit pro Kanal (Bit0=Ch0). Fuer gesetzte Kanaele wird der alte DAC-Wert
 // gehalten (Gate ist noch verzoegert) und der neue Wert erst bei Gate-Feuer geschrieben.
 void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
-    static uint8_t lastOut[3] = { 0, 0, 0 };
+    static uint8_t  lastOut[3]   = { 0, 0, 0 };
+    static uint16_t lastPitchDac = 0;
+
+    // Reset hold-caches after slot load so old-slot CV doesn't leak into new slot
+    if (s_resetCvCache) {
+        s_resetCvCache = false;
+        lastOut[0] = lastOut[1] = lastOut[2] = 0;
+        lastPitchDac = 0;
+    }
 
     for (int ch = 0; ch < 3; ch++) {
         if (!isSeqActive(ch)) {
@@ -152,10 +165,11 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
             continue;
         }
 
-        int idx    = cntCh[ch] % len;
-        int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int idx       = cntCh[ch] % len;
+        int effRot    = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         bool hit   = EPatArr[ch][euclidRotatedSrc(idx, len, effRot)];
-        int src    = RotateValues[ch] ? euclidRotatedSrc(idx, len, effRot) : idx;
+        int src    = RotateValues[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
         uint8_t v  = ValuesArr[ch][src];
 
         if (*HoldArr[ch]) {
@@ -167,19 +181,19 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
     }
 
     // Pitch-CV fuer Kanal 1: quantisierter Schritt aus PitchNote1
-    static uint16_t lastPitchDac = 0;
     uint16_t pitchDac = lastPitchDac;
     {
         int len0 = PatLen[0];
         if (len0 > 0) {
-            int pidx    = (int)(cntCh[0] % (unsigned int)len0);
-            int effRot0 = clampVal(PatRot[0] + (int)cvPatRotOffset[0], -(len0 - 1), len0 - 1);
+            int pidx      = (int)(cntCh[0] % (unsigned int)len0);
+            int effRot0   = clampVal(PatRot[0] + (int)cvPatRotOffset[0], -(len0 - 1), len0 - 1);
+            int effRotSel0 = clampVal(PatRot[0] + PatRotSel[0] + (int)cvPatRotOffset[0], -(len0 - 1), len0 - 1);
             bool hit    = EPatArr[0][euclidRotatedSrc(pidx, len0, effRot0)];
             uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
             int effPidx = foldPitchIdx(pidx, len0, effFold);
-            int src     = pitchRotate ? euclidRotatedSrc(effPidx, len0, effRot0) : effPidx;
+            int src     = pitchRotate ? euclidRotatedSrc(effPidx, len0, effRotSel0) : effPidx;
             if (!pitchHold || hit) {
-                int octSrc = RotateOctave[0] ? euclidRotatedSrc(pidx, len0, effRot0) : pidx;
+                int octSrc = RotateOctave[0] ? euclidRotatedSrc(pidx, len0, effRotSel0) : pidx;
                 int totalShift = (int)pitchShift + (int)cvPitchShiftOffset + (int)OctaveNote1[octSrc];
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);

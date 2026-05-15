@@ -15,7 +15,7 @@ static Encoder *encoders[3] = { &enc1, &enc2, &enc3 };
 
 static const uint8_t swPins[3] = { ENC1_SW_PIN, ENC2_SW_PIN, ENC3_SW_PIN };
 
-// 0=PatLen, 1=PatNum, 2=PatRot, 3=PatProb  (extern in app_state.h)
+// 0=PatLen, 1=PatNum, 2=PatRot(R), 3=PatRotSel(r), 4=PatProb, 5=Speed  (extern in app_state.h)
 uint8_t encParamSel[3] = { 0, 0, 0 };
 static long encLastPos[3] = { 0, 0, 0 };
 static int  pitchItvlCursor = 0;  // Enc3-Cursor: aktuell hervorgehobenes Intervall (0..6)
@@ -60,10 +60,11 @@ bool getPitchBoxEditMode() { return pitchBoxEditMode; }
 //   sonst: Aenderung erst am Pattern-Ende sichtbar (pendingCircleRedraw)
 // ---------------------------------------------------------------------------
 static void applyParamChange(int ch, bool rotOnly) {
-    PatLen[ch]  = clampVal(PatLen[ch], 1, 32);
-    PatNum[ch]  = clampVal(PatNum[ch], 1, PatLen[ch]);
-    PatRot[ch]  = clampVal(PatRot[ch], -(PatLen[ch] - 1), PatLen[ch] - 1);
-    PatProb[ch] = (uint8_t)clampVal((int)PatProb[ch], 0, 20);
+    PatLen[ch]    = clampVal(PatLen[ch], 1, 32);
+    PatNum[ch]    = clampVal(PatNum[ch], 1, PatLen[ch]);
+    PatRot[ch]    = clampVal(PatRot[ch],    -(PatLen[ch] - 1), PatLen[ch] - 1);
+    PatRotSel[ch] = clampVal(PatRotSel[ch], -(PatLen[ch] - 1), PatLen[ch] - 1);
+    PatProb[ch]   = (uint8_t)clampVal((int)PatProb[ch], 0, 20);
     scheduleSaveParams();
 
     const int Rs[3] = { R1, R2, R3 };
@@ -94,10 +95,10 @@ static void applyParamChange(int ch, bool rotOnly) {
 
 // ---------------------------------------------------------------------------
 // Normaler Encoder-Dreh: aendert den aktuell selektierten Parameter von ch.
-// Reihenfolge: 0=PatLen(L), 1=PatNum(H), 2=PatRot(R), 3=PatProb(P), 4=Speed(S)
+// Reihenfolge: 0=PatLen(L), 1=PatNum(H), 2=PatRot(R), 3=PatRotSel(r), 4=PatProb(P), 5=Speed(S)
 // ---------------------------------------------------------------------------
 static void handleNormalEncoder(int ch, int delta) {
-    if (encParamSel[ch] == 4) {
+    if (encParamSel[ch] == 5) {
         // Speed: -3..+3 (÷4..×4)
         chSpeedIdx[ch] = clampVal(chSpeedIdx[ch] + delta, -3, 3);
         scheduleSaveParams();
@@ -108,7 +109,7 @@ static void handleNormalEncoder(int ch, int delta) {
         }
         return;
     }
-    if (encParamSel[ch] == 3) {
+    if (encParamSel[ch] == 4) {
         if (GUIState == EUCLCIRCS) {
             // Kreisscreen: Zufallspattern am naechsten Pattern-Ende generieren
             pendingProbRegen[ch] = true;
@@ -117,6 +118,12 @@ static void handleNormalEncoder(int ch, int delta) {
             PatProb[ch] = (uint8_t)clampVal((int)PatProb[ch] + delta, 0, 20);
             applyParamChange(ch, false);
         }
+        return;
+    }
+    if (encParamSel[ch] == 3) {
+        // Selective Rot (r): nur Checkbox-markierte Schichten
+        PatRotSel[ch] += delta;
+        applyParamChange(ch, true);
         return;
     }
     bool rotOnly = false;
@@ -132,7 +139,7 @@ static void handleNormalEncoder(int ch, int delta) {
 // Normaler Encoder-Knopfdruck: zykliert den aktiven Parameter fuer ch.
 // ---------------------------------------------------------------------------
 static void handleNormalButton(int ch) {
-    encParamSel[ch] = (encParamSel[ch] + 1) % 5;
+    encParamSel[ch] = (encParamSel[ch] + 1) % 6;
     if (GUIState == (uint16_t)(EUCLPARAM1 + ch)) {
         drawParamButtonHighlight(ch);
         drawSpeedIndicator(ch);
@@ -416,7 +423,6 @@ void handleEncoders() {
                         navPrevState = GUIState;
                         GUIState = NAV;
                         drawNavScreen(navPrevState);
-                        noInterrupts(); pendingTicks = 0; interrupts();
                     }
                 } else {
                     if (GUIState == NAV) {

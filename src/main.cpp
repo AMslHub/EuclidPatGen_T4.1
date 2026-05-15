@@ -34,6 +34,7 @@ bool      stillPressed;
 int PatLen[3] = { 10, 32, 16 };
 int PatNum[3] = { 3, 14, 6 };
 int PatRot[3] = { 1, 2, 3 };
+int PatRotSel[3] = { 0, 0, 0 };
 uint8_t PatProb[3] = { 20, 20, 20 };
 bool PatProbAuto[3] = { false, false, false };
 bool ProbEuclidRebuild[3] = { false, false, false };
@@ -167,7 +168,38 @@ unsigned int cnthold = 0;
 unsigned int cnt     = 0;          // Zähler, nur im Main-Loop geschrieben
 volatile uint32_t pendingTicks = 0; // ISR-shared
 
-IntervalTimer myTimer;  // Interval-Timer Objekt
+IntervalTimer myTimer;      // Sequencer-Tick-Timer
+static IntervalTimer gateOffTimer;  // 1kHz gate-off watchdog (läuft auch während SPI-Draws)
+
+// Pre-Arm: Main-Loop berechnet nach jedem Tick den nächsten Step-Hit.
+// timerISR zündet das Gate sofort beim richtigen Tick — auch während SPI-Draws.
+static volatile bool     nextGateArmed[3]     = { false, false, false };
+static volatile uint32_t nextGateDuration[3]  = { 0, 0, 0 };
+// Merkt ob ISR das Gate bereits gezündet hat — Main-Loop überspringt dann digitalWrite.
+static volatile bool     gateWasFiredByISR[3] = { false, false, false };
+
+// Schaltet abgelaufene Gate-Pulse ab — läuft als ISR, damit Gates auch während
+// langer SPI-Transfers (fillScreen usw.) pünktlich abgeschaltet werden.
+static void gateOffISR() {
+    uint32_t now = micros();
+    for (int i = 0; i < 3; i++) {
+        uint32_t offAt = gateOffAt[i];
+        if (offAt != 0 && (int32_t)(now - offAt) >= 0) {
+            digitalWriteFast(GatePins[i], HIGH);
+            gateOffAt[i] = 0;
+        }
+    }
+}
+
+// Verwirft akkumulierte Ticks und löscht den ISR-Gate-Fired-Flag.
+// Verhindert, dass ein vom ISR gezündetes Gate fälschlicherweise als
+// "bereits gefeuert" in den nächsten Tick durchsickert.
+void discardPendingTicks() {
+    noInterrupts();
+    pendingTicks = 0;
+    for (int i = 0; i < 3; i++) gateWasFiredByISR[i] = false;
+    interrupts();
+}
 
 // Globale Ratchet-Dämpfung: 0=flat, 255=max Decay
 uint8_t ratchetDecay = 0;
@@ -230,10 +262,16 @@ void resetISR() {
 // Side Effects: schreibt auf die globale Variable pendingTicks.
 // Assumptions: Wird nur vom IntervalTimer-ISR-Kontext aufgerufen.
 void timerISR() {
-  // ISR bleibt bewusst minimal: nur Tick zaehlen, keine blockierenden Calls.
-  if(pendingTicks != 0xFFFFFFFFu){
-    pendingTicks++;
-  }
+    // Pre-armed gates sofort zünden — pünktlich auch wenn Main-Loop in SPI-Draw blockiert.
+    for (int i = 0; i < 3; i++) {
+        if (nextGateArmed[i]) {
+            nextGateArmed[i]     = false;
+            gateWasFiredByISR[i] = true;
+            digitalWriteFast(GatePins[i], LOW);
+            gateOffAt[i] = micros() + nextGateDuration[i];
+        }
+    }
+    if (pendingTicks != 0xFFFFFFFFu) pendingTicks++;
 }
 
 // Zweck: Holt genau einen ausstehenden Timer-Tick atomar ab.
@@ -371,6 +409,8 @@ void setup() {
   pinMode(RESET_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
+
+  gateOffTimer.begin(gateOffISR, 1000);  // 1kHz: gates off ≤1ms late even during SPI draws
 
   tft.begin(40000000); // SPI Speed 40 MHz (60 MHz führte zu DMA-Instabilität)
   tft.fillScreen(ILI9341_BLACK);
@@ -641,7 +681,7 @@ void loop() {
   // GUI-Aktionen hängen vom GUI-Zustand ab
   // Deferred-Masken: schwere Kreis-Redraws werden nach der Tick-Schleife ausgefuehrt
   // Song HALT: akkumulierte Ticks verwerfen, Schleife nicht betreten
-  if (songHalted) { noInterrupts(); pendingTicks = 0; interrupts(); }
+  if (songHalted) { discardPendingTicks(); }
   uint8_t deferredRedrawMask = 0;
   uint8_t deferredProbMask   = 0;
   int     deferredOldLen[3]  = {};
@@ -693,7 +733,8 @@ void loop() {
           chSubTicksDone[ch] = 0;
       }
       // SD-Read dauert 10–20ms → akkumulierte Ticks verwerfen, um Burst zu verhindern
-      noInterrupts(); pendingTicks = 0; interrupts();
+      discardPendingTicks();
+      resetGateCvCache();  // CV-Hold-Cache leeren: kein Überlauf alter Slot-Werte
       // Song-Advance: Slot geladen → nächsten Slot vorbereiten
       if (songPlaying && songLen > 0) {
           songLoadedPos = songPos;
@@ -730,15 +771,15 @@ void loop() {
       }
     }
 
-    // Auto-Rotate: PatRot am Zyklusende automatisch erhoehen
+    // Auto-Rotate: PatRotSel am Zyklusende automatisch erhoehen (Selective Rot)
     for (int ch = 0; ch < 3; ch++) {
         if (autoRotateStep[ch] == 0) continue;
         int len = clampVal(PatLen[ch], 1, 32);
         if ((cntCh[ch] % (unsigned int)len) == 0) {
-            int newRot = PatRot[ch] + (int)autoRotateStep[ch];
+            int newRot = PatRotSel[ch] + (int)autoRotateStep[ch];
             int maxRot = len - 1;
             while (newRot > maxRot) newRot -= len;
-            PatRot[ch] = newRot;
+            PatRotSel[ch] = newRot;
             refreshUiForPatternUpdate(ch);
         }
     }
@@ -870,16 +911,19 @@ void loop() {
 
     // Gate-Trigger: Swing und Ratchet beruecksichtigen.
     // Nur Kanaele triggern die diesen Tick tatsaechlich vorgerueckt sind.
+    // isrFired: timerISR hat Gate bereits gezündet (Pre-Arm) → kein zweites digitalWrite.
     for (int ch = 0; ch < 3; ch++) {
+        bool isrFired = gateWasFiredByISR[ch];
+        gateWasFiredByISR[ch] = false;  // immer clearen, auch wenn kein Hit
         if (!chFired[ch]) continue;
         if (!isSeqActive(ch)) { ratchetRemain[ch] = 0; swingPending[ch] = false; continue; }
         int len = PatLen[ch];
         if (len <= 0) continue;
-        int idx    = (int)(cntCh[ch] % (unsigned int)len);
-        int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int idx      = (int)(cntCh[ch] % (unsigned int)len);
+        int effRot   = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         if (!EPatArr[ch][euclidRotatedSrc(idx, len, effRot)]) { ratchetRemain[ch] = 0; continue; }
 
-        // Swing gilt fuer jeden 2. Step (0-indiziert: cntCh gerade → Step 2, 4, 6…)
         bool applySwing = (cvSwingPct > 0) && ((cntCh[ch] % 2u) == 0u);
         if (applySwing) {
             uint32_t swingDelay = (uint32_t)cvSwingPct * DurationOfOneStep / 100u;
@@ -890,11 +934,23 @@ void loop() {
         } else {
             swingPending[ch] = false;
             {
-                int rIdx = RotateRatchet[ch] ? euclidRotatedSrc(idx, len, effRot) : idx;
+                int rIdx = RotateRatchet[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
                 uint8_t perStepR = RatchetArr[ch][rIdx];
                 uint8_t effR = (cvRatchetCount[ch] > perStepR) ? cvRatchetCount[ch] : perStepR;
-                digitalWrite(GatePins[ch], LOW);
-                gateOffAt[ch] = micros() + (effR > 1 ? GATE_PULSE_US : gateLenForStep(ch, cntCh[ch]));
+                uint32_t gateDur = effR > 1 ? GATE_PULSE_US : gateLenForStep(ch, cntCh[ch]);
+                if (!isrFired) {
+                    // Normalfall: Gate vom Main-Loop zünden
+                    digitalWrite(GatePins[ch], LOW);
+                    gateOffAt[ch] = micros() + gateDur;
+                } else if (gateOffAt[ch] != 0) {
+                    // ISR hat Gate gezündet und es ist noch offen: korrekte Dauer setzen
+                    gateOffAt[ch] = micros() + gateDur;
+                } else {
+                    // ISR hat gezündet, Gate aber schon geschlossen (Main-Loop war >GATE_PULSE_US spät):
+                    // Neu öffnen damit GateHold-Dauer noch korrekt wirkt
+                    digitalWrite(GatePins[ch], LOW);
+                    gateOffAt[ch] = micros() + gateDur;
+                }
                 if (effR > 1 && DurationOfOneStep > 0) {
                     ratchetTotal[ch]    = effR;
                     ratchetRemain[ch]   = effR - 1;
@@ -906,6 +962,25 @@ void loop() {
                 }
             }
         }
+    }
+
+    // Pre-Arm: nächsten Step-Hit vorausberechnen damit timerISR das Gate pünktlich
+    // zünden kann — auch wenn der Main-Loop gerade in einem SPI-Draw blockiert ist.
+    // Nur ×1-Kanaele (÷N und ×N werden anders behandelt), kein Swing, kein Ratchet.
+    for (int ch = 0; ch < 3; ch++) {
+        nextGateArmed[ch] = false;
+        if (chSpeedIdx[ch] != 0 || !isSeqActive(ch)) continue;
+        int len = PatLen[ch];
+        if (len <= 0) continue;
+        uint32_t nextCnt = cntCh[ch] + 1u;
+        int nextIdx = (int)(nextCnt % (unsigned int)len);
+        int effRot  = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        if (!EPatArr[ch][euclidRotatedSrc(nextIdx, len, effRot)]) continue;
+        bool nextSwing   = (cvSwingPct > 0) && ((nextCnt % 2u) == 0u);
+        bool noRatchet   = (cvRatchetCount[ch] <= 1u) && (RatchetArr[ch][nextIdx] <= 1u);
+        if (nextSwing || !noRatchet) continue;
+        nextGateArmed[ch]    = true;
+        nextGateDuration[ch] = gateLenForStep(ch, nextCnt);
     }
 
     cnthold = cnt;
@@ -950,16 +1025,17 @@ void loop() {
         continue;
       }
     }
-    noInterrupts(); pendingTicks = 0; interrupts();
+    discardPendingTicks();
   }
 
-  // Deferred Pitch-Redraw: nach der Tick-Schleife (~21ms SPI).
+  // Deferred Pitch-Redraw: nach der Tick-Schleife (~20ms SPI).
+  // Kein discardPendingTicks hier: ISR zündet Gates korrekt während des Draws;
+  // akkumulierte Ticks (≤1 bei normalen BPMs) werden normal verarbeitet.
   if (pendingPitchDraw && GUIState == PITCH1) {
     pendingPitchDraw = false;
     drawPitchControls();
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
-    noInterrupts(); pendingTicks = 0; interrupts();
   }
 
   // Song-Slot-Load: erst nach der Tick-Schleife, um SD-Kaskaden zu verhindern.
@@ -984,7 +1060,7 @@ void loop() {
     pendingSongAutoStop = false;
     pendingSongSlotLoad = false;
     for (int ch = 0; ch < 3; ch++) MuteSeq[ch] = false;
-    noInterrupts(); pendingTicks = 0; interrupts();
+    discardPendingTicks();
     cnt = 0; cnthold = 0;
     for (int ch = 0; ch < 3; ch++) {
         cntCh[ch]          = 0;
@@ -1096,7 +1172,7 @@ void loop() {
       if(pt == 0){
         PendingSave = false;
         saveParams();
-        noInterrupts(); pendingTicks = 0; interrupts();
+        discardPendingTicks();
       } else {
         PendingSaveAt = nowMs + 5;
       }
@@ -1130,7 +1206,7 @@ void loop() {
     pendingSlotMoveTo   = -1;
     pendingSlotCopyMask = 0x07;
     mergeParamsSlot(from, to, mask);
-    noInterrupts(); pendingTicks = 0; interrupts();
+    discardPendingTicks();
     if (GUIState == PERFORMANCE) refreshPerfSlotState();
   }
 
@@ -1144,7 +1220,7 @@ void loop() {
     if      (op == 1) saveSong(num);
     else if (op == 2) loadSong(num);
     else if (op == 3) deleteSong(num);
-    noInterrupts(); pendingTicks = 0; interrupts();
+    discardPendingTicks();
     if (GUIState == GCONFIG) refreshGConfigSongSelector();
   }
 
@@ -1170,6 +1246,7 @@ void loop() {
       chDivPhase[ch]     = 0;
       chSubTicksDone[ch] = 0;
     }
+    resetGateCvCache();
   }
 
   // Performance-Button-Flash und Sequencer-Playhead aktualisieren
