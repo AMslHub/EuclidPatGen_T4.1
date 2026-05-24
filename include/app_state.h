@@ -112,6 +112,7 @@ extern int     pendingSlotMoveTo;     // Ziel-Slot des aufgeschobenen Merge
 extern uint8_t pendingSlotCopyMask;  // Kanal-Maske: bit i=1 → Kanal i von Quelle kopieren
 extern int pendingSongOp;        // 0=none,1=save,2=load,3=delete; Main-Loop führt aus
 extern int pendingSongNum;       // Song-Nummer für pendingSongOp
+extern int activeSongNum;        // zuletzt gespeicherter/geladener Song (nicht persistiert)
 
 extern uint32_t DurationOfOneStep;
 extern uint16_t bpm;
@@ -153,6 +154,7 @@ extern uint8_t songSeq[64];      // Slot-Indices 0-15, max 64 Einträge
 extern uint8_t songLen;          // Anzahl gültiger Einträge (0 = leer)
 extern bool    songPlaying;      // true = Song läuft gerade
 extern bool    songHalted;       // true = Song angehalten (Ticks blockiert, Zähler auf 0)
+extern bool    songLoop;         // true = Song wiederholt sich endlos (nicht gespeichert)
 extern bool    pendingSongHalt;  // true = STOP-Anforderung (Haupt-Loop führt Zähler-Reset aus)
 extern uint8_t songPos;          // nächste Position zum Laden (Lookahead)
 extern uint8_t songLoadedPos;    // aktuell spielende Position (Anzeige)

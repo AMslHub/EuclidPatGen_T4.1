@@ -460,7 +460,7 @@ void handleEncoders() {
         if (rawDelta != 0) {
             encLastPos[i] += (long)rawDelta * ENC_STEPS_PER_DETENT;
             if (GUIState == SONG && i == 0) {
-                scrollSongView(delta);
+                moveSongCursor(delta);
             } else if (GUIState == NAV) {
                 if (i == 2) moveNavCursor(delta);
             } else if (GUIState == PERFORMANCE && i == 0) {

@@ -76,6 +76,7 @@ const uint32_t SAVE_DEBOUNCE_MS = 400;
 int pendingSlotSaveSlot = -1;
 int pendingSongOp  = 0;
 int pendingSongNum = -1;
+int activeSongNum  = 0;
 int     pendingSlotMoveFrom  = -1;
 int     pendingSlotMoveTo    = -1;
 uint8_t pendingSlotCopyMask  = 0x07;
@@ -115,6 +116,7 @@ uint8_t songSeq[64]    = { 0 };
 uint8_t songLen        = 0;
 bool    songPlaying    = false;
 bool    songHalted     = false;
+bool    songLoop       = false;
 bool    pendingSongHalt = false;
 uint8_t songPos        = 0;
 uint8_t songLoadedPos  = 0;
@@ -430,7 +432,7 @@ void setup() {
   randomSeed(analogRead(A0) + micros());
 
   initialText();
-  delay(500);
+  delay(1000);
 
   tft.fillScreen(ILI9341_BLACK);
 
@@ -743,9 +745,13 @@ void loop() {
           uint8_t mute = (songSeq[songLoadedPos] >> 4) & 0x07;
           for (int ch = 0; ch < 3; ch++) MuteSeq[ch] = (mute >> ch) & 1;
           if (songLoadedPos == (uint8_t)(songLen - 1u)) {
-              // Letzter Eintrag geladen → einen Zyklus ausspielen, dann anhalten
-              songPos = 0;  // für nächsten PLAY-Durchlauf bereit
-              pendingSongAutoStop = true;
+              // Letzter Eintrag geladen → ausspielen, dann loop oder stoppen
+              songPos = 0;
+              if (songLoop) {
+                  pendingSongSlotLoad = true;   // direkt wieder von vorne
+              } else {
+                  pendingSongAutoStop = true;   // einmal spielen, dann halt
+              }
           } else {
               songPos = (uint8_t)(((unsigned int)songPos + 1u) % (unsigned int)songLen);
               pendingSongSlotLoad = true;
@@ -785,10 +791,12 @@ void loop() {
         }
     }
 
-    // Song Auto-Stop: am Zyklusende des letzten Eintrags anhalten
+    // Song Auto-Stop: am Zyklusende des letzten Eintrags anhalten.
+    // cntCh[0] != 0: verhindert sofortiges Feuern im selben Tick wie der Load
+    // (applyPendingLoadIfReady setzt cntCh[0]=0, wodurch 0%PatLen==0 wäre).
     if (pendingSongAutoStop && chFired[0]) {
         int len0 = clampVal(PatLen[0], 1, 32);
-        if ((cntCh[0] % (unsigned int)len0) == 0) {
+        if (cntCh[0] != 0 && (cntCh[0] % (unsigned int)len0) == 0) {
             pendingSongAutoStop = false;
             pendingSongHalt = true;
         }
@@ -1248,9 +1256,16 @@ void loop() {
     int num = pendingSongNum;
     pendingSongOp  = 0;
     pendingSongNum = -1;
-    if      (op == 1) saveSong(num);
-    else if (op == 2) loadSong(num);
-    else if (op == 3) deleteSong(num);
+    if (op == 1) {
+        saveSong(num);
+        activeSongNum = num;
+        if (GUIState == GCONFIG) triggerGConfigSaveFlash();
+    } else if (op == 2) {
+        loadSong(num);
+        activeSongNum = num;
+    } else if (op == 3) {
+        deleteSong(num);
+    }
     discardPendingTicks();
     if (GUIState == GCONFIG) refreshGConfigSongSelector();
   }
@@ -1286,6 +1301,9 @@ void loop() {
   }
   if(GUIState == CV_CONFIG){
     tickCvConfigUi();
+  }
+  if(GUIState == GCONFIG){
+    tickGConfigUi();
   }
   tickProbButtonFlash();
   if (tickSaveToast()) {

@@ -301,18 +301,27 @@ void drawXYPlayhead(int setIdx, unsigned int step){
 unsigned long initialText() {
   tft.fillScreen(ILI9341_BLACK);
   unsigned long start = micros();
-  tft.setCursor(0, 0);
-  tft.setTextColor(ILI9341_WHITE);  
-  tft.setFont(Arial_16);
-  tft.println("Eucledian_Test_03");
-  tft.println("");
-    
-  tft.setTextColor(ILI9341_GREEN);
+
+  tft.setFont(Arial_24);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setCursor(8, 6);
+  tft.print("EuclidPatGen T4.1");
+
   tft.setFont(Arial_12);
-  tft.println("3-Spur-Eucledian/Turing-Sequencer ");
-  tft.println("Jede Spur hat Values- und Gateausgang");
-  tft.println("Performance-Section mit 7 Sequenz-Speichern");
-  tft.println("XY-Pad für jede Spur");    
+  tft.setTextColor(ILI9341_DARKGREY);
+  tft.setCursor(8, 36);
+  tft.print("v1.2  (c) 2026 AMsl");
+
+  tft.setFont(Arial_12);
+  tft.setTextColor(ILI9341_GREEN);
+  tft.setCursor(8, 58);  tft.print("3-Kanal Euklid-Sequencer");
+  tft.setCursor(8, 74);  tft.print("Pitch-CV 1V/Oct \x7C 25 Skalen \x7C Fold");
+  tft.setCursor(8, 90);  tft.print("XY-Pad \x7C Ratchet \x7C Oktav per Step");
+  tft.setCursor(8, 106); tft.print("31 Rhythmus- / 16+ Pitch-Presets");
+  tft.setCursor(8, 122); tft.print("Performance: Mute / Solo / 7 Slots");
+  tft.setCursor(8, 138); tft.print("Song-Sequencer: 64 Schritte / Loop");
+  tft.setCursor(8, 154); tft.print("CV-In 3x \x7C Clock+Reset \x7C Auto-Save");
+
   return micros() - start;
 }
 
@@ -3071,6 +3080,19 @@ void refreshGConfigSongSelector() {
     drawGcSongSelector();
 }
 
+static uint32_t gcSaveFlashUntil = 0;
+
+static void drawGcSaveButton(bool flashing) {
+    uint16_t fill = flashing ? ILI9341_GREEN : ILI9341_BLACK;
+    uint16_t text = flashing ? ILI9341_BLACK : ILI9341_GREEN;
+    tft.fillRect(11, GC_SONG_BTN_Y + 1, GC_SONG_BTN_W - 2, GC_SONG_BTN_H - 2, fill);
+    tft.drawRect(10, GC_SONG_BTN_Y, GC_SONG_BTN_W, GC_SONG_BTN_H, ILI9341_GREEN);
+    tft.setFont(Arial_16);
+    tft.setTextColor(text);
+    tft.setCursor(10 + (GC_SONG_BTN_W - 4 * 9) / 2, GC_SONG_BTN_Y + 7);
+    tft.print("Save");
+}
+
 static void drawGcSongButtons() {
     // Save | Load | Del
     static const char* lbls[3] = { "Save", "Load", "Del" };
@@ -3087,7 +3109,20 @@ static void drawGcSongButtons() {
     }
 }
 
+void triggerGConfigSaveFlash() {
+    gcSaveFlashUntil = millis() + 300;
+    drawGcSaveButton(true);
+}
+
+void tickGConfigUi() {
+    if (gcSaveFlashUntil != 0 && (int32_t)(millis() - gcSaveFlashUntil) >= 0) {
+        gcSaveFlashUntil = 0;
+        drawGcSaveButton(false);
+    }
+}
+
 void drawGConfigScreen() {
+    gcSongNum        = activeSongNum;               // zuletzt benutzten Song vorauswählen
     gcSongUsedCached = getSongUsedBit(gcSongNum);  // einmalige SD-Abfrage beim Screen-Aufbau
     fillScreenIfNeeded();
 
@@ -3217,7 +3252,7 @@ static void drawSongBottomButtons() {
         { "BS",   0   },
         { "CLR",  80  },
         { "PLAY", 160 },
-        { "STOP", 240 },
+        { "STP",  240 },
     };
     static const uint16_t BASE_COLS[4] = {
         ILI9341_YELLOW, ILI9341_RED, ILI9341_GREEN, ILI9341_DARKGREY
@@ -3345,13 +3380,12 @@ static void drawSongSequence() {
     }
 }
 
-void scrollSongView(int delta) {
-    songViewStart += delta;
-    // Nur Bereichs-Clamp — kein Cursor-Constraint, damit Encoder frei scrollen kann
-    int maxStart = (int)songLen - SONG_VIS + 1;
-    if (maxStart < 0) maxStart = 0;
-    if (songViewStart > maxStart) songViewStart = maxStart;
-    if (songViewStart < 0) songViewStart = 0;
+void moveSongCursor(int delta) {
+    if (songPlaying) return;
+    songCursor += delta;
+    if (songCursor < 0) songCursor = 0;
+    if (songCursor > (int)songLen) songCursor = (int)songLen;
+    clampSongView();
     drawSongSequence();
 }
 
@@ -3360,6 +3394,21 @@ void tickSongUi() {
     drawSongMuteArm();
     drawSongBottomButtons();
     for (int i = 0; i < 16; i++) drawSongKey(i);
+}
+
+static const int SONG_LOOP_X = 284, SONG_LOOP_Y = 10, SONG_LOOP_S = 20;
+
+static void drawSongLoopCheckbox() {
+    tft.drawRect(SONG_LOOP_X, SONG_LOOP_Y, SONG_LOOP_S, SONG_LOOP_S, ILI9341_DARKGREY);
+    tft.fillRect(SONG_LOOP_X + 1, SONG_LOOP_Y + 1, SONG_LOOP_S - 2, SONG_LOOP_S - 2, ILI9341_BLACK);
+    tft.setFont(Arial_12);
+    tft.setCursor(SONG_LOOP_X - 42, SONG_LOOP_Y + 4);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.print("Loop");
+    if (songLoop) {
+        tft.drawLine(SONG_LOOP_X + 3, SONG_LOOP_Y + 10, SONG_LOOP_X + 8, SONG_LOOP_Y + 16, ILI9341_GREEN);
+        tft.drawLine(SONG_LOOP_X + 8, SONG_LOOP_Y + 16, SONG_LOOP_X + 17, SONG_LOOP_Y + 4, ILI9341_GREEN);
+    }
 }
 
 void drawSongScreen() {
@@ -3377,6 +3426,7 @@ void drawSongScreen() {
     tft.setTextColor(ILI9341_WHITE);
     tft.setCursor(50, 18);
     tft.print("Song Sequencer");
+    drawSongLoopCheckbox();
     drawSongSequence();
     drawSongMuteArm();
     for (int i = 0; i < 16; i++) drawSongKey(i);
@@ -3389,6 +3439,12 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
         songHalted  = false;
         for (int ch = 0; ch < 3; ch++) MuteSeq[ch] = false;
         requestNavigateTo(PERFORMANCE);
+        return;
+    }
+    // Loop-Checkbox (oben rechts, immer togglebar)
+    if (hitBox(mapX, mapY, SONG_LOOP_X - 45, SONG_LOOP_Y, 45 + SONG_LOOP_S, SONG_LOOP_S, 4)) {
+        songLoop = !songLoop;
+        drawSongLoopCheckbox();
         return;
     }
     if (!songPlaying) {
