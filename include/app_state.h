@@ -47,6 +47,11 @@ extern const int CY;
 extern uint16_t GUIState;
 extern uint16_t tipPos;
 extern bool stillPressed;
+// Aufgeschobener Screen-Wechsel: 0xFFFF = kein ausstehender Wechsel.
+// Wird von requestNavigateTo() gesetzt; Main-Loop führt den Draw aus wenn pendingTicks==0.
+extern uint16_t pendingNavTarget;
+// Zwei-Phasen-Draw: Phase 1 = fillScreen, Phase 2 = Inhalte. 0xFFFF = keine Phase 2 ausstehend.
+extern uint16_t pendingNavPhase2;
 
 // Pattern parameters
 extern int PatLen[3];

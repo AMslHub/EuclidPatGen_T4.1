@@ -10,6 +10,13 @@
 #include <encoders.h>
 #include <cv_inputs.h>
 
+// Zwei-Phasen-Draw: Phase 1 hat fillScreen bereits ausgeführt → überspringen.
+static bool s_skipNextFill_top = false;
+static inline void fillScreenIfNeeded() {
+    if (!s_skipNextFill_top) tft.fillScreen(ILI9341_BLACK);
+    s_skipNextFill_top = false;
+}
+
 static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
 static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
@@ -710,7 +717,7 @@ static void calcPerfMsY(int msY[3]) {
 // Side Effects: schreibt auf das TFT.
 // Assumptions: TFT ist initialisiert.
 void drawPerformanceScreen(){
-  tft.fillScreen(ILI9341_BLACK);
+  fillScreenIfNeeded();
   // Ruecksprungpfeil im Performance-Menue (eigene Position)
   tft.setTextColor(ILI9341_LIGHTGREY);
   tft.setFont(AwesomeF100_24);
@@ -788,37 +795,22 @@ bool handlePerformance(int mapX, int mapY, uint16_t tipPos){
   updatePerfButtonFlash();
   // CV-Config-Button (x=EXTCLK_X, y=50, w=72, h=24) — vor UL-Prüfung
   if (hitBox(mapX, mapY, EXTCLK_X, 50, 72, 24, 5)) {
-      navigateToScreen(CV_CONFIG);
+      requestNavigateTo(CV_CONFIG);
       return true;
   }
   // G.Config-Button (x=248, y=50, w=70, h=24)
   if (hitBox(mapX, mapY, 248, 50, 70, 24, 5)) {
-      navigateToScreen(GCONFIG);
+      requestNavigateTo(GCONFIG);
       return true;
   }
   // Song-Button (x=170, y=78, w=148, h=24)
   if (hitBox(mapX, mapY, 170, 78, 148, 24, 5)) {
       if (getPerfPickActive()) cancelPerfPick();
-      navigateToScreen(SONG);
+      requestNavigateTo(SONG);
       return true;
   }
   if(tipPos == UL){
-    GUIState = EUCLCIRCS;
-    PendingCircsRedraw = false;  // Wir zeichnen sofort selbst
-    tft.fillScreen(ILI9341_BLACK);
-    setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
-    drawEncParamIndicators();
-    drawBpmControls();
-    drawBpmValue();
-    drawEucledianCircleFromPattern(R1, PatLen[0], PatRot[0], EPatArr[0]);
-    drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
-    drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
-    resetRhythmBrowseState();
-    for(int i = 0; i < 3; i++){
-        displayedPatLen[i] = PatLen[i];
-        pendingCircleRedraw[i] = false;
-        pendingProbRegen[i] = false;
-    }
+    requestNavigateTo(EUCLCIRCS);
     return true;
   }
 
@@ -985,8 +977,7 @@ static void drawPitchButton();   // forward decl (defined in pitch section below
 void redrawParam(int idx){
     if(idx<0 || idx>2) return;
 
-    // Bildschirm für Parameter-Menü löschen (verhindert Überlagerung alter Zeichnungen)
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
 
     // Werte beschränken
     PatLen[idx] = clampVal(PatLen[idx], 1, 32);
@@ -1021,7 +1012,7 @@ void redrawParam(int idx){
 void redrawParamFromPattern(int idx){
     if(idx<0 || idx>2) return;
 
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
 
     PatLen[idx] = clampVal(PatLen[idx], 1, 32);
     PatNum[idx] = clampVal(PatNum[idx], 0, PatLen[idx]);
@@ -1196,7 +1187,7 @@ void drawOctaveBars(int setIdx) {
 // Side Effects: schreibt auf das TFT und setzt Playhead-Status.
 // Assumptions: setIdx in 0..2.
 void drawValuesScreen(int setIdx){
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
     drawHoldCheckbox(setIdx);
     drawRotateValuesCheckbox(setIdx);
@@ -1381,8 +1372,7 @@ void handleEUCLPARAM(int idx, int mapX, int mapY, uint16_t tipPos){
         return;
     }
     if(hitBox(mapX, mapY, 260, 200, 50, 30, 6)){
-        GUIState = (idx == 0) ? XY1 : (idx == 1) ? XY2 : XY3;
-        drawXYPadScreen(idx);
+        requestNavigateTo((idx == 0) ? XY1 : (idx == 1) ? XY2 : XY3);
         return;
     }
     switch(tipPos){
@@ -1428,31 +1418,15 @@ void handleEUCLPARAM(int idx, int mapX, int mapY, uint16_t tipPos){
         break;
       case UL: // Rückkehr zu den drei Kreisen
         scheduleSaveParams();
-        GUIState = EUCLCIRCS;
-        PendingCircsRedraw = false;  // Wir zeichnen sofort selbst
-        tft.fillScreen(ILI9341_BLACK);
-        setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
-        drawEncParamIndicators();
-        drawEucledianCircleFromPattern(R1, PatLen[0], PatRot[0], EPatArr[0]);
-        drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
-        drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
-        drawBpmControls();
-        for(int i = 0; i < 3; i++){
-            displayedPatLen[i] = PatLen[i];
-            pendingCircleRedraw[i] = false;
-            pendingProbRegen[i] = false;
-        }
+        requestNavigateTo(EUCLCIRCS);
         break;
       case UR:
         if(idx == 0){
-          GUIState = PITCH1;
-          drawPitchScreen();
+          requestNavigateTo(PITCH1);
         }else if(idx == 1){
-          GUIState = VALUES2;
-          drawValuesScreen(1);
+          requestNavigateTo(VALUES2);
         }else if(idx == 2){
-          GUIState = VALUES3;
-          drawValuesScreen(2);
+          requestNavigateTo(VALUES3);
         }
         break;
       default:
@@ -1465,13 +1439,7 @@ void handleEUCLPARAM(int idx, int mapX, int mapY, uint16_t tipPos){
 // Assumptions: setIdx in 0..2; mapX/mapY sind gemappt.
 void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
     if(tipPos == UL){
-        if(setIdx == 0){
-            GUIState = PITCH1;
-            drawPitchScreen();
-        }else{
-            GUIState = (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3;
-            redrawParamFromPattern(setIdx);
-        }
+        requestNavigateTo(setIdx == 0 ? PITCH1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3);
         return;
     }
     if(hitBox(mapX, mapY, 98, 43, 20, 20, 6)){
@@ -1503,8 +1471,7 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         return;
     }
     if(hitBox(mapX, mapY, 135, 10, 50, 24, 6)){
-        GUIState = (setIdx == 0) ? GATELEN1 : (setIdx == 1) ? GATELEN2 : GATELEN3;
-        drawGateLenScreen(setIdx);
+        requestNavigateTo((setIdx == 0) ? GATELEN1 : (setIdx == 1) ? GATELEN2 : GATELEN3);
         return;
     }
     if(hitBox(mapX, mapY, 50, 42, 46, 24, 6)){
@@ -1598,7 +1565,7 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
 // Side Effects: schreibt auf das TFT und setzt Playhead-Status.
 // Assumptions: setIdx in 0..2.
 void drawGateLenScreen(int setIdx){
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
     drawGateHoldCheckbox(setIdx);
     drawRotateGateLenCheckbox(setIdx);
@@ -1706,8 +1673,7 @@ void drawRotateGateLenCheckbox(int setIdx){
 // Assumptions: setIdx in 0..2; mapX/mapY sind gemappt.
 void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     if(tipPos == UL){
-        GUIState = (setIdx == 0) ? VALUES1 : (setIdx == 1) ? VALUES2 : VALUES3;
-        drawValuesScreen(setIdx);
+        requestNavigateTo((setIdx == 0) ? VALUES1 : (setIdx == 1) ? VALUES2 : VALUES3);
         return;
     }
     if(hitBox(mapX, mapY, 260, 42, 24, 24, 8)){
@@ -2017,7 +1983,7 @@ static void drawKeyboardBg() {
 }
 
 void drawXYPadScreen(int setIdx){
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
 
     int x = 90;
@@ -2083,14 +2049,13 @@ void drawXYPadScreen(int setIdx){
 // Gibt true zurück wenn ein Button getroffen wurde (kein Wert-Schreiben nötig).
 bool handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
     if(tipPos == UL){
-        GUIState = (setIdx == 0) ? EUCLPARAM1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3;
-        redrawParamFromPattern(setIdx);
+        requestNavigateTo((setIdx == 0) ? EUCLPARAM1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3);
         return true;
     }
     // PV-Mode-Toggle (nur Kanal 1, oben rechts): 0→1→2→3→0
     if (setIdx == 0 && hitBox(mapX, mapY, 270, 5, 44, 24, 8)) {
         xyPadPitchMode = (xyPadPitchMode + 1) % 5;
-        drawXYPadScreen(setIdx);
+        requestNavigateTo((setIdx == 0) ? XY1 : (setIdx == 1) ? XY2 : XY3);
         return true;
     }
     return false;
@@ -2704,7 +2669,7 @@ void invertPitchSequence(int dir) {
 }
 
 void drawPitchScreen() {
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
     // V1-Button wie GateLen-Button auf dem Values-Screen
     tft.setFont(Arial_12);
@@ -2819,15 +2784,13 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         return;
     }
     if (tipPos == UL) {
-        GUIState = EUCLPARAM1;
-        redrawParamFromPattern(0);
+        requestNavigateTo(EUCLPARAM1);
         return;
     }
 
     // V1-Button (identische Position wie GateLen auf dem Values-Screen)
     if (hitBox(mapX, mapY, 159, 10, 50, 24, 6)) {
-        GUIState = VALUES1;
-        drawValuesScreen(0);
+        requestNavigateTo(VALUES1);
         return;
     }
 
@@ -3005,7 +2968,7 @@ static void drawCvRow(int i) {
 }
 
 void drawCvConfigScreen() {
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
     lastCvBarFill[0] = lastCvBarFill[1] = lastCvBarFill[2] = -1;
 
     // Rücksprungpfeil
@@ -3025,8 +2988,7 @@ void drawCvConfigScreen() {
 
 void handleCvConfig(int mapX, int mapY, uint16_t tipPos) {
     if (tipPos == UL) {
-        GUIState = PERFORMANCE;
-        drawPerformanceScreen();
+        requestNavigateTo(PERFORMANCE);
         return;
     }
     for (int i = 0; i < 3; i++) {
@@ -3127,7 +3089,7 @@ static void drawGcSongButtons() {
 
 void drawGConfigScreen() {
     gcSongUsedCached = getSongUsedBit(gcSongNum);  // einmalige SD-Abfrage beim Screen-Aufbau
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
 
     // Back arrow
     tft.setFont(AwesomeF100_24);
@@ -3167,12 +3129,12 @@ void drawGConfigScreen() {
 
 void handleGConfig(int mapX, int mapY, uint16_t tipPos) {
     if (tipPos == UL) {
-        navigateToScreen(PERFORMANCE);
+        requestNavigateTo(PERFORMANCE);
         return;
     }
     // CV Config button (x=220, y=10, w=90, h=24)
     if (hitBox(mapX, mapY, 220, 10, 90, 24, 5)) {
-        navigateToScreen(CV_CONFIG);
+        requestNavigateTo(CV_CONFIG);
         return;
     }
     // Decay slider (full width touch)
@@ -3406,7 +3368,7 @@ void drawSongScreen() {
         songCursor    = (int)songLen;  // Cursor ans Ende → Append-Modus
         clampSongView();
     }
-    tft.fillScreen(ILI9341_BLACK);
+    fillScreenIfNeeded();
     tft.setFont(AwesomeF100_24);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setCursor(10, 15);
@@ -3426,7 +3388,7 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
         songPlaying = false;
         songHalted  = false;
         for (int ch = 0; ch < 3; ch++) MuteSeq[ch] = false;
-        navigateToScreen(PERFORMANCE);
+        requestNavigateTo(PERFORMANCE);
         return;
     }
     if (!songPlaying) {
@@ -3523,6 +3485,16 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
 // ---------------------------------------------------------------------------
 // navigateToScreen: setzt GUIState und zeichnet den Ziel-Screen komplett neu.
 // ---------------------------------------------------------------------------
+// navFromState hier vorab deklariert, damit navigateToScreen(NAV) darauf zugreifen kann.
+static uint16_t navFromState_early = EUCLCIRCS;
+
+void requestNavigateTo(uint16_t target) {
+    pendingNavTarget = target;
+}
+
+void markPreFilled() { s_skipNextFill_top = true; }
+void setNavOpenedFrom(uint16_t state) { navFromState_early = state; }
+
 void navigateToScreen(uint16_t target) {
     // Screen-Wechsel ist ein sicherer Moment für Flash-Write:
     // fillScreen() + Neuzeichnen dauert 50-100ms sowieso → 4-8ms Flash fällt nicht auf.
@@ -3533,7 +3505,7 @@ void navigateToScreen(uint16_t target) {
     GUIState = target;
     switch (target) {
         case EUCLCIRCS:
-            tft.fillScreen(ILI9341_BLACK);
+            fillScreenIfNeeded();
             setMenuItems4EUCLCIRCS(ILI9341_LIGHTGREY);
             drawEncParamIndicators();
             drawBpmControls();
@@ -3560,6 +3532,7 @@ void navigateToScreen(uint16_t target) {
         case XY1:          drawXYPadScreen(0);       break;
         case XY2:          drawXYPadScreen(1);       break;
         case XY3:          drawXYPadScreen(2);       break;
+        case NAV:          drawNavScreen(navFromState_early); break;
         default: break;
     }
   }
@@ -3636,7 +3609,6 @@ void drawNavScreen(uint16_t fromState) {
     for (int r = 0; r < NAV_ROWS; r++)
         for (int c = 0; c < NAV_COLS; c++)
             if (NAV_STATE[r][c] == fromState) navCursor = r * NAV_COLS + c;
-    tft.fillScreen(ILI9341_BLACK);
     for (int r = 0; r < NAV_ROWS; r++)
         for (int c = 0; c < NAV_COLS; c++)
             drawNavTile(r, c, NAV_STATE[r][c] == fromState, (r * NAV_COLS + c) == navCursor);
@@ -3662,7 +3634,7 @@ void handleNav(int mapX, int mapY) {
     int col = mapX / NAV_TW;
     int row = mapY / NAV_TH;
     if (col < 0 || col >= NAV_COLS || row < 0 || row >= NAV_ROWS) return;
-    navigateToScreen(NAV_STATE[row][col]);
+    requestNavigateTo(NAV_STATE[row][col]);
 }
 
 // Quick-Save Toast: kleines Overlay in Bildschirmmitte, verschwindet nach 1.2 s.

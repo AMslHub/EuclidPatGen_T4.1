@@ -109,4 +109,7 @@ void drawNavScreen(uint16_t fromState);  // Navigation-Übersicht, fromState = v
 void handleNav(int mapX, int mapY);
 void moveNavCursor(int delta);           // Enc3-Drehung auf NAV: Cursor verschieben
 uint16_t getNavCursorState();            // State des aktuell markierten Tiles
-void navigateToScreen(uint16_t target); // zeichnet Ziel-Screen und setzt GUIState
+void navigateToScreen(uint16_t target);  // zeichnet Ziel-Screen und setzt GUIState
+void requestNavigateTo(uint16_t target); // deferred: setzt pendingNavTarget, Main-Loop zeichnet wenn safe
+void markPreFilled();                    // Phase 2: nächsten fillScreen in draw-Funktion überspringen
+void setNavOpenedFrom(uint16_t state);   // setzt navFromState vor deferred NAV-Draw

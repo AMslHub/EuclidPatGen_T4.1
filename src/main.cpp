@@ -143,6 +143,11 @@ static bool pendingSongAutoStop  = false;  // letzter Slot geladen → nach 1 Zy
 
 // Performance touch gating
 bool PerfIgnoreUntilRelease = false;
+
+// Aufgeschobener Screen-Wechsel (0xFFFF = keiner). requestNavigateTo() setzt diesen Wert;
+// der Main-Loop führt den Draw aus sobald pendingTicks == 0 (sicheres Timing-Fenster).
+uint16_t pendingNavTarget = 0xFFFF;
+uint16_t pendingNavPhase2 = 0xFFFF;
  
 bool EPat1[32] = {1,0,0,1,0,0,1,0,0,0, 1,0,0,1,0,0,1,0,1,1, 0,1,1,0,1,0,1,0,1,1, 0,0};
 bool EPat2[32] = {1,0,1,1,0,1,1,0,1,0, 1,0,1,1,0,0,1,0,1,1, 0,1,1,0,1,0,1,0,1,1, 0,0};
@@ -582,20 +587,16 @@ void loop() {
                       drawBpmValue();
                       break;
                   case UL:
-                      GUIState = EUCLPARAM1; // new GUI-State
-                      redrawParamFromPattern(0);
+                      requestNavigateTo(EUCLPARAM1);
                       break;
                   case UR:
-                      GUIState = EUCLPARAM2; // new GUI-State
-                      redrawParamFromPattern(1);
+                      requestNavigateTo(EUCLPARAM2);
                       break;
                   case LL:
-                      GUIState = PERFORMANCE;
-                      drawPerformanceScreen();
+                      requestNavigateTo(PERFORMANCE);
                       break;
                   case LR:
-                      GUIState = EUCLPARAM3; // new GUI-State
-                      redrawParamFromPattern(2);
+                      requestNavigateTo(EUCLPARAM3);
                       break;
                   default:
                       break;          
@@ -992,6 +993,36 @@ void loop() {
     if (GUIState != EUCLCIRCS) {
         for (int ch = 0; ch < 3; ch++) cntChHold[ch] = cntCh[ch];
     }
+  }
+
+  // Zwei-Phasen-Draw: Phase 1 = fillScreen, Phase 2 = Inhalte.
+  // Jede Phase blockiert nur ~15-30ms statt ~40-50ms am Stück.
+  // NAV: Kacheln decken alles ab, kein fillScreen → einphasig.
+  if (pendingNavTarget != 0xFFFF) {
+      noInterrupts();
+      uint32_t pt = pendingTicks;
+      interrupts();
+      if (pt == 0) {
+          uint16_t t = pendingNavTarget;
+          pendingNavTarget = 0xFFFF;
+          if (t == NAV) {
+              navigateToScreen(t);
+          } else {
+              tft.fillScreen(ILI9341_BLACK);
+              pendingNavPhase2 = t;
+          }
+      }
+  }
+  if (pendingNavPhase2 != 0xFFFF) {
+      noInterrupts();
+      uint32_t pt = pendingTicks;
+      interrupts();
+      if (pt == 0) {
+          uint16_t t = pendingNavPhase2;
+          pendingNavPhase2 = 0xFFFF;
+          markPreFilled();
+          navigateToScreen(t);
+      }
   }
 
   // Deferred Kreis-Redraws nach der Tick-Schleife (~30ms SPI).

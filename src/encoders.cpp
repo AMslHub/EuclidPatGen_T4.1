@@ -418,15 +418,15 @@ void handleEncoders() {
                     if (GUIState == PITCH1 && getPitchStepEditActive()) {
                         togglePitchStepEdit();
                     } else if (GUIState == NAV) {
-                        navigateToScreen(navPrevState);
+                        requestNavigateTo(navPrevState);
                     } else {
                         navPrevState = GUIState;
-                        GUIState = NAV;
-                        drawNavScreen(navPrevState);
+                        setNavOpenedFrom(navPrevState);
+                        requestNavigateTo(NAV);
                     }
                 } else {
                     if (GUIState == NAV) {
-                        navigateToScreen(getNavCursorState());
+                        requestNavigateTo(getNavCursorState());
                     } else if (GUIState == PITCH1) {
                         handlePitchButton(2);
                     } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||
