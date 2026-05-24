@@ -1262,10 +1262,12 @@ void loop() {
     if (op == 1) {
         saveSong(num);
         activeSongNum = num;
+        scheduleSaveParams();
         if (GUIState == GCONFIG) triggerGConfigSaveFlash();
     } else if (op == 2) {
         loadSong(num);
         activeSongNum = num;
+        scheduleSaveParams();
     } else if (op == 3) {
         deleteSong(num);
     }
