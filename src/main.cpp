@@ -395,6 +395,9 @@ void setup() {
     if (Serial) Serial.print(CrashReport);
   }
 
+  // USB-Stack kurz laufen lassen bevor SD/TFT-Inits beginnen
+  yield();
+
   // SD-Init zuerst: SD.begin() kann PLL2-Taktquellen umkonfigurieren und einen
   // kurzen Stromspike erzeugen. Passiert hier vor tft.begin(), damit das Display
   // danach in einem sauberen Zustand initialisiert wird.

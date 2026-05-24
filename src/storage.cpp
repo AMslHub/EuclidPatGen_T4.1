@@ -354,7 +354,9 @@ void loadParams() {
         PatRotSel[i]       = 0;
         cvTargetMap[i]     = CV_TARGET_NONE;
     }
-    saveParams();  // write new magic so next boot doesn't fall into defaults again
+    // Defer EEPROM write to main loop (avoids FlexNVM write during USB-enumeration window)
+    PendingSave   = true;
+    PendingSaveAt = 0;  // fires on first main-loop iteration (millis() already > 0)
 }
 
 void scheduleSaveParams() {
