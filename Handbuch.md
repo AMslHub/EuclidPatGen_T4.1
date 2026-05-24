@@ -38,9 +38,11 @@ Alle drei Encoder haben dieselbe Grundregel: **Drehen** ändert Werte, **kurzer 
 
 ---
 
-## Screen-Übersicht (NAV-Raster)
+## Screen-Übersicht
 
-Der NAV-Screen zeigt alle Screens als 4 × 4-Kacheln. Die aktuelle Position ist farbig hervorgehoben, der Encoder-Cursor weiß umrandet.
+### NAV-Raster (Enc 3 Long-Press)
+
+Der NAV-Screen zeigt 16 Screens als 4 × 4-Kacheln. Die aktuelle Position ist farbig hervorgehoben, der Encoder-Cursor weiß umrandet.
 
 ```
 ┌──────────┬──────────┬──────────┬──────────┐
@@ -58,6 +60,15 @@ Der NAV-Screen zeigt alle Screens als 4 × 4-Kacheln. Die aktuelle Position ist 
 - Enc 3 drehen → Cursor verschieben
 - Enc 3 drücken → zum markierten Screen wechseln
 - Touch auf Kachel → direkter Sprung
+
+### Auxiliary-Screens (über PERFORMANCE erreichbar)
+
+Zwei weitere Screens sind nicht im NAV-Raster, sondern direkt über Buttons im PERFORMANCE-Screen zugänglich:
+
+| Screen | Button auf PERFORMANCE |
+|---|---|
+| Song Sequencer (SONG) | „Song Sequencer"-Leiste |
+| Global Config (GCONFIG) | „G.Config"-Button |
 
 ---
 
@@ -429,6 +440,116 @@ Wechselt zwischen internem BPM-Taktgeber und externem Clock-Eingang. Bei aktivem
 
 ---
 
+## Screen 9: Song Sequencer (SONG)
+
+Über den PERFORMANCE-Screen erreichbar (Tippen auf die farbige „Song Sequencer"-Leiste).
+
+Der Song Sequencer spielt eine benutzerdefinierte Slot-Abfolge automatisch ab — jeder Schritt lädt einen der 7 Slots und kann optional einzelne Kanäle muten.
+
+```
+┌─────────────────────────────────────────────┐
+│  Song Sequencer                             │
+│                                             │
+│  ◄ [1][3][2][1][4] ►    Sequenz-Leiste     │
+│  [M1 ──────][M2 ──────][M3 ──────]  Arm    │
+│                                             │
+│  [0][1][2][3]   ← Slot-Hex-Tasten (4×4)   │
+│  [4][5][6][7]                               │
+│  [8][9][a][b]                               │
+│  [c][d][e][f]                               │
+│                                             │
+│  [BS]  [CLR]  [PLAY]  [STOP]               │
+└─────────────────────────────────────────────┘
+```
+
+### Konzept
+
+- **Sequenz** (oben): bis zu 64 Schritte, jeder Schritt ist ein Slot-Index (0–15 = Slots 1–7, Rest leer)
+- **Cursor** (Caret): blinkt in der Sequenz-Leiste — neuer Slot wird links vom Cursor eingefügt
+- **Mute-Arm** (M1/M2/M3): welche Kanäle beim nächsten eingetippten Slot gemutet werden sollen — der Arm-Zustand wird mit dem Slot-Index zusammen gespeichert
+- Nur **belegte Slots** (helle Hex-Tasten) sind eintippbar; freie Slots erscheinen dunkelgrau
+
+### Bedienung
+
+| Aktion | Funktion |
+|---|---|
+| Tippen auf belegte Hex-Taste | Slot an Cursor-Position einfügen |
+| Tippen auf M1/M2/M3-Streifen | Arm für diesen Kanal togglen (gilt für nächsten Eintrag) |
+| Tippen auf Sequenz-Leiste | Cursor (Caret) setzen |
+| BS | Slot links vom Cursor löschen |
+| CLR | Gesamte Sequenz löschen |
+| PLAY | Sequenz ab Schritt 0 starten (lädt ersten Slot) |
+| STOP | Sequenz stoppen; Kanal-Mutes werden zurückgesetzt |
+| ◄ / ► | Sequenz-Leiste scrollen (automatisch bei langen Sequenzen) |
+
+### Encoder auf SONG
+
+| Encoder | Drehen | Druck |
+|---|---|---|
+| Enc 3 | — | NAV-Screen |
+| Enc 2 | Sequenz-Leiste scrollen | — |
+
+### Playback-Verhalten
+
+- Beim Sprung auf einen Schritt wird der zugehörige Slot geladen und die gespeicherten Arm-Mutes aktiviert
+- Der aktuell spielende Schritt ist in der Sequenz-Leiste und auf der Hex-Taste cyan hervorgehoben
+- Am Ende der Sequenz springt der Song zurück zu Schritt 0 (Loop)
+- STOP setzt alle Mutes zurück und schließt den Song-Modus
+
+### Zurück
+
+Tippen auf den Pfeil (oben links) → zurück zu PERFORMANCE; Sequenz und Mutes werden zurückgesetzt.
+
+---
+
+## Screen 10: Global Config (GCONFIG)
+
+Über den PERFORMANCE-Screen erreichbar (Tippen auf „G.Config"-Button).
+
+```
+┌─────────────────────────────────────────────┐
+│  ← Global Config            [CV Config]    │
+│                                             │
+│  Ratchet Decay: [════════════]  Slider      │
+│                                             │
+│  Song Memory:                               │
+│  ◄  [Song 05]  ►                           │
+│  [Save]  [Load]  [Del]                      │
+└─────────────────────────────────────────────┘
+```
+
+### Ratchet Decay
+
+Steuert den Abfall der Ratchet-Lautstärke innerhalb eines Hit-Steps. Wert 0–255:
+
+| Wert | Verhalten |
+|---|---|
+| 0 | Alle Sub-Hits gleich laut |
+| 128 | Moderater Abfall |
+| 255 | Starker Abfall — letzter Sub-Hit sehr leise |
+
+Einstellung per **Drag** auf dem Slider; wird sofort gespeichert.
+
+### Song Memory (LittleFS/SD)
+
+Speichert und lädt vollständige Konfigurationssnapshots (alle Kanäle, Pitch, Values, GateLen, Ratchet, Song-Sequenz) in nummerierten Song-Slots (0–99) auf dem Dateisystem.
+
+| Aktion | Funktion |
+|---|---|
+| ◄ / ► (Pfeile) | Song-Nummer wählen (0–99) |
+| Save | Aktuellen Zustand in gewählten Song-Slot schreiben |
+| Load | Zustand aus gewähltem Song-Slot laden |
+| Del | Song-Slot löschen |
+
+Belegte Slots sind in der Nummer-Anzeige hervorgehoben. Die Belegung wird beim Öffnen des Screens einmal aus dem Dateisystem gelesen (kein Polling).
+
+### Links
+
+- **CV Config**-Button (oben rechts): direkt zu Screen 8 (CV_CONFIG)
+- **Pfeil** (oben links): zurück zu PERFORMANCE
+
+---
+
 ## Globale Funktionen
 
 ### Auto-Save
@@ -453,23 +574,46 @@ Ein kurzes Toast-Overlay bestätigt den gespeicherten Slot (`Gespeichert → Slo
 ## Signalfluss
 
 ```
-Clock-In ──→ timerISR ──→ pendingTicks
-                              │
-                         main loop
-                         consumePendingTick
-                              │
-                    ┌─────────┼─────────┐
-                    ↓         ↓         ↓
-                 Ch 1       Ch 2       Ch 3
-              (×Speed)   (×Speed)   (×Speed)
-                    │         │         │
-               Euklid     Euklid     Euklid
-               Pattern    Pattern    Pattern
-                    │         │         │
-               Gate Out1  Gate Out2  Gate Out3
-               CV Out1    CV Out2    CV Out3
-               (Pitch)    (Values)   (Values)
+Clock-In / interner BPM-Timer
+        │
+        ↓
+   timerISR ──→ pendingTicks++
+        │
+        │  Pre-Arm: Falls nextGateArmed[1/2] gesetzt,
+        │  werden Gate Ch2/Ch3 sofort aus der ISR gezündet
+        │  (auch wenn Main Loop gerade das Display zeichnet)
+        │
+        ↓
+   gateOffISR (1 kHz, unabhängig)
+        │  prüft gateOffAt[] → schaltet Gates ab
+        │
+        ↓
+   main loop — consumePendingTick
+        │
+        ├─ outputValuesForStep()   ← DAC: Pitch + CV-Werte
+        │                            (VOR Gate Ch1 — 1 V/Oct korrekt)
+        │
+        ├─ Gate Ch1 auslösen       ← nach DAC-Write
+        │
+        ├─ nextGateArmed[1/2] berechnen
+        │  (Vorab-Berechnung für nächsten Tick → Pre-Arm in ISR)
+        │
+        └─ ┌─────────┬─────────┐
+           ↓         ↓         ↓
+        Ch 1       Ch 2       Ch 3
+     (×Speed)   (×Speed)   (×Speed)
+           │         │         │
+      Euklid     Euklid     Euklid
+      Pattern    Pattern    Pattern
+           │         │         │
+      Gate Out1  Gate Out2  Gate Out3
+      CV Out1    CV Out2    CV Out3
+      (Pitch)    (Values)   (Values)
 ```
+
+**Warum Pre-Arm für Ch2/Ch3?** Das TFT-Display belegt SPI1 für ~15–55 ms während eines Screen-Draws. In dieser Zeit kann der Main Loop keinen Tick verarbeiten. Die ISR kennt jedoch den vorberechneten Zustand und zündet das Gate zum richtigen Zeitpunkt — musikalisches Timing bleibt exakt.
+
+**Warum kein Pre-Arm für Ch1?** Kanal 1 hat einen Pitch-CV-Ausgang. Die DAC-Ausgabe (SPI0) muss vor dem Gate-Signal erfolgen, damit der Synthesizer beim Gate-Anstieg die korrekte Spannung sieht. Deshalb löst Ch1 immer im Main Loop aus, nach `outputValuesForStep()`.
 
 **Ratchet**: Pro Hit-Step erzeugt der Sequencer 1–4 Sub-Gates mit verkürzter Gate-Länge.  
 **Swing**: Gerade Steps werden leicht verzögert (Swing-Prozentsatz per CV steuerbar).
