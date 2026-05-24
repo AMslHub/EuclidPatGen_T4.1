@@ -967,8 +967,11 @@ void loop() {
     // Pre-Arm: nächsten Step-Hit vorausberechnen damit timerISR das Gate pünktlich
     // zünden kann — auch wenn der Main-Loop gerade in einem SPI-Draw blockiert ist.
     // Nur ×1-Kanaele (÷N und ×N werden anders behandelt), kein Swing, kein Ratchet.
+    // Kanal 0 wird nicht prä-armt: Gate muss NACH dem DAC-Schreiben feuern,
+    // damit der Pitch beim Notenanfang korrekt ist (outputValuesForStep läuft zuerst).
     for (int ch = 0; ch < 3; ch++) {
         nextGateArmed[ch] = false;
+        if (ch == 0) continue;
         if (chSpeedIdx[ch] != 0 || !isSeqActive(ch)) continue;
         int len = PatLen[ch];
         if (len <= 0) continue;
@@ -992,7 +995,7 @@ void loop() {
   }
 
   // Deferred Kreis-Redraws nach der Tick-Schleife (~30ms SPI).
-  // Akkumulierte Ticks danach verwerfen, um Burst im naechsten Durchlauf zu verhindern.
+  // ISR zündet Gates korrekt während des Draws; akkumulierte Ticks normal verarbeiten.
   if ((deferredRedrawMask | deferredProbMask) && GUIState == EUCLCIRCS) {
     const int Rs[3] = { R1, R2, R3 };
     for (int ch = 0; ch < 3; ch++) {
@@ -1025,7 +1028,6 @@ void loop() {
         continue;
       }
     }
-    discardPendingTicks();
   }
 
   // Deferred Pitch-Redraw: nach der Tick-Schleife (~20ms SPI).
@@ -1272,7 +1274,6 @@ void loop() {
       drawEucledianCircleFromPattern(R2, PatLen[1], PatRot[1], EPatArr[1]);
       drawEucledianCircleFromPattern(R3, PatLen[2], PatRot[2], EPatArr[2]);
       for(int i = 0; i < 3; i++) displayedPatLen[i] = PatLen[i];
-      discardPendingTicks();
     }
   }
 
@@ -1280,7 +1281,6 @@ void loop() {
   if(PendingPerfRefresh){
     if(GUIState == PERFORMANCE){
       drawPerformanceScreen();
-      discardPendingTicks();
     }
     PendingPerfRefresh = false;
   }

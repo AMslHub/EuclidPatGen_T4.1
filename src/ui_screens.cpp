@@ -1218,7 +1218,6 @@ void drawValuesScreen(int setIdx){
     else                                  drawValuesBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
-    discardPendingTicks();
   }
 
 // Zweck: Zeichnet alle Werte-Balken fuer ein Pattern.
@@ -1479,21 +1478,21 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         RotateRatchet[setIdx] = !RotateRatchet[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
-        if (valuesEditMode[setIdx] == 1) { drawRatchetBars(setIdx); discardPendingTicks(); }
+        if (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         return;
     }
     if(setIdx == 0 && hitBox(mapX, mapY, 188, 43, 20, 20, 6)){
         RotateOctave[setIdx] = !RotateOctave[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
-        if (valuesEditMode[setIdx] == 2) { drawOctaveBars(setIdx); discardPendingTicks(); }
+        if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
         return;
     }
     if(hitBox(mapX, mapY, 260, 42, 24, 24, 8)){
         RotateValues[setIdx] = !RotateValues[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
-        if (valuesEditMode[setIdx] == 0) { drawValuesBars(setIdx); discardPendingTicks(); }
+        if (valuesEditMode[setIdx] == 0) drawValuesBars(setIdx);
         return;
     }
     if(hitBox(mapX, mapY, 260, 10, 24, 24, 8)){
@@ -1514,7 +1513,6 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
         else                                  drawValuesBars(setIdx);
-        discardPendingTicks();
         return;
     }
     if(setIdx == 0 && hitBox(mapX, mapY, 140, 42, 46, 24, 6)){
@@ -1523,7 +1521,6 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
         else                                  drawValuesBars(setIdx);
-        discardPendingTicks();
         return;
     }
 
@@ -1619,7 +1616,6 @@ void drawGateLenScreen(int setIdx){
     drawGateLenBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
-    discardPendingTicks();
   }
 
 // Zweck: Zeichnet alle GateLen-Balken fuer ein Pattern.
@@ -2735,7 +2731,6 @@ void drawPitchScreen() {
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
     drawPitchControls();
-    discardPendingTicks();
   }
 
 // Hilfsfunktion: Rotation von Kanal ch in alle betroffenen Arrays einfrieren,
@@ -3567,7 +3562,6 @@ void navigateToScreen(uint16_t target) {
         case XY3:          drawXYPadScreen(2);       break;
         default: break;
     }
-    discardPendingTicks();
   }
 
 // ---------------------------------------------------------------------------
@@ -3646,7 +3640,6 @@ void drawNavScreen(uint16_t fromState) {
     for (int r = 0; r < NAV_ROWS; r++)
         for (int c = 0; c < NAV_COLS; c++)
             drawNavTile(r, c, NAV_STATE[r][c] == fromState, (r * NAV_COLS + c) == navCursor);
-    discardPendingTicks();
 }
 
 // Enc3-Drehung auf NAV: Cursor verschieben, nur die zwei betroffenen Tiles neu zeichnen.
