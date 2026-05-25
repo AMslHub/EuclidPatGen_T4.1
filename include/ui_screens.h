@@ -61,7 +61,7 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos);
 void handleGATELENDrag(int setIdx, int mapX, int mapY);
 void drawXYPadScreen(int setIdx);
 bool handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos);
-void handleXYPADRecord(int setIdx, int mapX, int mapY);
+void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot = true);
 void drawXYPlayhead(int setIdx, unsigned int step);
 void drawXYDotPlayhead(int setIdx, unsigned int step);
 void drawPitchScreen();

@@ -5,8 +5,8 @@
 Erzeugt rhythmische Gate-Muster (Bjorklund-Algorithmus) und gibt analoge CV-Spannungen aus.
 
 ## Status
-- Hardware noch nicht verfügbar — kein Hardware-Test möglich
-- Code ist funktional, aber noch nicht auf echter Hardware verifiziert
+- Hardware verfügbar und in aktivem Test
+- Code läuft auf echter Hardware; Bugs werden laufend gefunden und behoben
 
 ## Build & Flash
 ```bash

@@ -666,6 +666,15 @@ void loop() {
           }
         }
       }
+      else if(GUIState == XY1 || GUIState == XY2 || GUIState == XY3){
+        // XY-Pad: Wert sofort auf DAC schreiben (kein drawDot, spart SPI).
+        // Dot und Playhead werden im Tick-Loop aktualisiert.
+        int mapX = 0, mapY = 0;
+        if(readTouchMapped(mapX, mapY)){
+          int setIdx = (GUIState == XY1) ? 0 : (GUIState == XY2) ? 1 : 2;
+          handleXYPADRecord(setIdx, mapX, mapY, false);
+        }
+      }
       else if(GUIState == PERFORMANCE){
         // Im Performance-Screen nur den initialen Touch verarbeiten.
       }

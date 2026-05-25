@@ -87,10 +87,12 @@ void applyCvTargets() {
             case CV_TARGET_PAT_ROT_CH2:
             case CV_TARGET_PAT_ROT_CH3: {
                 int ch = target - CV_TARGET_PAT_ROT_CH1;
-                int halfLen = PatLen[ch] / 2;
-                if (halfLen < 1) halfLen = 1;
-                int range = halfLen * 2 + 1;
-                cvPatRotOffset[ch] = (int8_t)(((int)cv * range) / 4096 - halfLen);
+                int maxRot = PatLen[ch] - 1;
+                if (maxRot < 1) maxRot = 1;
+                // Unipolar: 0 V → Offset 0, Max V → PatLen-1
+                int offset = ((int)cv * (maxRot + 1)) / 4096;
+                if (offset > maxRot) offset = maxRot;
+                cvPatRotOffset[ch] = (int8_t)offset;
                 break;
             }
             case CV_TARGET_VALUE_MOD_CH1:
