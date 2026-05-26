@@ -18,6 +18,9 @@ enum CvTarget : uint8_t {
     CV_TARGET_SLOT_SEL,
     CV_TARGET_PITCH_FOLD,       // 0-4095 → pitchFoldMode 0-4 (off/Mir½/Rep½/Mir¼/Rep¼)
     CV_TARGET_PITCH_TRANSPOSE,  // 1V/Okt → Halbtontransposition addiert nach Quantisierung
+    CV_TARGET_PITCH_IV,         // 0-4095 → 0..7 Inversions-Stufen on-the-fly
+    CV_TARGET_PITCH_AI_UP,      // 0-4095 → 0..3 Okt: tiefste Ebene anheben on-the-fly
+    CV_TARGET_PITCH_AI_DOWN,    // 0-4095 → 0..3 Okt: höchste Ebene absenken on-the-fly
     CV_TARGET_COUNT
 };
 
@@ -33,6 +36,9 @@ extern int8_t  cvPatRotOffset[3];    // Offset auf PatRot pro Kanal
 extern int8_t  cvSlotSel;            // -1=inaktiv, 0-6=Slot (CV_TARGET_SLOT_SEL)
 extern int8_t  cvPitchFold;          // -1=inaktiv, 0-4=pitchFoldMode (CV_TARGET_PITCH_FOLD)
 extern int8_t  cvPitchTransposeST;  // 0-79 Halbtöne (1V/Okt; 0V=keine Transposition)
+extern uint8_t cvPitchIvSteps;      // 0=inaktiv, 1..7: wie viele untere Stufen +1 Okt (on-the-fly)
+extern uint8_t cvPitchAiUpOct;      // 0=inaktiv, 1..3: tiefste Ebene N Okt anheben (on-the-fly)
+extern uint8_t cvPitchAiDownOct;    // 0=inaktiv, 1..3: höchste Ebene N Okt absenken (on-the-fly)
 
 // Exponentieller Lautstärke-Faktor innerhalb eines Ratchet-Bursts.
 // ratchetIdx=0 → erster Hit, ratchetTotal = Gesamtzahl der Hits im Burst.

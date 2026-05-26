@@ -197,7 +197,46 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                 int totalShift = (int)pitchShift + (int)cvPitchShiftOffset + (int)OctaveNote1[octSrc];
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);
-                midi = clampVal(midi + totalShift * 12 + (int)cvPitchTransposeST, 36, 127);
+
+                // On-the-fly IV / AI: Basis-MIDI aller Hit-Steps scannen
+                int cvPitchAdj = 0;
+                if (cvPitchIvSteps > 0 || cvPitchAiUpOct > 0 || cvPitchAiDownOct > 0) {
+                    int rawMidi = quantizeToMidi(PitchNote1[pidx], pitchSpread, pitchScale,
+                                                 pitchRoot, pitchIntervalMask);
+                    int bms[32]; int bmN = 0;
+                    for (int si = 0; si < len0; si++) {
+                        if (!EPatArr[0][euclidRotatedSrc(si, len0, effRot0)]) continue;
+                        bms[bmN++] = quantizeToMidi(PitchNote1[si], pitchSpread, pitchScale,
+                                                    pitchRoot, pitchIntervalMask);
+                    }
+                    if (bmN > 0) {
+                        if (cvPitchIvSteps > 0) {
+                            int unique[32]; int uN = 0;
+                            for (int k = 0; k < bmN; k++) {
+                                bool found = false;
+                                for (int j = 0; j < uN; j++) if (unique[j] == bms[k]) { found = true; break; }
+                                if (!found) unique[uN++] = bms[k];
+                            }
+                            for (int i = 0; i < uN - 1; i++)
+                                for (int j = i + 1; j < uN; j++)
+                                    if (unique[j] < unique[i]) { int t = unique[i]; unique[i] = unique[j]; unique[j] = t; }
+                            int rank = 0;
+                            for (int j = 0; j < uN; j++) if (unique[j] == rawMidi) { rank = j; break; }
+                            if (uN > 1 && rank < (int)cvPitchIvSteps) cvPitchAdj += 1;
+                        }
+                        if (cvPitchAiUpOct > 0 || cvPitchAiDownOct > 0) {
+                            int minMidi = bms[0], maxMidi = bms[0];
+                            for (int k = 1; k < bmN; k++) {
+                                if (bms[k] < minMidi) minMidi = bms[k];
+                                if (bms[k] > maxMidi) maxMidi = bms[k];
+                            }
+                            if (cvPitchAiUpOct   > 0 && rawMidi == minMidi) cvPitchAdj += (int)cvPitchAiUpOct;
+                            if (cvPitchAiDownOct > 0 && rawMidi == maxMidi) cvPitchAdj -= (int)cvPitchAiDownOct;
+                        }
+                    }
+                }
+
+                midi = clampVal(midi + totalShift * 12 + (int)cvPitchTransposeST + cvPitchAdj * 12, 36, 127);
                 lastPitchDac = midiToDac(midi);
                 pitchDac = lastPitchDac;
             }
