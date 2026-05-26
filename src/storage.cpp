@@ -537,6 +537,7 @@ bool saveSong(int songNum) {
 
     // 16 SlotParams, read from each slot_XX.bin if it exists
     for (int i = 0; i < SLOT_COUNT; i++) {
+        yield();  // WDOG3 am Leben halten (16× SD-open/read/close kann >4 s dauern)
         SlotParams p;
         memset(&p, 0, sizeof(p));
         if (sh.usedMask & (uint16_t)(1u << i)) {
@@ -574,6 +575,7 @@ bool loadSong(int songNum) {
     uint16_t mask = hdr[1];
 
     for (int i = 0; i < SLOT_COUNT; i++) {
+        yield();  // WDOG3 am Leben halten (16× remove/open/write/close kann >4 s dauern)
         SlotParams p;
         f.read((uint8_t*)&p, sizeof(p));
         char sp[16];

@@ -208,6 +208,7 @@ static const int PITCH_PRESET_BH = 24;   // gleiche Höhe wie Drw-Checkbox (s=24
 
 static int  pitchPresetBrowseIdx    = 0;
 static bool pitchPresetBrowseActive = false;
+static int  ivInversionIdx          = 0;  // IV-Inversions-Selector: 0=Grundstellung
 
 static void drawPitchPresetBox() {
     uint16_t border = pitchPresetBrowseActive ? ILI9341_CYAN : ILI9341_DARKGREY;
@@ -242,6 +243,8 @@ void resetPitchPresetBrowseState() {
 
 void loadPitchPreset(int idx) {
     getPitchPresetNotes(idx, PitchNote1);
+    for (int i = 0; i < 32; i++) OctaveNote1[i] = 0;  // Oktavverschiebungen zurücksetzen
+    ivInversionIdx = 0;                                 // Inversion auf Grundstellung
     int N = PITCH_PRESET_COUNT + 1;
     pitchPresetBrowseIdx = ((idx % N) + N) % N;
     scheduleSaveParams();
@@ -2347,7 +2350,7 @@ static void drawPitchBar(int idx) {
     } else {
         int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                    pitchRoot, pitchIntervalMask);
-        midi = clampVal(midi + (int)pitchShift * 12, 36, 96);
+        midi = clampVal(midi + ((int)pitchShift + (int)OctaveNote1[src]) * 12, 36, 96);
         bool isRoot = ((midi % 12) == (int)pitchRoot);
         int noteY = pitchNoteToBarY(midi);
         int fillH = bottom - noteY;
@@ -2444,10 +2447,11 @@ void drawPitchDisplayModeCheckbox() {
 
 void drawPitchControls() {
     static const int SC_X = 0,   SC_W = 100;
-    static const int RT_X = 102, RT_W = 58;
-    static const int SP_X = 162, SP_W = 52;
-    static const int IV_X = 216, IV_W = 34;
-    static const int SH_X = 252, SH_W = 68;
+    static const int RT_X = 102, RT_W = 42;
+    static const int SP_X = 146, SP_W = 52;
+    static const int IV_X = 200, IV_W = 30;
+    static const int AI_X = 232, AI_W = 30;
+    static const int SH_X = 264, SH_W = 56;
     static const char *const ROOT_NAMES[12] = {
         "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
 
@@ -2457,6 +2461,7 @@ void drawPitchControls() {
     uint16_t rtBorder = (boxCursor == 1) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
     uint16_t spBorder = (boxCursor == 2) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
     uint16_t ivBorder = (boxCursor == 3) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
+    uint16_t aiBorder = (boxCursor == 4) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
 
     tft.drawRect(SC_X, PITCH_CTRL_Y, SC_W, PITCH_CTRL_H, scBorder);
     tft.fillRect(SC_X+1, PITCH_CTRL_Y+1, SC_W-2, PITCH_CTRL_H-2,
@@ -2470,7 +2475,7 @@ void drawPitchControls() {
     tft.drawRect(RT_X, PITCH_CTRL_Y, RT_W, PITCH_CTRL_H, rtBorder);
     tft.fillRect(RT_X+1, PITCH_CTRL_Y+1, RT_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
     tft.setCursor(RT_X+3, PITCH_CTRL_Y+5);
-    tft.printf("R:%s", ROOT_NAMES[pitchRoot % 12]);
+    tft.print(ROOT_NAMES[pitchRoot % 12]);
 
     tft.drawRect(SP_X, PITCH_CTRL_Y, SP_W, PITCH_CTRL_H, spBorder);
     tft.fillRect(SP_X+1, PITCH_CTRL_Y+1, SP_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
@@ -2479,8 +2484,13 @@ void drawPitchControls() {
 
     tft.drawRect(IV_X, PITCH_CTRL_Y, IV_W, PITCH_CTRL_H, ivBorder);
     tft.fillRect(IV_X+1, PITCH_CTRL_Y+1, IV_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
-    tft.setCursor(IV_X+3, PITCH_CTRL_Y+5);
-    tft.print("INV");
+    tft.setCursor(IV_X+5, PITCH_CTRL_Y+5);
+    tft.print("IV");
+
+    tft.drawRect(AI_X, PITCH_CTRL_Y, AI_W, PITCH_CTRL_H, aiBorder);
+    tft.fillRect(AI_X+1, PITCH_CTRL_Y+1, AI_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
+    tft.setCursor(AI_X+5, PITCH_CTRL_Y+5);
+    tft.print("AI");
 
     tft.drawRect(SH_X, PITCH_CTRL_Y, SH_W, PITCH_CTRL_H, ILI9341_DARKGREY);
     tft.fillRect(SH_X+1, PITCH_CTRL_Y+1, SH_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
@@ -2694,21 +2704,103 @@ void movePitchChordIdx(int delta) {
     pendingPitchDraw = true;
 }
 
-void invertPitchSequence(int dir) {
+// IV: Inversions-Selector — wählt Inversion 0..N-1, setzt alle Hit-Steps gleichzeitig.
+// Noten mit Rang < ivIdx kommen 1 Oktave höher (OctaveNote1=1), Rest bleibt (OctaveNote1=0).
+void invertPitchSequence(int delta) {
     int len = clampVal(PatLen[0], 1, 32);
-    int octRaw = 255 / (int)pitchSpread;
+
+    // Basis-MIDIs aller Hit-Steps sammeln (bei OctaveNote1=0)
+    int hitIdx[32];
+    int baseMidi[32];
+    int hitCount = 0;
+    for (int i = 0; i < len; i++) {
+        if (!patternIsHit(0, i)) continue;
+        hitIdx[hitCount]   = i;
+        baseMidi[hitCount] = quantizeToMidi(PitchNote1[i], pitchSpread, pitchScale,
+                                            pitchRoot, pitchIntervalMask);
+        hitCount++;
+    }
+    if (hitCount == 0) return;
+
+    // Einzigartige Basis-MIDIs sortiert sammeln
+    int unique[32];
+    int N = 0;
+    for (int i = 0; i < hitCount; i++) {
+        bool found = false;
+        for (int j = 0; j < N; j++) if (unique[j] == baseMidi[i]) { found = true; break; }
+        if (!found) unique[N++] = baseMidi[i];
+    }
+    for (int i = 0; i < N - 1; i++)
+        for (int j = i + 1; j < N; j++)
+            if (unique[j] < unique[i]) { int t = unique[i]; unique[i] = unique[j]; unique[j] = t; }
+
+    if (N <= 1) return;  // nur ein Ton → keine Inversion möglich
+
+    ivInversionIdx = ((ivInversionIdx + delta) % N + N) % N;
+
+    // OctaveNote1 aller Hit-Steps setzen: Rang < ivIdx → +1 Oktave, sonst 0
+    for (int s = 0; s < hitCount; s++) {
+        int rank = 0;
+        for (int j = 0; j < N; j++) if (unique[j] == baseMidi[s]) { rank = j; break; }
+        OctaveNote1[hitIdx[s]] = (int8_t)(rank < ivInversionIdx ? 1 : 0);
+    }
+
+    scheduleSaveParams();
+    pendingPitchDraw = true;
+}
+
+// AI: Alle Steps auf dem tiefsten (dir>0) bzw. höchsten (dir<0) Niveau gleichzeitig
+// um ±1 Oktave verschieben — nicht Note für Note, sondern alle auf einmal.
+void aInvPitchSequence(int dir) {
+    int len = clampVal(PatLen[0], 1, 32);
     if (dir > 0) {
-        int minVal = 256, minIdx = 0;
-        for (int i = 0; i < len; i++)
-            if ((int)PitchNote1[i] < minVal) { minVal = PitchNote1[i]; minIdx = i; }
-        if (minVal + octRaw > 255) return;
-        PitchNote1[minIdx] = (uint8_t)(minVal + octRaw);
+        // Tiefsten MIDI-Wert unter allen Hit-Steps ermitteln
+        int minMidi = 9999;
+        for (int i = 0; i < len; i++) {
+            if (!patternIsHit(0, i)) continue;
+            int midi = quantizeToMidi(PitchNote1[i], pitchSpread, pitchScale,
+                                      pitchRoot, pitchIntervalMask)
+                       + (int)OctaveNote1[i] * 12;
+            if (midi < minMidi) minMidi = midi;
+        }
+        if (minMidi == 9999) return;
+        // Alle Hit-Steps auf diesem Niveau anheben
+        bool changed = false;
+        for (int i = 0; i < len; i++) {
+            if (!patternIsHit(0, i)) continue;
+            int midi = quantizeToMidi(PitchNote1[i], pitchSpread, pitchScale,
+                                      pitchRoot, pitchIntervalMask)
+                       + (int)OctaveNote1[i] * 12;
+            if (midi == minMidi && (int)OctaveNote1[i] < 3) {
+                OctaveNote1[i]++;
+                changed = true;
+            }
+        }
+        if (!changed) return;
     } else {
-        int maxVal = -1, maxIdx = 0;
-        for (int i = 0; i < len; i++)
-            if ((int)PitchNote1[i] > maxVal) { maxVal = PitchNote1[i]; maxIdx = i; }
-        if (maxVal - octRaw < 0) return;
-        PitchNote1[maxIdx] = (uint8_t)(maxVal - octRaw);
+        // Höchsten MIDI-Wert unter allen Hit-Steps ermitteln
+        int maxMidi = -9999;
+        for (int i = 0; i < len; i++) {
+            if (!patternIsHit(0, i)) continue;
+            int midi = quantizeToMidi(PitchNote1[i], pitchSpread, pitchScale,
+                                      pitchRoot, pitchIntervalMask)
+                       + (int)OctaveNote1[i] * 12;
+            if (midi > maxMidi) maxMidi = midi;
+        }
+        if (maxMidi == -9999) return;
+        // Alle Hit-Steps auf diesem Niveau absenken
+        bool changed = false;
+        for (int i = 0; i < len; i++) {
+            if (!patternIsHit(0, i)) continue;
+            int midi = quantizeToMidi(PitchNote1[i], pitchSpread, pitchScale,
+                                      pitchRoot, pitchIntervalMask)
+                       + (int)OctaveNote1[i] * 12;
+            if (midi == maxMidi && (int)OctaveNote1[i] > -3) {
+                OctaveNote1[i]--;
+                changed = true;
+            }
+        }
+        if (!changed) return;
     }
     scheduleSaveParams();
     pendingPitchDraw = true;
@@ -2892,7 +2984,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     }
 
     // Root — tap cycles forward
-    if (hitBox(mapX, mapY, 102, PITCH_CTRL_Y, 58, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 102, PITCH_CTRL_Y, 42, PITCH_CTRL_H, 3)) {
         pitchRoot = (uint8_t)((pitchRoot + 1) % 12);
         scheduleSaveParams();
         pendingPitchDraw = true;
@@ -2900,7 +2992,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     }
 
     // Spread — cycles 1..5
-    if (hitBox(mapX, mapY, 162, PITCH_CTRL_Y, 52, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 146, PITCH_CTRL_Y, 52, PITCH_CTRL_H, 3)) {
         uint8_t oldSpread = pitchSpread;
         pitchSpread = (uint8_t)(pitchSpread >= 5 ? 1 : pitchSpread + 1);
         if (pitchSpread != oldSpread) {
@@ -2915,8 +3007,20 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         return;
     }
 
+    // IV — tap: wrap lowest note +1 oct
+    if (hitBox(mapX, mapY, 200, PITCH_CTRL_Y, 30, PITCH_CTRL_H, 3)) {
+        invertPitchSequence(1);
+        return;
+    }
+
+    // AI — tap: raise truly lowest MIDI note +1 oct
+    if (hitBox(mapX, mapY, 232, PITCH_CTRL_Y, 30, PITCH_CTRL_H, 3)) {
+        aInvPitchSequence(1);
+        return;
+    }
+
     // Shift — cycles -3..+3
-    if (hitBox(mapX, mapY, 252, PITCH_CTRL_Y, 68, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 264, PITCH_CTRL_Y, 56, PITCH_CTRL_H, 3)) {
         pitchShift = (int8_t)(pitchShift >= 3 ? -3 : pitchShift + 1);
         scheduleSaveParams();
         pendingPitchDraw = true;

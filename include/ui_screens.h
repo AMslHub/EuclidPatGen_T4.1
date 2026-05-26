@@ -66,7 +66,8 @@ void drawXYPlayhead(int setIdx, unsigned int step);
 void drawXYDotPlayhead(int setIdx, unsigned int step);
 void drawPitchScreen();
 void applyAllTransforms(); // Rotation+Fold aller Kanäle einfrieren (Enc1-Long-Press auf PITCH1)
-void invertPitchSequence(int dir); // Akkord-Inversion: dir>0 tiefsten Ton +1 Okt, dir<0 höchsten -1 Okt
+void invertPitchSequence(int dir); // IV: Wrap — find by raw PitchNote1, apply OctaveNote1 ±1
+void aInvPitchSequence(int dir);   // AI: A-Inv — find by actual MIDI pitch, raise/lower lowest/highest OctaveNote1
 bool getPitchChordMode();
 void flashPitchBars();             // VLP-Feedback: Balken schwarz→weiß→normal
 void togglePitchChordMode();       // Enc1 Very-Long-Press auf PITCH1

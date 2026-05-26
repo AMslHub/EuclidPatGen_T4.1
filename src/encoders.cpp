@@ -227,7 +227,7 @@ static void handlePitchEncoder(int enc, int delta) {
     switch (enc) {
         case 0:
             if (!pitchBoxEditMode) {
-                pitchBoxCursor = ((pitchBoxCursor + delta) % 4 + 4) % 4;
+                pitchBoxCursor = ((pitchBoxCursor + delta) % 5 + 5) % 5;
                 pendingPitchDraw = true;
             } else {
                 switch (pitchBoxCursor) {
@@ -261,6 +261,9 @@ static void handlePitchEncoder(int enc, int delta) {
                     }
                     case 3:
                         invertPitchSequence(delta);
+                        break;
+                    case 4:
+                        aInvPitchSequence(delta);
                         break;
                 }
             }
