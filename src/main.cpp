@@ -60,6 +60,20 @@ uint8_t GateLenB2[32]   = { 0 };
 uint8_t GateLenB3[32]   = { 0 };
 uint8_t *GateLenBArr[3] = { GateLenB1, GateLenB2, GateLenB3 };
 bool    abEditMode       = false;
+uint8_t condType1[32]     = { 0 };
+uint8_t condType2[32]     = { 0 };
+uint8_t condType3[32]     = { 0 };
+uint8_t *condTypeArr[3]   = { condType1, condType2, condType3 };
+uint8_t condAction1[32]   = { 0 };
+uint8_t condAction2[32]   = { 0 };
+uint8_t condAction3[32]   = { 0 };
+uint8_t *condActionArr[3] = { condAction1, condAction2, condAction3 };
+uint32_t cycleCount[3]    = { 1, 1, 1 };
+bool     condMuteActive[3]   = { false, false, false };
+bool     condAccentActive[3] = { false, false, false };
+int8_t   condTransposeAdd[3] = { 0, 0, 0 };
+uint8_t  condRatchetOvr[3]   = { 0, 0, 0 };
+uint8_t  condGateLenOvr[3]   = { 0, 0, 0 };
 bool GateHold1 = false;
 bool GateHold2 = false;
 bool GateHold3 = false;
@@ -535,6 +549,7 @@ void loop() {
         cntChHold[ch]      = 0;
         chDivPhase[ch]     = 0;
         chSubTicksDone[ch] = 0;
+        cycleCount[ch]     = 1;
     }
   }
 
@@ -654,6 +669,13 @@ void loop() {
             case NAV:
                 handleNav(mapX, mapY);
                 break;
+            case COND1:
+            case COND2:
+            case COND3: {
+                int setIdx = (GUIState == COND1) ? 0 : (GUIState == COND2) ? 1 : 2;
+                handleCond(setIdx, mapX, mapY, tipPos);
+                break;
+            }
             default:
                 break;
           }
@@ -757,6 +779,7 @@ void loop() {
           cntChHold[ch]      = 0;
           chDivPhase[ch]     = 0;
           chSubTicksDone[ch] = 0;
+          cycleCount[ch]     = 1;
       }
       // SD-Read dauert 10–20ms → akkumulierte Ticks verwerfen, um Burst zu verhindern
       discardPendingTicks();
@@ -811,6 +834,16 @@ void loop() {
             while (newRot > maxRot) newRot -= len;
             PatRotSel[ch] = newRot;
             refreshUiForPatternUpdate(ch);
+        }
+    }
+
+    // Cycle counter: increment at each pattern wrap (same cntCh[ch]!=0 guard as song auto-stop)
+    for (int ch = 0; ch < 3; ch++) {
+        if (!chFired[ch]) continue;
+        int len = clampVal(PatLen[ch], 1, 32);
+        if (cntCh[ch] != 0 && (cntCh[ch] % (unsigned int)len) == 0) {
+            cycleCount[ch]++;
+            if (cycleCount[ch] == 0) cycleCount[ch] = 1;  // wrap-safe, never zero
         }
     }
 
@@ -917,12 +950,65 @@ void loop() {
           tickPitchUi();
           if (chFired[0]) drawPitchPlayhead(cntCh[0]);
           break;
+      case COND1:
+          if (chFired[0]) drawCondPlayhead(0, cntCh[0]);
+          break;
+      case COND2:
+          if (chFired[1]) drawCondPlayhead(1, cntCh[1]);
+          break;
+      case COND3:
+          if (chFired[2]) drawCondPlayhead(2, cntCh[2]);
+          break;
       case EUCLPARAM1:
       case EUCLPARAM2:
       case EUCLPARAM3:
           break;
       default:
          break;
+    }
+
+    // Conditional Actions: evaluate per-channel — reset delivery vars, then check condition
+    for (int ch = 0; ch < 3; ch++) {
+        condMuteActive[ch]   = false;
+        condAccentActive[ch] = false;
+        condTransposeAdd[ch] = 0;
+        condRatchetOvr[ch]   = 0;
+        condGateLenOvr[ch]   = 0;
+        if (!chFired[ch]) continue;
+        int len = clampVal(PatLen[ch], 1, 32);
+        int idx = (int)(cntCh[ch] % (unsigned int)len);
+        uint8_t ct = condTypeArr[ch][idx];
+        uint8_t ca = condActionArr[ch][idx];
+        if (ct == COND_NONE || ca == COND_ACT_NONE) continue;
+        bool fired = false;
+        switch (ct) {
+            case COND_ODD:  fired = (cycleCount[ch] % 2u == 1u); break;
+            case COND_EVEN: fired = (cycleCount[ch] % 2u == 0u); break;
+            case COND_MOD3: fired = (cycleCount[ch] % 3u == 0u); break;
+            case COND_MOD4: fired = (cycleCount[ch] % 4u == 0u); break;
+            case COND_P25:  fired = ((uint32_t)random(4) == 0u); break;
+            case COND_P50:  fired = ((uint32_t)random(2) == 0u); break;
+            case COND_P75:  fired = ((uint32_t)random(4) != 0u); break;
+            default: break;
+        }
+        if (!fired) continue;
+        switch (ca) {
+            case COND_ACT_MUTE:     condMuteActive[ch]   = true; break;
+            case COND_ACT_ACCENT:   condAccentActive[ch] = true; break;
+            case COND_ACT_GATE_S:   condGateLenOvr[ch]  = 64;   break;
+            case COND_ACT_GATE_M:   condGateLenOvr[ch]  = 128;  break;
+            case COND_ACT_GATE_L:   condGateLenOvr[ch]  = 192;  break;
+            case COND_ACT_GATE_TIE: condGateLenOvr[ch]  = 255;  break;
+            case COND_ACT_R2:       condRatchetOvr[ch]  = 2;    break;
+            case COND_ACT_R3:       condRatchetOvr[ch]  = 3;    break;
+            case COND_ACT_R4:       condRatchetOvr[ch]  = 4;    break;
+            default:
+                if (ca >= COND_ACT_T_PLUS_1 && ca <= COND_ACT_T_PLUS_12)
+                    condTransposeAdd[ch] = (int8_t)(ca - COND_ACT_T_PLUS_1 + 1);
+                else if (ca >= COND_ACT_T_MINUS_1 && ca <= COND_ACT_T_MINUS_12)
+                    condTransposeAdd[ch] = (int8_t)(-(ca - COND_ACT_T_MINUS_1 + 1));
+                break;
+        }
     }
 
     // Swing-Maske: Kanaele, deren Gate verzögert feuert → DAC-Wert jetzt einfrieren
@@ -955,6 +1041,7 @@ void loop() {
         int effRot   = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         if (!EPatArr[ch][euclidRotatedSrc(idx, len, effRot)]) { ratchetRemain[ch] = 0; continue; }
+        if (condMuteActive[ch]) { ratchetRemain[ch] = 0; swingPending[ch] = false; continue; }
 
         bool applySwing = (cvSwingPct > 0) && ((cntCh[ch] % 2u) == 0u);
         if (applySwing) {
@@ -969,6 +1056,7 @@ void loop() {
                 int rIdx = RotateRatchet[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
                 uint8_t perStepR = RatchetArr[ch][rIdx];
                 uint8_t effR = (cvRatchetCount[ch] > perStepR) ? cvRatchetCount[ch] : perStepR;
+                if (condRatchetOvr[ch] > effR) effR = condRatchetOvr[ch];
                 uint32_t gateDur = effR > 1 ? GATE_PULSE_US : gateLenForStep(ch, cntCh[ch]);
                 if (!isrFired) {
                     // Normalfall: Gate vom Main-Loop zünden

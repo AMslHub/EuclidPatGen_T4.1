@@ -26,7 +26,40 @@ enum {
   CV_CONFIG,
   GCONFIG,
   SONG,
-  NAV
+  NAV,
+  COND1,
+  COND2,
+  COND3
+};
+
+enum CondType : uint8_t {
+    COND_NONE = 0,
+    COND_ODD,    // odd cycle  (1, 3, 5, …)
+    COND_EVEN,   // even cycle (2, 4, 6, …)
+    COND_MOD3,   // cycle % 3 == 0
+    COND_MOD4,   // cycle % 4 == 0
+    COND_P25,    // 25% random
+    COND_P50,    // 50% random
+    COND_P75,    // 75% random
+    COND_TYPE_COUNT
+};
+
+enum CondAction : uint8_t {
+    COND_ACT_NONE = 0,
+    COND_ACT_MUTE,
+    COND_ACT_ACCENT,
+    COND_ACT_GATE_S,      // gate short  (64)
+    COND_ACT_GATE_M,      // gate medium (128)
+    COND_ACT_GATE_L,      // gate long   (192)
+    COND_ACT_GATE_TIE,    // gate tie    (255)
+    COND_ACT_R2,          // ratchet 2
+    COND_ACT_R3,          // ratchet 3
+    COND_ACT_R4,          // ratchet 4
+    COND_ACT_T_PLUS_1,    // transpose +1 semitone
+    COND_ACT_T_PLUS_12  = COND_ACT_T_PLUS_1 + 11,
+    COND_ACT_T_MINUS_1,   // transpose -1 semitone (= 22)
+    COND_ACT_T_MINUS_12 = COND_ACT_T_MINUS_1 + 11,
+    COND_ACT_COUNT        // = 34
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
 
@@ -169,6 +202,19 @@ extern uint8_t songLoadedPos;    // aktuell spielende Position (Anzeige)
 
 // Globale Ratchet-Dämpfung: 0=flat, 255=max Decay (letzter Hit leise)
 extern uint8_t ratchetDecay;
+
+// Conditional Actions — per-step conditions + actions
+extern uint8_t condType1[32], condType2[32], condType3[32];
+extern uint8_t *condTypeArr[3];
+extern uint8_t condAction1[32], condAction2[32], condAction3[32];
+extern uint8_t *condActionArr[3];
+extern uint32_t cycleCount[3];    // 1-based cycle counter, resets on slot-load/reset
+// Delivery vars: reset each tick, read by gates.cpp and gate trigger
+extern bool    condMuteActive[3];
+extern bool    condAccentActive[3];
+extern int8_t  condTransposeAdd[3];
+extern uint8_t condRatchetOvr[3];   // 0=no override, 2..4=ratchet count
+extern uint8_t condGateLenOvr[3];   // 0=no override, else gate-len value
 
 // Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)
 extern volatile bool extClockMode;

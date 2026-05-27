@@ -8,8 +8,8 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB49;  // bumped: +ValuesB/GateLenB A/B-Morph
-static const uint16_t SD_MAGIC_SLOTS = 0xEB62;  // bumped: +valuesB/gateLenB in ParamBlock
+static const uint16_t EEPROM_MAGIC   = 0xEB4A;  // bumped: +condType/condAction Conditional Actions
+static const uint16_t SD_MAGIC_SLOTS = 0xEB63;  // bumped: +condType/condAction in ParamBlock
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
 static bool sdOK = false;
@@ -51,6 +51,8 @@ struct ParamBlock {
     uint8_t rotOctave[3];
     uint8_t valuesB[3][32];
     uint8_t gateLenB[3][32];
+    uint8_t condType[3][32];
+    uint8_t condAction[3][32];
 };
 
 struct PitchBlock {
@@ -129,6 +131,8 @@ static void packParamsCore(ParamBlock &p) {
             p.ratchet[i][j] = (uint8_t)clampVal((int)RatchetArr[i][j], 1, 4);
             p.valuesB[i][j]  = ValuesBArr[i][j];
             p.gateLenB[i][j] = GateLenBArr[i][j];
+            p.condType[i][j]   = condTypeArr[i][j];
+            p.condAction[i][j] = condActionArr[i][j];
         }
         p.hold[i]      = (*HoldArr[i])     ? 1 : 0;
         p.gateHold[i]  = (*GateHoldArr[i]) ? 1 : 0;
@@ -157,6 +161,8 @@ static void unpackParamsCore(const ParamBlock &p) {
             RatchetArr[i][j] = (uint8_t)clampVal((int)p.ratchet[i][j], 1, 4);
             ValuesBArr[i][j]  = p.valuesB[i][j];
             GateLenBArr[i][j] = p.gateLenB[i][j];
+            condTypeArr[i][j]   = (p.condType[i][j]   < COND_TYPE_COUNT) ? p.condType[i][j]   : 0;
+            condActionArr[i][j] = (p.condAction[i][j] < COND_ACT_COUNT)  ? p.condAction[i][j] : 0;
         }
         *HoldArr[i]      = (p.hold[i]      != 0);
         *GateHoldArr[i]  = (p.gateHold[i]  != 0);

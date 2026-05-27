@@ -88,6 +88,7 @@ uint32_t gateLenForStep(int ch, unsigned int step) {
     uint8_t v  = cvMorph > 0.0f
         ? (uint8_t)clampVal((int)((float)vA * (1.0f - cvMorph) + (float)vB * cvMorph + 0.5f), 0, 255)
         : vA;
+    if (condGateLenOvr[ch] > 0) v = condGateLenOvr[ch];
     if (v == 0) {
         return GATE_PULSE_US;
     }
@@ -179,6 +180,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
         uint8_t v  = cvMorph > 0.0f
             ? (uint8_t)clampVal((int)((float)vA * (1.0f - cvMorph) + (float)vB * cvMorph + 0.5f), 0, 255)
             : vA;
+        if (condAccentActive[ch]) v = 255;
 
         if (*HoldArr[ch]) {
             if (hit) lastOut[ch] = v;
@@ -248,7 +250,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                     }
                 }
 
-                midi = clampVal(midi + totalShift * 12 + (int)cvPitchTransposeST + cvPitchAdj * 12, 36, 127);
+                midi = clampVal(midi + totalShift * 12 + (int)cvPitchTransposeST + cvPitchAdj * 12 + (int)condTransposeAdd[0], 36, 127);
                 lastPitchDac = midiToDac(midi);
                 pitchDac = lastPitchDac;
             }

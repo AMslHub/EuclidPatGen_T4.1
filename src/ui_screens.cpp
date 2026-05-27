@@ -1687,6 +1687,7 @@ void drawGateLenScreen(int setIdx){
     drawGateHoldCheckbox(setIdx);
     drawRotateGateLenCheckbox(setIdx);
     drawAbToggleButton();
+    drawCondButton(setIdx);
     // Rahmen um den GateLen-Bereich
     {
       int x0 = 10;
@@ -1786,6 +1787,10 @@ void drawRotateGateLenCheckbox(int setIdx){
 void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     if(tipPos == UL){
         requestNavigateTo((setIdx == 0) ? VALUES1 : (setIdx == 1) ? VALUES2 : VALUES3);
+        return;
+    }
+    if(hitBox(mapX, mapY, 128, 10, 52, 24, 6)){
+        requestNavigateTo((setIdx == 0) ? COND1 : (setIdx == 1) ? COND2 : COND3);
         return;
     }
     if(hitBox(mapX, mapY, 192, 10, 56, 24, 6)){
@@ -3837,6 +3842,9 @@ void navigateToScreen(uint16_t target) {
         case XY2:          drawXYPadScreen(1);       break;
         case XY3:          drawXYPadScreen(2);       break;
         case NAV:          drawNavScreen(navFromState_early); break;
+        case COND1:        drawCondScreen(0); break;
+        case COND2:        drawCondScreen(1); break;
+        case COND3:        drawCondScreen(2); break;
         default: break;
     }
   }
@@ -3966,4 +3974,222 @@ bool tickSaveToast() {
         return true;  // Aufrufer soll Screen neu zeichnen
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------
+// Conditional Actions Screen
+// ---------------------------------------------------------------------------
+
+// Grid layout constants
+static const int COND_LBL_W  = 24;   // left label column width
+static const int COND_COL_W  = 37;   // pitch per column (incl. 1px gap right)
+static const int COND_CELL_W = 36;   // usable cell width
+static const int COND_ROW0_Y = 22;   // step number row top
+static const int COND_ROW0_H = 26;
+static const int COND_ROW1_Y = 48;   // hit indicator row top
+static const int COND_ROW1_H = 26;
+static const int COND_ROW2_Y = 74;   // condition row top
+static const int COND_ROW2_H = 76;
+static const int COND_ROW3_Y = 150;  // action row top
+static const int COND_ROW3_H = 90;
+
+// Playhead state per channel (step last drawn, to erase it)
+static int condPhStep[3] = { -1, -1, -1 };
+
+static const char* condTypeLabel(uint8_t t) {
+    static const char* const lbl[] = { "---", "ODD", "EVN", "M:3", "M:4", "P25", "P50", "P75" };
+    return (t < COND_TYPE_COUNT) ? lbl[t] : "---";
+}
+
+static const char* condActionLabel(uint8_t a) {
+    static const char* const lbl[] = {
+        "---", "MUT", "ACC", "G.S", "G.M", "G.L", "TIE",
+        "R:2", "R:3", "R:4",
+        "+1","+2","+3","+4","+5","+6","+7","+8","+9","+10","+11","+12",
+        "-1","-2","-3","-4","-5","-6","-7","-8","-9","-10","-11","-12"
+    };
+    return (a < COND_ACT_COUNT) ? lbl[a] : "---";
+}
+
+static uint16_t condActionDisplayColor(uint8_t a) {
+    if (a == COND_ACT_NONE)   return 0x4208;
+    if (a == COND_ACT_MUTE)   return 0x7800;   // dark red
+    if (a == COND_ACT_ACCENT) return ILI9341_YELLOW;
+    if (a >= COND_ACT_GATE_S  && a <= COND_ACT_GATE_TIE) return ILI9341_CYAN;
+    if (a >= COND_ACT_R2      && a <= COND_ACT_R4)       return ILI9341_MAGENTA;
+    if (a >= COND_ACT_T_PLUS_1  && a <= COND_ACT_T_PLUS_12)  return ILI9341_GREEN;
+    if (a >= COND_ACT_T_MINUS_1 && a <= COND_ACT_T_MINUS_12) return 0xFD20;  // orange
+    return ILI9341_LIGHTGREY;
+}
+
+// Draws one column (all 4 rows) for given page+col.
+void drawCondCell(int setIdx, int page, int col) {
+    int stepIdx  = page * 8 + col;
+    int cursor   = getCondStepCursor(setIdx);
+    bool isCursor = (cursor == stepIdx);
+    int len      = clampVal(PatLen[setIdx], 1, 32);
+    bool active  = (stepIdx < len);
+    int x        = COND_LBL_W + col * COND_COL_W;
+
+    // Row 0: step number
+    {
+        uint16_t bg = isCursor ? 0x2945 : 0x1082;
+        tft.fillRect(x, COND_ROW0_Y, COND_CELL_W, COND_ROW0_H, bg);
+        tft.setFont(Arial_10);
+        tft.setTextColor(active ? ILI9341_WHITE : ILI9341_DARKGREY);
+        char buf[4]; snprintf(buf, sizeof(buf), "%d", clampVal(stepIdx + 1, 1, 32));
+        int xOff = (int)strlen(buf) <= 1 ? 14 : 10;
+        tft.setCursor(x + xOff, COND_ROW0_Y + 8);
+        tft.print(buf);
+    }
+
+    // Row 1: hit indicator
+    {
+        tft.fillRect(x, COND_ROW1_Y, COND_CELL_W, COND_ROW1_H, ILI9341_BLACK);
+        int cx = x + COND_CELL_W / 2;
+        int cy = COND_ROW1_Y + COND_ROW1_H / 2;
+        if (active) {
+            bool hit = patternIsHit(setIdx, stepIdx);
+            if (hit)  tft.fillCircle(cx, cy, 8, ILI9341_WHITE);
+            else      tft.drawCircle(cx, cy, 7, ILI9341_DARKGREY);
+        }
+    }
+
+    // Row 2: condition type
+    {
+        uint8_t ct = active ? condTypeArr[setIdx][stepIdx] : 0;
+        static const uint16_t ctColors[COND_TYPE_COUNT] = {
+            0x4208, 0xFFFF, 0xFFFF, 0xAFE5, 0xAFE5, 0xFEA0, 0xFEA0, 0xFEA0
+        };
+        uint16_t bg = (active && ct != COND_NONE) ? 0x0841 : ILI9341_BLACK;
+        tft.fillRect(x, COND_ROW2_Y, COND_CELL_W, COND_ROW2_H, bg);
+        if (active) {
+            const char* lbl = condTypeLabel(ct);
+            uint16_t fc = ctColors[ct < COND_TYPE_COUNT ? ct : 0];
+            tft.setFont(Arial_10);
+            tft.setTextColor(fc);
+            int xOff = (int)strlen(lbl) <= 2 ? 13 : 8;
+            tft.setCursor(x + xOff, COND_ROW2_Y + COND_ROW2_H / 2 - 6);
+            tft.print(lbl);
+        }
+    }
+
+    // Row 3: action
+    {
+        uint8_t ca = active ? condActionArr[setIdx][stepIdx] : 0;
+        uint16_t fc = condActionDisplayColor(ca);
+        uint16_t bg = (active && ca != COND_ACT_NONE) ? 0x0841 : ILI9341_BLACK;
+        tft.fillRect(x, COND_ROW3_Y, COND_CELL_W, COND_ROW3_H, bg);
+        if (active) {
+            const char* lbl = condActionLabel(ca);
+            tft.setFont(Arial_10);
+            tft.setTextColor(fc);
+            int xOff = (int)strlen(lbl) <= 2 ? 13 : (int)strlen(lbl) <= 3 ? 8 : 3;
+            tft.setCursor(x + xOff, COND_ROW3_Y + COND_ROW3_H / 2 - 6);
+            tft.print(lbl);
+        }
+    }
+
+    // Cursor border: yellow rectangle spanning all rows
+    if (isCursor) {
+        tft.drawRect(x, COND_ROW0_Y, COND_CELL_W,
+                     240 - COND_ROW0_Y, ILI9341_YELLOW);
+    }
+}
+
+// Draws the left row label column.
+static void drawCondLabels() {  // only used internally
+    tft.setFont(Arial_10);
+    tft.setTextColor(ILI9341_DARKGREY);
+    tft.setCursor(2, COND_ROW1_Y + 8);  tft.print("P");
+    tft.setCursor(0, COND_ROW2_Y + COND_ROW2_H / 2 - 6);  tft.print("C");
+    tft.setCursor(0, COND_ROW3_Y + COND_ROW3_H / 2 - 6);  tft.print("A");
+}
+
+// Draws the title row (page indicator + channel label).
+void drawCondTitle(int setIdx) {
+    tft.fillRect(0, 0, 320, COND_ROW0_Y, ILI9341_BLACK);
+    setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
+    int cursor = getCondStepCursor(setIdx);
+    int page   = cursor / 8;
+    int pages  = (clampVal(PatLen[setIdx], 1, 32) + 7) / 8;
+    tft.setFont(Arial_10);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(50, 6);
+    tft.printf("COND Ch%d", setIdx + 1);
+    if (pages > 1) {
+        tft.printf("  p.%d/%d", page + 1, pages);
+    }
+}
+
+void drawCondScreen(int setIdx) {
+    fillScreenIfNeeded();
+    condPhStep[setIdx] = -1;  // invalidate playhead
+    drawCondTitle(setIdx);
+    drawCondLabels();
+    int cursor = getCondStepCursor(setIdx);
+    int page   = cursor / 8;
+    for (int c = 0; c < 8; c++) {
+        drawCondCell(setIdx, page, c);
+    }
+}
+
+// Draws the small "COND" button on the GateLen screen at (128,10,52,24).
+void drawCondButton(int setIdx) {
+    (void)setIdx;
+    int x = 128, y = 10, w = 52, h = 24;
+    tft.drawRect(x, y, w, h, ILI9341_DARKGREY);
+    tft.fillRect(x + 1, y + 1, w - 2, h - 2, ILI9341_BLACK);
+    tft.setFont(Arial_10);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setCursor(x + 10, y + 7);
+    tft.print("COND");
+}
+
+void handleCond(int setIdx, int mapX, int mapY, uint16_t tipPos) {
+    (void)mapX; (void)mapY;
+    if (tipPos == UL) {
+        requestNavigateTo((setIdx == 0) ? GATELEN1 : (setIdx == 1) ? GATELEN2 : GATELEN3);
+    }
+}
+
+// Highlights the step number cell for the current playing step (same page only).
+void drawCondPlayhead(int setIdx, unsigned int step) {
+    int len    = clampVal(PatLen[setIdx], 1, 32);
+    int cursor = getCondStepCursor(setIdx);
+    int page   = cursor / 8;
+    int curStep = (int)(step % (unsigned int)len);
+    int prevStep = condPhStep[setIdx];
+
+    // Erase previous playhead (if on current page)
+    if (prevStep >= 0 && prevStep / 8 == page) {
+        drawCondCell(setIdx, page, prevStep % 8);
+    }
+
+    condPhStep[setIdx] = curStep;
+
+    // Draw new playhead (if on current page)
+    if (curStep / 8 == page) {
+        int col       = curStep % 8;
+        int x         = COND_LBL_W + col * COND_COL_W;
+        bool isCursor = (curStep == cursor);
+        bool stepOk   = (curStep < len);
+        uint16_t bg   = isCursor ? 0x2945 : 0x1082;
+        tft.fillRect(x, COND_ROW0_Y, COND_CELL_W, COND_ROW0_H, bg);
+        tft.fillCircle(x + COND_CELL_W / 2, COND_ROW0_Y + 4, 3, ILI9341_GREEN);
+        tft.setFont(Arial_10);
+        tft.setTextColor(stepOk ? ILI9341_WHITE : ILI9341_DARKGREY);
+        char buf[4]; snprintf(buf, sizeof(buf), "%d", curStep + 1);
+        int xOff = (int)strlen(buf) <= 1 ? 14 : 10;
+        tft.setCursor(x + xOff, COND_ROW0_Y + 12);
+        tft.print(buf);
+        if (isCursor) tft.drawRect(x, COND_ROW0_Y, COND_CELL_W, 240 - COND_ROW0_Y, ILI9341_YELLOW);
+    }
+}
+
+// Briefly flashes the title bar red as VLP feedback.
+void flashCondBars(int setIdx) {
+    tft.fillRect(0, 0, 320, COND_ROW0_Y, ILI9341_RED);
+    delay(120);
+    drawCondTitle(setIdx);
 }

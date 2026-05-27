@@ -6,3 +6,4 @@ int  getPitchItvlCursor();      // aktuell selektiertes Intervall (0..6) fuer En
 int  getPitchBoxCursor();       // 0=Scale, 1=Root, 2=Spread (Enc1 browse cursor)
 bool getPitchBoxEditMode();     // Enc1 edit mode aktiv
 void resetQuickSavePointer();   // Schreibzeiger zuruecksetzen (nach Slot-Load)
+int  getCondStepCursor(int ch); // 0..PatLen-1, aktuell selektierter Step im COND-Screen

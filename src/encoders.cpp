@@ -54,6 +54,10 @@ static bool pitchBoxEditMode = false;
 int  getPitchBoxCursor()   { return pitchBoxCursor; }
 bool getPitchBoxEditMode() { return pitchBoxEditMode; }
 
+// COND1/2/3 screen: per-channel step cursor
+static int condStepCursor[3] = { 0, 0, 0 };
+int getCondStepCursor(int ch) { return (ch >= 0 && ch < 3) ? condStepCursor[ch] : 0; }
+
 // ---------------------------------------------------------------------------
 // Wendet eine Parameteraenderung fuer Kanal ch an.
 //   rotOnly=true: nur PatRot geaendert → kein Rebuild, sofortige Rotation
@@ -318,6 +322,64 @@ static void handlePitchButton(int enc) {
 }
 
 // ---------------------------------------------------------------------------
+// COND1/2/3-Screen: Encoder-Drehung
+//   Enc1 (i=0): Schritt-Cursor 0..PatLen-1 bewegen (+ Seite wechseln)
+//   Enc2 (i=1): Bedingungstyp am Cursor-Step (0..COND_TYPE_COUNT-1)
+//   Enc3 (i=2): Aktion am Cursor-Step (0..COND_ACT_COUNT-1)
+// ---------------------------------------------------------------------------
+static void handleCondEncoder(int ch, int enc, int delta) {
+    int cursor = condStepCursor[ch];
+    int len    = clampVal(PatLen[ch], 1, 32);
+    int oldPage = cursor / 8;
+
+    if (enc == 0) {
+        int oldCursor = cursor;
+        cursor = ((cursor + delta) % len + len) % len;
+        condStepCursor[ch] = cursor;
+        int newPage = cursor / 8;
+        if (newPage != oldPage) {
+            drawCondScreen(ch);   // page changed → full redraw
+        } else {
+            drawCondCell(ch, newPage, oldCursor % 8);  // erase old border
+            drawCondCell(ch, newPage, cursor    % 8);  // draw new border
+            drawCondTitle(ch);
+        }
+    } else if (enc == 1) {
+        uint8_t &ct = condTypeArr[ch][cursor];
+        ct = (uint8_t)(((int)ct + delta + COND_TYPE_COUNT) % COND_TYPE_COUNT);
+        scheduleSaveParams();
+        drawCondCell(ch, cursor / 8, cursor % 8);
+    } else if (enc == 2) {
+        uint8_t &ca = condActionArr[ch][cursor];
+        ca = (uint8_t)(((int)ca + delta + COND_ACT_COUNT) % COND_ACT_COUNT);
+        scheduleSaveParams();
+        drawCondCell(ch, cursor / 8, cursor % 8);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// COND screen: Encoder-Knopfdruck
+//   Enc1 Long-Press: Step löschen (COND_NONE + COND_ACT_NONE)
+// ---------------------------------------------------------------------------
+static void handleCondButtonPress(int ch) {
+    int cursor = condStepCursor[ch];
+    condTypeArr[ch][cursor]   = COND_NONE;
+    condActionArr[ch][cursor] = COND_ACT_NONE;
+    scheduleSaveParams();
+    drawCondCell(ch, cursor / 8, cursor % 8);
+}
+
+static void clearAllCondSteps(int ch) {
+    int len = clampVal(PatLen[ch], 1, 32);
+    for (int i = 0; i < len; i++) {
+        condTypeArr[ch][i]   = COND_NONE;
+        condActionArr[ch][i] = COND_ACT_NONE;
+    }
+    scheduleSaveParams();
+    drawCondScreen(ch);
+}
+
+// ---------------------------------------------------------------------------
 // Quick Save: aktiver Slot überschreiben, dann Schreibzeiger auf nächsten freien Slot.
 // ---------------------------------------------------------------------------
 void resetQuickSavePointer() { nextSaveSlot = -1; }
@@ -452,7 +514,8 @@ void handleEncoders() {
     // Rotation und Enc1-Button nur auf relevanten Screens
     bool encActive = (GUIState == EUCLCIRCS   || GUIState == PERFORMANCE ||
                       GUIState == EUCLPARAM1  || GUIState == EUCLPARAM2  || GUIState == EUCLPARAM3 ||
-                      GUIState == PITCH1      || GUIState == NAV         || GUIState == SONG);
+                      GUIState == PITCH1      || GUIState == NAV         || GUIState == SONG      ||
+                      GUIState == COND1       || GUIState == COND2       || GUIState == COND3);
     if (!encActive) return;
 
     for (int i = 0; i < 3; i++) {
@@ -472,6 +535,9 @@ void handleEncoders() {
                 handlePerfEncoder2(delta);
             } else if (GUIState == PITCH1) {
                 handlePitchEncoder(i, delta);
+            } else if (GUIState == COND1 || GUIState == COND2 || GUIState == COND3) {
+                int ch = (GUIState == COND1) ? 0 : (GUIState == COND2) ? 1 : 2;
+                handleCondEncoder(ch, i, delta);
             } else if (GUIState != PERFORMANCE) {
                 handleNormalEncoder(i, delta);
             }
@@ -499,16 +565,30 @@ void handleEncoders() {
                     } else {
                         handlePitchButton(0);
                     }
+                } else if (GUIState == COND1 || GUIState == COND2 || GUIState == COND3) {
+                    int ch = (GUIState == COND1) ? 0 : (GUIState == COND2) ? 1 : 2;
+                    if (enc1VlpFlashed) {
+                        clearAllCondSteps(ch);
+                    } else if (held >= LONG_PRESS_MS) {
+                        handleCondButtonPress(ch);
+                    }
+                    // Short press: no action
                 } else if (GUIState != NAV && GUIState != PERFORMANCE && GUIState != SONG) {
                     handleNormalButton(0);
                 }
             }
         }
-        // Continuous VLP-Check: Flash bei Erreichen der Schwelle (während gehalten)
-        if (btnLastState[0] == LOW && GUIState == PITCH1 && !enc1VlpFlashed) {
+        // Continuous VLP-Check: Flash für PITCH1 und COND
+        if (btnLastState[0] == LOW && !enc1VlpFlashed) {
             if (now - enc1PressStartMs >= VERY_LONG_PRESS_MS) {
-                enc1VlpFlashed = true;
-                flashPitchBars();
+                if (GUIState == PITCH1) {
+                    enc1VlpFlashed = true;
+                    flashPitchBars();
+                } else if (GUIState == COND1 || GUIState == COND2 || GUIState == COND3) {
+                    int ch = (GUIState == COND1) ? 0 : (GUIState == COND2) ? 1 : 2;
+                    enc1VlpFlashed = true;
+                    flashCondBars(ch);
+                }
             }
         }
     }
