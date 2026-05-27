@@ -83,7 +83,11 @@ uint32_t gateLenForStep(int ch, unsigned int step) {
     int idx       = step % len;
     int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
     int src = RotateGateLen[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
-    uint8_t v = GateLenArr[ch][src];
+    uint8_t vA = GateLenArr[ch][src];
+    uint8_t vB = GateLenBArr[ch][src];
+    uint8_t v  = cvMorph > 0.0f
+        ? (uint8_t)clampVal((int)((float)vA * (1.0f - cvMorph) + (float)vB * cvMorph + 0.5f), 0, 255)
+        : vA;
     if (v == 0) {
         return GATE_PULSE_US;
     }
@@ -170,7 +174,11 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
         int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         bool hit   = EPatArr[ch][euclidRotatedSrc(idx, len, effRot)];
         int src    = RotateValues[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
-        uint8_t v  = ValuesArr[ch][src];
+        uint8_t vA = ValuesArr[ch][src];
+        uint8_t vB = ValuesBArr[ch][src];
+        uint8_t v  = cvMorph > 0.0f
+            ? (uint8_t)clampVal((int)((float)vA * (1.0f - cvMorph) + (float)vB * cvMorph + 0.5f), 0, 255)
+            : vA;
 
         if (*HoldArr[ch]) {
             if (hit) lastOut[ch] = v;

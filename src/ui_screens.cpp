@@ -1104,6 +1104,21 @@ void drawProbAutoCheckbox(int setIdx){
   }
 }
 
+static void drawAbToggleButton() {
+    static const int x = 192, y = 10, w = 56, h = 24;
+    uint16_t col = abEditMode ? 0xFD20 : ILI9341_DARKGREY;
+    tft.fillRect(x, y, w, h, ILI9341_BLACK);
+    tft.drawRect(x, y, w, h, col);
+    tft.setFont(Arial_16);
+    tft.setCursor(x + 5, y + 4);
+    tft.setTextColor(abEditMode ? ILI9341_DARKGREY : ILI9341_WHITE);
+    tft.print("A");
+    tft.setTextColor(ILI9341_DARKGREY);
+    tft.print("/");
+    tft.setTextColor(abEditMode ? 0xFD20 : ILI9341_DARKGREY);
+    tft.print("B");
+}
+
 static void drawValuesEditButtons(int setIdx) {
     tft.fillRect(0, 42, 285, 28, ILI9341_BLACK);
     int mode = valuesEditMode[setIdx];
@@ -1260,6 +1275,7 @@ void drawValuesScreen(int setIdx){
     drawHoldCheckbox(setIdx);
     drawRotateValuesCheckbox(setIdx);
     drawGateLenButton();
+    drawAbToggleButton();
     drawValuesEditButtons(setIdx);
     // Rahmen um den Values-Bereich
     {
@@ -1334,19 +1350,17 @@ void drawValuesBar(int setIdx, int idx){
     int w     = xNext - x - 1;
 
     int src = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
-    uint8_t val = ValuesArr[setIdx][src];
+    uint8_t val = abEditMode ? ValuesBArr[setIdx][src] : ValuesArr[setIdx][src];
     int fillH = (int)((val * (long)h) / 255L);
     bool active = patternIsHit(setIdx, idx);
+    uint16_t hitCol  = abEditMode ? 0xFD20 : ILI9341_WHITE;
+    uint16_t missCol = abEditMode ? 0x8400 : ILI9341_DARKGREY;
 
     // Clear full step area
     tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
     if(fillH > 0){
         int y = y0 + h - fillH;
-        if(active){
-            tft.fillRect(x, y, w, fillH, ILI9341_WHITE);
-        }else{
-            tft.fillRect(x, y, w, fillH, ILI9341_DARKGREY);
-        }
+        tft.fillRect(x, y, w, fillH, active ? hitCol : missCol);
     }
 }
 
@@ -1507,6 +1521,12 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         requestNavigateTo(setIdx == 0 ? PITCH1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3);
         return;
     }
+    if(hitBox(mapX, mapY, 192, 10, 56, 24, 6)){
+        abEditMode = !abEditMode;
+        drawAbToggleButton();
+        if (valuesEditMode[setIdx] == 0) drawValuesBars(setIdx);
+        return;
+    }
     if(hitBox(mapX, mapY, 54, 43, 18, 18, 6)){
         RotateRatchet[setIdx] = !RotateRatchet[setIdx];
         scheduleSaveParams();
@@ -1607,7 +1627,8 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
         int v = map(mapY, y0 + h, y0, 0, 255);
         v = clampVal(v, 0, 255);
-        ValuesArr[setIdx][writeIdx] = (uint8_t)v;
+        uint8_t *arr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
+        arr[writeIdx] = (uint8_t)v;
         scheduleSaveParams();
         drawValuesBar(setIdx, idx);
     }
@@ -1650,7 +1671,8 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
         int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
         int v = map(mapY, y0 + h, y0, 0, 255);
         v = clampVal(v, 0, 255);
-        ValuesArr[setIdx][writeIdx] = (uint8_t)v;
+        uint8_t *arr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
+        arr[writeIdx] = (uint8_t)v;
         scheduleSaveParams();
         drawValuesBar(setIdx, idx);
     }
@@ -1664,10 +1686,7 @@ void drawGateLenScreen(int setIdx){
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
     drawGateHoldCheckbox(setIdx);
     drawRotateGateLenCheckbox(setIdx);
-    tft.setFont(Arial_16);
-    tft.setTextColor(ILI9341_LIGHTGREY);
-    tft.setCursor(287, 10);
-    tft.print(setIdx + 1);
+    drawAbToggleButton();
     // Rahmen um den GateLen-Bereich
     {
       int x0 = 10;
@@ -1705,19 +1724,17 @@ void drawGateLenBar(int setIdx, int idx){
     int w     = xNext - x - 1;
 
     int src = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
-    uint8_t val = GateLenArr[setIdx][src];
+    uint8_t val = abEditMode ? GateLenBArr[setIdx][src] : GateLenArr[setIdx][src];
     int fillH = (int)((val * (long)h) / 255L);
     bool active = patternIsHit(setIdx, idx);
+    uint16_t hitCol  = abEditMode ? 0xFD20 : ILI9341_WHITE;
+    uint16_t missCol = abEditMode ? 0x8400 : ILI9341_DARKGREY;
 
     // Clear full step area
     tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
     if(fillH > 0){
         int y = y0 + h - fillH;
-        if(active){
-            tft.fillRect(x, y, w, fillH, ILI9341_WHITE);
-        }else{
-            tft.fillRect(x, y, w, fillH, ILI9341_DARKGREY);
-        }
+        tft.fillRect(x, y, w, fillH, active ? hitCol : missCol);
     }
 }
 
@@ -1771,6 +1788,12 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
         requestNavigateTo((setIdx == 0) ? VALUES1 : (setIdx == 1) ? VALUES2 : VALUES3);
         return;
     }
+    if(hitBox(mapX, mapY, 192, 10, 56, 24, 6)){
+        abEditMode = !abEditMode;
+        drawAbToggleButton();
+        drawGateLenBars(setIdx);
+        return;
+    }
     if(hitBox(mapX, mapY, 260, 42, 24, 24, 8)){
         // Rotate GateLen: Gate-Laengen relativ zur Pattern-Rotation interpretieren.
         RotateGateLen[setIdx] = !RotateGateLen[setIdx];
@@ -1801,7 +1824,8 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
-    GateLenArr[setIdx][writeIdx] = (uint8_t)v;
+    uint8_t *glArr = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
+    glArr[writeIdx] = (uint8_t)v;
     drawGateLenBar(setIdx, idx);
 }
 
@@ -1823,7 +1847,8 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
-    GateLenArr[setIdx][writeIdx] = (uint8_t)v;
+    uint8_t *glArr = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
+    glArr[writeIdx] = (uint8_t)v;
     drawGateLenBar(setIdx, idx);
 }
 
@@ -1835,7 +1860,8 @@ static int calcPvMaxRaw();  // forward
 // Berechnet die Pad-Pixelposition eines Steps (Value=X, GateLen=Y invertiert).
 static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
     int vi = RotateValues[setIdx]  ? layerRotatedSrc(setIdx, stepIdx) : stepIdx;
-    dotX = 90 + ((int)ValuesArr[setIdx][vi] * 179) / 255;
+    uint8_t *xyVals = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
+    dotX = 90 + ((int)xyVals[vi] * 179) / 255;
     if (setIdx == 0 && xyPadPitchMode == 4) {
         // RO-Modus: X=Ratchet-Zellmitte, Y=Oktave-Zellmitte
         int rsrc = RotateRatchet[0] ? layerRotatedSrc(0, stepIdx) : stepIdx;
@@ -1854,7 +1880,8 @@ static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
         dotY = 40 + 179 - scaledY;
     } else {
         int gi = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, stepIdx) : stepIdx;
-        dotY = 40 + 179 - ((int)GateLenArr[setIdx][gi] * 179) / 255;
+        uint8_t *xyGL = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
+        dotY = 40 + 179 - ((int)xyGL[gi] * 179) / 255;
     }
 }
 
@@ -2131,6 +2158,7 @@ void drawXYPadScreen(int setIdx){
     drawVerticalLabel(x - 20, y + 34, yLabels[yLabelIdx]);
 
     drawXYModeToggle(setIdx);
+    if (setIdx == 0) drawAbToggleButton();
 
     resetXYPlayhead(setIdx);
     drawXYPlayhead(setIdx, cntCh[setIdx]);
@@ -2155,6 +2183,12 @@ bool handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
     if (setIdx == 0 && hitBox(mapX, mapY, 270, 5, 44, 24, 8)) {
         xyPadPitchMode = (xyPadPitchMode + 1) % 5;
         requestNavigateTo((setIdx == 0) ? XY1 : (setIdx == 1) ? XY2 : XY3);
+        return true;
+    }
+    // A/B-Toggle (Kanal 1): Vollbild-Redraw damit Dots in korrekter Farbe/Position
+    if (setIdx == 0 && hitBox(mapX, mapY, 192, 10, 56, 24, 8)) {
+        abEditMode = !abEditMode;
+        requestNavigateTo(XY1);
         return true;
     }
     return false;
@@ -2195,7 +2229,8 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
         int writeValIdx = RotateValues[setIdx] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
         int v = map(mapX, x, x + w - 1, 0, 255);
         v = clampVal(v, 0, 255);
-        ValuesArr[setIdx][writeValIdx] = (uint8_t)v;
+        uint8_t *xyValArr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
+        xyValArr[writeValIdx] = (uint8_t)v;
         if (setIdx == 0 && xyPadPitchMode > 0) {
             int effRotSel0 = clampVal(PatRot[0] + PatRotSel[0] + (int)cvPatRotOffset[0],
                                       -(len - 1), len - 1);
@@ -2208,7 +2243,8 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
             int g = map(mapY, y + h - 1, y, 0, 255);
             g = clampVal(g, 0, 255);
             int writeGateIdx = RotateGateLen[setIdx] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
-            GateLenArr[setIdx][writeGateIdx] = (uint8_t)g;
+            uint8_t *xyGLArr = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
+            xyGLArr[writeGateIdx] = (uint8_t)g;
         }
     }
 

@@ -81,6 +81,12 @@ extern uint8_t GateLen1[32];
 extern uint8_t GateLen2[32];
 extern uint8_t GateLen3[32];
 extern uint8_t *GateLenArr[3];
+// A/B Morph — B-Layer für Values und GateLen
+extern uint8_t ValuesB1[32], ValuesB2[32], ValuesB3[32];
+extern uint8_t *ValuesBArr[3];
+extern uint8_t GateLenB1[32], GateLenB2[32], GateLenB3[32];
+extern uint8_t *GateLenBArr[3];
+extern bool    abEditMode;   // false=A editieren, true=B editieren
 extern uint8_t Ratchet1[32];
 extern uint8_t Ratchet2[32];
 extern uint8_t Ratchet3[32];

@@ -17,6 +17,7 @@ int8_t  cvPitchTransposeST = 0;
 uint8_t cvPitchIvSteps     = 0;
 uint8_t cvPitchAiUpOct     = 0;
 uint8_t cvPitchAiDownOct   = 0;
+float   cvMorph            = 0.0f;
 
 // Index des CV-Eingangs der VALUE_MOD für Kanal ch steuert (-1 = inaktiv)
 static int8_t   cvValueModCvIdx[3] = {-1, -1, -1};
@@ -33,7 +34,7 @@ static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 static const char* const CV_TARGET_LABELS[CV_TARGET_COUNT] = {
     "---", "Rat1", "Rat2", "Rat3", "Swing", "P.Sh",
     "Rot1", "Rot2", "Rot3", "Val1", "Val2", "Val3", "Slot", "Fold", "1V/O",
-    "IV", "AI+", "AI-"
+    "IV", "AI+", "AI-", "Mrph"
 };
 
 const char* cvTargetLabel(uint8_t t) {
@@ -66,6 +67,7 @@ void applyCvTargets() {
     cvPitchIvSteps     = 0;
     cvPitchAiUpOct     = 0;
     cvPitchAiDownOct   = 0;
+    cvMorph            = 0.0f;
 
     for (int ci = 0; ci < 3; ci++) {
         uint8_t  target = cvTargetMap[ci];
@@ -164,6 +166,9 @@ void applyCvTargets() {
                 cvPitchAiDownOct = oct;
                 break;
             }
+            case CV_TARGET_MORPH:
+                cvMorph = (float)cv / 4095.0f;
+                break;
             default:
                 break;
         }

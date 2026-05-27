@@ -8,8 +8,8 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB48;  // bumped: +IvStep1/RotateIvStep
-static const uint16_t SD_MAGIC_SLOTS = 0xEB60;
+static const uint16_t EEPROM_MAGIC   = 0xEB49;  // bumped: +ValuesB/GateLenB A/B-Morph
+static const uint16_t SD_MAGIC_SLOTS = 0xEB62;  // bumped: +valuesB/gateLenB in ParamBlock
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
 static bool sdOK = false;
@@ -49,6 +49,8 @@ struct ParamBlock {
     uint8_t ratchet[3][32];
     uint8_t rotRatchet[3];
     uint8_t rotOctave[3];
+    uint8_t valuesB[3][32];
+    uint8_t gateLenB[3][32];
 };
 
 struct PitchBlock {
@@ -125,6 +127,8 @@ static void packParamsCore(ParamBlock &p) {
             p.values[i][j]  = ValuesArr[i][j];
             p.gateLen[i][j] = GateLenArr[i][j];
             p.ratchet[i][j] = (uint8_t)clampVal((int)RatchetArr[i][j], 1, 4);
+            p.valuesB[i][j]  = ValuesBArr[i][j];
+            p.gateLenB[i][j] = GateLenBArr[i][j];
         }
         p.hold[i]      = (*HoldArr[i])     ? 1 : 0;
         p.gateHold[i]  = (*GateHoldArr[i]) ? 1 : 0;
@@ -151,6 +155,8 @@ static void unpackParamsCore(const ParamBlock &p) {
             ValuesArr[i][j]  = p.values[i][j];
             GateLenArr[i][j] = p.gateLen[i][j];
             RatchetArr[i][j] = (uint8_t)clampVal((int)p.ratchet[i][j], 1, 4);
+            ValuesBArr[i][j]  = p.valuesB[i][j];
+            GateLenBArr[i][j] = p.gateLenB[i][j];
         }
         *HoldArr[i]      = (p.hold[i]      != 0);
         *GateHoldArr[i]  = (p.gateHold[i]  != 0);
@@ -423,9 +429,11 @@ static void copyParamChannel(ParamBlock &dst, const ParamBlock &src, int i) {
     dst.speed[i]     = src.speed[i];
     dst.autoRotate[i]= src.autoRotate[i];
     for (int j = 0; j < 32; j++) {
-        dst.values[i][j]  = src.values[i][j];
-        dst.gateLen[i][j] = src.gateLen[i][j];
-        dst.ratchet[i][j] = src.ratchet[i][j];
+        dst.values[i][j]   = src.values[i][j];
+        dst.gateLen[i][j]  = src.gateLen[i][j];
+        dst.ratchet[i][j]  = src.ratchet[i][j];
+        dst.valuesB[i][j]  = src.valuesB[i][j];
+        dst.gateLenB[i][j] = src.gateLenB[i][j];
     }
 }
 
