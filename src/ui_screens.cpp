@@ -4031,6 +4031,9 @@ void drawCondCell(int setIdx, int page, int col) {
     bool active  = (stepIdx < len);
     int x        = COND_LBL_W + col * COND_COL_W;
 
+    // Clear full column height to remove any cursor-rect remnants in row gaps / bottom margin
+    tft.fillRect(x, COND_ROW0_Y, COND_CELL_W, 240 - COND_ROW0_Y, ILI9341_BLACK);
+
     // Row 0: step number
     {
         uint16_t bg = isCursor ? 0x2945 : 0x1082;
@@ -4145,8 +4148,8 @@ void drawCondButton(int setIdx) {
     tft.fillRect(x + 1, y + 1, w - 2, h - 2, 0x2104);
     tft.setFont(Arial_12);
     tft.setTextColor(ILI9341_DARKGREY);
-    tft.setCursor(x + 10, y + 6);
-    tft.print("COND");
+    tft.setCursor(x + 13, y + 6);
+    tft.print("CND");
 }
 
 void handleCond(int setIdx, int mapX, int mapY, uint16_t tipPos) {
