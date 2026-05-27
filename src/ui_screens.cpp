@@ -1105,12 +1105,12 @@ void drawProbAutoCheckbox(int setIdx){
 }
 
 static void drawAbToggleButton() {
-    static const int x = 192, y = 10, w = 56, h = 24;
+    static const int x = 145, y = 10, w = 50, h = 24;
     uint16_t col = abEditMode ? 0xFD20 : ILI9341_DARKGREY;
     tft.fillRect(x, y, w, h, ILI9341_BLACK);
     tft.drawRect(x, y, w, h, col);
-    tft.setFont(Arial_16);
-    tft.setCursor(x + 5, y + 4);
+    tft.setFont(Arial_10);
+    tft.setCursor(x + 9, y + 7);
     tft.setTextColor(abEditMode ? ILI9341_DARKGREY : ILI9341_WHITE);
     tft.print("A");
     tft.setTextColor(ILI9341_DARKGREY);
@@ -1521,7 +1521,7 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         requestNavigateTo(setIdx == 0 ? PITCH1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3);
         return;
     }
-    if(hitBox(mapX, mapY, 192, 10, 56, 24, 6)){
+    if(hitBox(mapX, mapY, 145, 10, 50, 24, 6)){
         abEditMode = !abEditMode;
         drawAbToggleButton();
         if (valuesEditMode[setIdx] == 0) drawValuesBars(setIdx);
@@ -1743,14 +1743,14 @@ void drawGateLenBar(int setIdx, int idx){
 // Side Effects: schreibt auf das TFT.
 // Assumptions: setIdx in 0..2.
 void drawGateHoldCheckbox(int setIdx){
-    int x = 260;
+    int x = 268;
     int y = 10;
     int s = 24;
 
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
-    tft.setFont(Arial_12);
-    tft.setCursor(x - 30, y + 6);
+    tft.setFont(Arial_10);
+    tft.setCursor(x - 24, y + 7);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("GH");
 
@@ -1764,14 +1764,14 @@ void drawGateHoldCheckbox(int setIdx){
 // Side Effects: schreibt auf das TFT.
 // Assumptions: setIdx in 0..2.
 void drawRotateGateLenCheckbox(int setIdx){
-    int x = 260;
+    int x = 268;
     int y = 42;
     int s = 24;
 
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
-    tft.setFont(Arial_12);
-    tft.setCursor(x - 28, y + 6);
+    tft.setFont(Arial_10);
+    tft.setCursor(x - 28, y + 7);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("RGL");
 
@@ -1789,17 +1789,17 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
         requestNavigateTo((setIdx == 0) ? VALUES1 : (setIdx == 1) ? VALUES2 : VALUES3);
         return;
     }
-    if(hitBox(mapX, mapY, 128, 10, 52, 24, 6)){
+    if(hitBox(mapX, mapY, 56, 10, 52, 24, 6)){
         requestNavigateTo((setIdx == 0) ? COND1 : (setIdx == 1) ? COND2 : COND3);
         return;
     }
-    if(hitBox(mapX, mapY, 192, 10, 56, 24, 6)){
+    if(hitBox(mapX, mapY, 145, 10, 50, 24, 6)){
         abEditMode = !abEditMode;
         drawAbToggleButton();
         drawGateLenBars(setIdx);
         return;
     }
-    if(hitBox(mapX, mapY, 260, 42, 24, 24, 8)){
+    if(hitBox(mapX, mapY, 268, 42, 24, 24, 8)){
         // Rotate GateLen: Gate-Laengen relativ zur Pattern-Rotation interpretieren.
         RotateGateLen[setIdx] = !RotateGateLen[setIdx];
         scheduleSaveParams();
@@ -1807,7 +1807,7 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
         drawGateLenBars(setIdx);
         return;
     }
-    if(hitBox(mapX, mapY, 260, 10, 24, 24, 8)){
+    if(hitBox(mapX, mapY, 268, 10, 24, 24, 8)){
         // GateHold: Aktiviert variable Gate-Laengen pro Step.
         *GateHoldArr[setIdx] = !(*GateHoldArr[setIdx]);
         scheduleSaveParams();
@@ -2191,7 +2191,7 @@ bool handleXYPAD(int setIdx, int mapX, int mapY, uint16_t tipPos){
         return true;
     }
     // A/B-Toggle (Kanal 1): Vollbild-Redraw damit Dots in korrekter Farbe/Position
-    if (setIdx == 0 && hitBox(mapX, mapY, 192, 10, 56, 24, 8)) {
+    if (setIdx == 0 && hitBox(mapX, mapY, 145, 10, 50, 24, 8)) {
         abEditMode = !abEditMode;
         requestNavigateTo(XY1);
         return true;
@@ -3984,14 +3984,14 @@ bool tickSaveToast() {
 static const int COND_LBL_W  = 24;   // left label column width
 static const int COND_COL_W  = 37;   // pitch per column (incl. 1px gap right)
 static const int COND_CELL_W = 36;   // usable cell width
-static const int COND_ROW0_Y = 22;   // step number row top
+static const int COND_ROW0_Y = 40;   // step number row top (title area = 0..39)
 static const int COND_ROW0_H = 26;
-static const int COND_ROW1_Y = 48;   // hit indicator row top
+static const int COND_ROW1_Y = 66;   // hit indicator row top
 static const int COND_ROW1_H = 26;
-static const int COND_ROW2_Y = 74;   // condition row top
-static const int COND_ROW2_H = 76;
-static const int COND_ROW3_Y = 150;  // action row top
-static const int COND_ROW3_H = 90;
+static const int COND_ROW2_Y = 92;   // condition row top
+static const int COND_ROW2_H = 70;
+static const int COND_ROW3_Y = 162;  // action row top
+static const int COND_ROW3_H = 78;
 
 // Playhead state per channel (step last drawn, to erase it)
 static int condPhStep[3] = { -1, -1, -1 };
@@ -4115,7 +4115,7 @@ void drawCondTitle(int setIdx) {
     int pages  = (clampVal(PatLen[setIdx], 1, 32) + 7) / 8;
     tft.setFont(Arial_10);
     tft.setTextColor(ILI9341_LIGHTGREY);
-    tft.setCursor(50, 6);
+    tft.setCursor(55, 14);
     tft.printf("COND Ch%d", setIdx + 1);
     if (pages > 1) {
         tft.printf("  p.%d/%d", page + 1, pages);
@@ -4134,14 +4134,14 @@ void drawCondScreen(int setIdx) {
     }
 }
 
-// Draws the small "COND" button on the GateLen screen at (128,10,52,24).
+// Draws the small "COND" navigation button on the GateLen screen at (56,10,52,24).
 void drawCondButton(int setIdx) {
     (void)setIdx;
-    int x = 128, y = 10, w = 52, h = 24;
-    tft.drawRect(x, y, w, h, ILI9341_DARKGREY);
-    tft.fillRect(x + 1, y + 1, w - 2, h - 2, ILI9341_BLACK);
+    int x = 56, y = 10, w = 52, h = 24;
+    tft.drawRect(x, y, w, h, 0x2945);
+    tft.fillRect(x + 1, y + 1, w - 2, h - 2, 0x0861);
     tft.setFont(Arial_10);
-    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setTextColor(0x8410);
     tft.setCursor(x + 10, y + 7);
     tft.print("COND");
 }
