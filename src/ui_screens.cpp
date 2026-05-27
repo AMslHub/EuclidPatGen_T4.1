@@ -1688,10 +1688,6 @@ void drawGateLenScreen(int setIdx){
     drawRotateGateLenCheckbox(setIdx);
     drawAbToggleButton();
     drawCondButton(setIdx);
-    tft.setFont(Arial_10);
-    tft.setTextColor(ILI9341_DARKGREY);
-    tft.setCursor(210, 17);
-    tft.printf("C%lu", (unsigned long)cycleCount[setIdx]);
     // Rahmen um den GateLen-Bereich
     {
       int x0 = 10;
@@ -3988,14 +3984,14 @@ bool tickSaveToast() {
 static const int COND_LBL_W  = 24;   // left label column width
 static const int COND_COL_W  = 37;   // pitch per column (incl. 1px gap right)
 static const int COND_CELL_W = 36;   // usable cell width
-static const int COND_ROW0_Y = 140;  // step number row (title strip = 0..39, empty = 40..139)
-static const int COND_ROW0_H = 25;
-static const int COND_ROW1_Y = 165;  // hit indicator row
-static const int COND_ROW1_H = 25;
-static const int COND_ROW2_Y = 190;  // condition row
-static const int COND_ROW2_H = 24;
-static const int COND_ROW3_Y = 214;  // action row
-static const int COND_ROW3_H = 26;
+static const int COND_ROW0_Y = 105;  // step number row (title strip = 0..39, empty = 40..104)
+static const int COND_ROW0_H = 27;
+static const int COND_ROW1_Y = 134;  // hit indicator row (2px gap)
+static const int COND_ROW1_H = 27;
+static const int COND_ROW2_Y = 163;  // condition row (2px gap)
+static const int COND_ROW2_H = 27;
+static const int COND_ROW3_Y = 192;  // action row (2px gap)
+static const int COND_ROW3_H = 27;
 
 // Playhead state per channel (step last drawn, to erase it)
 static int condPhStep[3] = { -1, -1, -1 };
@@ -4145,11 +4141,11 @@ void drawCondScreen(int setIdx) {
 void drawCondButton(int setIdx) {
     (void)setIdx;
     int x = 80, y = 10, w = 52, h = 24;
-    tft.drawRect(x, y, w, h, 0x2945);
-    tft.fillRect(x + 1, y + 1, w - 2, h - 2, 0x0861);
-    tft.setFont(Arial_10);
-    tft.setTextColor(0x8410);
-    tft.setCursor(x + 10, y + 7);
+    tft.drawRect(x, y, w, h, 0x4A49);
+    tft.fillRect(x + 1, y + 1, w - 2, h - 2, 0x2104);
+    tft.setFont(Arial_12);
+    tft.setTextColor(ILI9341_DARKGREY);
+    tft.setCursor(x + 10, y + 6);
     tft.print("COND");
 }
 
@@ -4162,6 +4158,17 @@ void handleCond(int setIdx, int mapX, int mapY, uint16_t tipPos) {
 
 // Highlights the step number cell for the current playing step (same page only).
 void drawCondPlayhead(int setIdx, unsigned int step) {
+    // Refresh cycle counter in title strip whenever value changes
+    static uint32_t lastCycle[3] = {UINT32_MAX, UINT32_MAX, UINT32_MAX};
+    if (cycleCount[setIdx] != lastCycle[setIdx]) {
+        lastCycle[setIdx] = cycleCount[setIdx];
+        tft.fillRect(244, 4, 76, 26, ILI9341_BLACK);
+        tft.setFont(Arial_10);
+        tft.setTextColor(ILI9341_DARKGREY);
+        tft.setCursor(248, 14);
+        tft.printf("C%lu", (unsigned long)cycleCount[setIdx]);
+    }
+
     int len    = clampVal(PatLen[setIdx], 1, 32);
     int cursor = getCondStepCursor(setIdx);
     int page   = cursor / 8;
