@@ -18,7 +18,7 @@ static inline void fillScreenIfNeeded() {
 }
 
 static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
-static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave
+static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave, 3=iv
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
 static int lastYellowPxX[3]   = { -1, -1, -1 };
@@ -1105,50 +1105,63 @@ void drawProbAutoCheckbox(int setIdx){
 }
 
 static void drawValuesEditButtons(int setIdx) {
-    // Clear entire lower controls row
     tft.fillRect(0, 42, 285, 28, ILI9341_BLACK);
     int mode = valuesEditMode[setIdx];
 
-    // Rat toggle button: x=50, y=42, w=46, h=24
+    // Rat toggle button: x=10, y=42, w=40, h=24 (flush with bar area)
     bool ratOn = (mode == 1);
-    tft.drawRect(50, 42, 46, 24, ratOn ? ILI9341_CYAN : ILI9341_DARKGREY);
+    tft.drawRect(10, 42, 40, 24, ratOn ? ILI9341_CYAN : ILI9341_DARKGREY);
     tft.setFont(Arial_12);
     tft.setTextColor(ratOn ? ILI9341_CYAN : ILI9341_LIGHTGREY);
-    tft.setCursor(62, 48);
+    tft.setCursor(20, 48);
     tft.print("Rat");
 
-    // RR checkbox (RotateRatchet): x=98, y=43, s=20
-    tft.drawRect(98, 43, 20, 20, ILI9341_DARKGREY);
+    // RR checkbox (RotateRatchet): x=52, y=43, s=18
+    tft.drawRect(52, 43, 18, 18, ILI9341_DARKGREY);
     if (RotateRatchet[setIdx]) {
-        tft.drawLine(102, 53, 105, 57, ILI9341_GREEN);
-        tft.drawLine(105, 57, 114, 46, ILI9341_GREEN);
+        tft.drawLine(56, 53, 59, 57, ILI9341_GREEN);
+        tft.drawLine(59, 57, 66, 46, ILI9341_GREEN);
     }
 
     if (setIdx == 0) {
-        // Oct toggle button: x=140, y=42, w=46, h=24
+        // Oct toggle button: x=74, y=42, w=40, h=24
         bool octOn = (mode == 2);
-        tft.drawRect(140, 42, 46, 24, octOn ? ILI9341_MAGENTA : ILI9341_DARKGREY);
+        tft.drawRect(74, 42, 40, 24, octOn ? ILI9341_MAGENTA : ILI9341_DARKGREY);
         tft.setTextColor(octOn ? ILI9341_MAGENTA : ILI9341_LIGHTGREY);
-        tft.setCursor(152, 48);
+        tft.setCursor(84, 48);
         tft.print("Oct");
 
-        // RO checkbox (RotateOctave): x=188, y=43, s=20
-        tft.drawRect(188, 43, 20, 20, ILI9341_DARKGREY);
+        // RO checkbox (RotateOctave): x=116, y=43, s=18
+        tft.drawRect(116, 43, 18, 18, ILI9341_DARKGREY);
         if (RotateOctave[setIdx]) {
-            tft.drawLine(192, 53, 195, 57, ILI9341_GREEN);
-            tft.drawLine(195, 57, 204, 46, ILI9341_GREEN);
+            tft.drawLine(120, 53, 123, 57, ILI9341_GREEN);
+            tft.drawLine(123, 57, 130, 46, ILI9341_GREEN);
+        }
+
+        // IV toggle button: x=138, y=42, w=40, h=24
+        bool ivOn = (mode == 3);
+        tft.drawRect(138, 42, 40, 24, ivOn ? ILI9341_GREEN : ILI9341_DARKGREY);
+        tft.setTextColor(ivOn ? ILI9341_GREEN : ILI9341_LIGHTGREY);
+        tft.setCursor(151, 48);
+        tft.print("IV");
+
+        // RI checkbox (RotateIvStep): x=180, y=43, s=18
+        tft.drawRect(180, 43, 18, 18, ILI9341_DARKGREY);
+        if (RotateIvStep) {
+            tft.drawLine(184, 53, 187, 57, ILI9341_GREEN);
+            tft.drawLine(187, 57, 194, 46, ILI9341_GREEN);
         }
     }
 
-    // RV checkbox (RotateValues): original position x=260, y=42, s=24 (flush with H above)
-    tft.drawRect(260, 42, 24, 24, ILI9341_DARKGREY);
+    // RV checkbox (RotateValues): x=222, y=42, s=18
+    tft.drawRect(222, 42, 18, 18, ILI9341_DARKGREY);
     tft.setFont(Arial_12);
-    tft.setCursor(236, 48);
+    tft.setCursor(204, 48);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("RV");
     if (RotateValues[setIdx]) {
-        tft.drawLine(264, 54, 270, 60, ILI9341_GREEN);
-        tft.drawLine(270, 60, 280, 48, ILI9341_GREEN);
+        tft.drawLine(226, 52, 229, 56, ILI9341_GREEN);
+        tft.drawLine(229, 56, 236, 45, ILI9341_GREEN);
     }
 }
 
@@ -1207,6 +1220,37 @@ void drawOctaveBars(int setIdx) {
     for (int i = 0; i < len; i++) drawOctaveBar(setIdx, i);
 }
 
+void drawIvStepBar(int setIdx, int idx) {
+    if (setIdx != 0) return;
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    int x0 = 10, y0 = 240 - 5 - 160, h = 160;
+    int totalW = 320 - 2 * x0;
+    int x     = x0 + (idx       * totalW) / len;
+    int xNext = x0 + ((idx + 1) * totalW) / len;
+    int w     = xNext - x - 1;
+    int src = RotateIvStep ? layerRotatedSrc(setIdx, idx) : idx;
+    uint8_t ivVal = IvStep1[src];
+    bool active = patternIsHit(setIdx, idx);
+    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
+    if (ivVal > 0) {
+        int fillH = ((int)ivVal * h) / 7;
+        int y = y0 + h - fillH;
+        tft.fillRect(x, y, w, fillH, active ? ILI9341_GREEN : ILI9341_DARKGREY);
+        if (w >= 10 && fillH >= 12) {
+            tft.setFont(Arial_12);
+            tft.setTextColor(ILI9341_BLACK);
+            tft.setCursor(x + (w - 7) / 2, y + 2);
+            tft.print(ivVal);
+        }
+    }
+}
+
+void drawIvStepBars(int setIdx) {
+    if (setIdx != 0) return;
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    for (int i = 0; i < len; i++) drawIvStepBar(setIdx, i);
+}
+
 // Zweck: Baut den Values-Screen fuer ein Pattern auf.
 // Side Effects: schreibt auf das TFT und setzt Playhead-Status.
 // Assumptions: setIdx in 0..2.
@@ -1230,6 +1274,7 @@ void drawValuesScreen(int setIdx){
     }
     if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
     else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+    else if (valuesEditMode[setIdx] == 3) drawIvStepBars(setIdx);
     else                                  drawValuesBars(setIdx);
     resetValuesPlayhead(setIdx);
     drawValuesPlayhead(setIdx, cnt);
@@ -1466,21 +1511,28 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         requestNavigateTo(setIdx == 0 ? PITCH1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3);
         return;
     }
-    if(hitBox(mapX, mapY, 98, 43, 20, 20, 6)){
+    if(hitBox(mapX, mapY, 52, 43, 18, 18, 6)){
         RotateRatchet[setIdx] = !RotateRatchet[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
         if (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         return;
     }
-    if(setIdx == 0 && hitBox(mapX, mapY, 188, 43, 20, 20, 6)){
+    if(setIdx == 0 && hitBox(mapX, mapY, 116, 43, 18, 18, 6)){
         RotateOctave[setIdx] = !RotateOctave[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
         if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
         return;
     }
-    if(hitBox(mapX, mapY, 260, 42, 24, 24, 8)){
+    if(setIdx == 0 && hitBox(mapX, mapY, 180, 43, 18, 18, 6)){
+        RotateIvStep = !RotateIvStep;
+        scheduleSaveParams();
+        drawValuesEditButtons(setIdx);
+        if (valuesEditMode[setIdx] == 3) drawIvStepBars(setIdx);
+        return;
+    }
+    if(hitBox(mapX, mapY, 222, 42, 18, 18, 8)){
         RotateValues[setIdx] = !RotateValues[setIdx];
         scheduleSaveParams();
         drawValuesEditButtons(setIdx);
@@ -1498,19 +1550,30 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         requestNavigateTo((setIdx == 0) ? GATELEN1 : (setIdx == 1) ? GATELEN2 : GATELEN3);
         return;
     }
-    if(hitBox(mapX, mapY, 50, 42, 46, 24, 6)){
+    if(hitBox(mapX, mapY, 10, 42, 40, 24, 6)){
         valuesEditMode[setIdx] = (valuesEditMode[setIdx] == 1) ? 0 : 1;
         drawValuesEditButtons(setIdx);
         if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+        else if (valuesEditMode[setIdx] == 3) drawIvStepBars(setIdx);
         else                                  drawValuesBars(setIdx);
         return;
     }
-    if(setIdx == 0 && hitBox(mapX, mapY, 140, 42, 46, 24, 6)){
+    if(setIdx == 0 && hitBox(mapX, mapY, 74, 42, 40, 24, 6)){
         valuesEditMode[setIdx] = (valuesEditMode[setIdx] == 2) ? 0 : 2;
         drawValuesEditButtons(setIdx);
         if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
         else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+        else if (valuesEditMode[setIdx] == 3) drawIvStepBars(setIdx);
+        else                                  drawValuesBars(setIdx);
+        return;
+    }
+    if(setIdx == 0 && hitBox(mapX, mapY, 138, 42, 40, 24, 6)){
+        valuesEditMode[setIdx] = (valuesEditMode[setIdx] == 3) ? 0 : 3;
+        drawValuesEditButtons(setIdx);
+        if      (valuesEditMode[setIdx] == 1) drawRatchetBars(setIdx);
+        else if (valuesEditMode[setIdx] == 2) drawOctaveBars(setIdx);
+        else if (valuesEditMode[setIdx] == 3) drawIvStepBars(setIdx);
         else                                  drawValuesBars(setIdx);
         return;
     }
@@ -1538,6 +1601,12 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
         OctaveNote1[writeIdx] = (int8_t)v;
         scheduleSaveParams();
         drawOctaveBar(setIdx, idx);
+    } else if (valuesEditMode[setIdx] == 3 && setIdx == 0) {
+        int writeIdx = RotateIvStep ? layerRotatedSrc(setIdx, idx) : idx;
+        int v = clampVal((y0 + h - mapY) * 8 / h, 0, 7);
+        IvStep1[writeIdx] = (uint8_t)v;
+        scheduleSaveParams();
+        drawIvStepBar(setIdx, idx);
     } else {
         int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
         int v = map(mapY, y0 + h, y0, 0, 255);
@@ -1575,6 +1644,12 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
         OctaveNote1[writeIdx] = (int8_t)v;
         scheduleSaveParams();
         drawOctaveBar(setIdx, idx);
+    } else if (valuesEditMode[setIdx] == 3 && setIdx == 0) {
+        int writeIdx = RotateIvStep ? layerRotatedSrc(setIdx, idx) : idx;
+        int v = clampVal((y0 + h - mapY) * 8 / h, 0, 7);
+        IvStep1[writeIdx] = (uint8_t)v;
+        scheduleSaveParams();
+        drawIvStepBar(setIdx, idx);
     } else {
         int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
         int v = map(mapY, y0 + h, y0, 0, 255);

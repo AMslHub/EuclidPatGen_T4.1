@@ -98,6 +98,8 @@ uint8_t autoRotateStep[3]   = { 0, 0, 0 };  // 0=aus, 1-4=Schritte pro Zyklus
 // Pitch (Kanal 1)
 uint8_t PitchNote1[32]    = { 0 };
 int8_t  OctaveNote1[32]   = { 0 };
+uint8_t IvStep1[32]       = { 0 };
+bool    RotateIvStep      = false;
 uint8_t pitchSpread       = 2;
 uint8_t pitchScale        = 0;
 uint8_t pitchRoot         = 0;

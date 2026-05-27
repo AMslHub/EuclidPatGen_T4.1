@@ -140,6 +140,8 @@ extern uint8_t autoRotateStep[3];
 // Pitch (nur Kanal 1 / Hardware-CV-Ausgang Pitch)
 extern uint8_t PitchNote1[32];   // Rohwert 0-255 pro Step
 extern int8_t  OctaveNote1[32];  // Oktav-Offset pro Step: -3..+3 (nur Kanal 1)
+extern uint8_t IvStep1[32];      // Per-Step Inversions-Index 0..7 (nur Kanal 1)
+extern bool    RotateIvStep;     // true: IvStep1 relativ zur Rotation
 extern uint8_t pitchSpread;      // Oktavbereich 1-5
 extern uint8_t pitchScale;       // Skalenindex (0..SCALE_COUNT-1)
 extern uint8_t pitchRoot;        // Grundton 0=C .. 11=H

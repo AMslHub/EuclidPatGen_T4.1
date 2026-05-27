@@ -8,8 +8,8 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB47;  // bumped: +activeSongNum
-static const uint16_t SD_MAGIC_SLOTS = 0xEB5F;
+static const uint16_t EEPROM_MAGIC   = 0xEB48;  // bumped: +IvStep1/RotateIvStep
+static const uint16_t SD_MAGIC_SLOTS = 0xEB60;
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
 static bool sdOK = false;
@@ -62,6 +62,8 @@ struct PitchBlock {
     uint8_t rotate;
     uint8_t foldMode;
     int8_t  octave[32];
+    uint8_t ivStep[32];
+    uint8_t rotIvStep;
 };
 
 struct CurrentParams {
@@ -172,6 +174,8 @@ static void packPitch(PitchBlock &b) {
     b.foldMode     = (uint8_t)clampVal((int)pitchFoldMode, 0, 12);
     for (int i = 0; i < 32; i++) b.note[i]   = PitchNote1[i];
     for (int i = 0; i < 32; i++) b.octave[i] = (int8_t)clampVal((int)OctaveNote1[i], -3, 3);
+    for (int i = 0; i < 32; i++) b.ivStep[i] = (uint8_t)clampVal((int)IvStep1[i], 0, 7);
+    b.rotIvStep = RotateIvStep ? 1 : 0;
 }
 
 static void unpackPitch(const PitchBlock &b) {
@@ -185,6 +189,8 @@ static void unpackPitch(const PitchBlock &b) {
     pitchFoldMode     = (uint8_t)clampVal((int)b.foldMode, 0, 12);
     for (int i = 0; i < 32; i++) PitchNote1[i]  = b.note[i];
     for (int i = 0; i < 32; i++) OctaveNote1[i] = (int8_t)clampVal((int)b.octave[i], -3, 3);
+    for (int i = 0; i < 32; i++) IvStep1[i]     = (uint8_t)clampVal((int)b.ivStep[i], 0, 7);
+    RotateIvStep = (b.rotIvStep != 0);
 }
 
 static void packCurrent(CurrentParams &p) {
@@ -340,6 +346,8 @@ void loadParams() {
     pitchHold         = true;
     pitchRotate       = true;
     for (int i = 0; i < 32; i++) PitchNote1[i] = 0;
+    for (int i = 0; i < 32; i++) IvStep1[i]    = 0;
+    RotateIvStep = false;
     for (int i = 0; i < 3; i++) {
         *HoldArr[i]        = true;
         *GateHoldArr[i]    = false;

@@ -47,6 +47,8 @@ void drawRatchetBars(int setIdx);
 void drawRatchetBar(int setIdx, int idx);
 void drawOctaveBars(int setIdx);
 void drawOctaveBar(int setIdx, int idx);
+void drawIvStepBars(int setIdx);
+void drawIvStepBar(int setIdx, int idx);
 void drawHoldCheckbox(int setIdx);
 void drawRotateValuesCheckbox(int setIdx);
 void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos);

@@ -198,9 +198,13 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);
 
+                // Per-Step IV: IvStep1[step]>0 überschreibt CV-IV
+                int ivSrc = RotateIvStep ? euclidRotatedSrc(pidx, len0, effRotSel0) : pidx;
+                int effectiveCvIv = ((int)IvStep1[ivSrc] > 0) ? (int)IvStep1[ivSrc] : (int)cvPitchIvSteps;
+
                 // On-the-fly IV / AI: Basis-MIDI aller Hit-Steps scannen
                 int cvPitchAdj = 0;
-                if (cvPitchIvSteps > 0 || cvPitchAiUpOct > 0 || cvPitchAiDownOct > 0) {
+                if (effectiveCvIv > 0 || cvPitchAiUpOct > 0 || cvPitchAiDownOct > 0) {
                     int rawMidi = quantizeToMidi(PitchNote1[pidx], pitchSpread, pitchScale,
                                                  pitchRoot, pitchIntervalMask);
                     int bms[32]; int bmN = 0;
@@ -210,7 +214,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                                                     pitchRoot, pitchIntervalMask);
                     }
                     if (bmN > 0) {
-                        if (cvPitchIvSteps > 0) {
+                        if (effectiveCvIv > 0) {
                             int unique[32]; int uN = 0;
                             for (int k = 0; k < bmN; k++) {
                                 bool found = false;
@@ -222,7 +226,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                                     if (unique[j] < unique[i]) { int t = unique[i]; unique[i] = unique[j]; unique[j] = t; }
                             int rank = 0;
                             for (int j = 0; j < uN; j++) if (unique[j] == rawMidi) { rank = j; break; }
-                            if (uN > 1 && rank < (int)cvPitchIvSteps) cvPitchAdj += 1;
+                            if (uN > 1 && rank < effectiveCvIv) cvPitchAdj += 1;
                         }
                         if (cvPitchAiUpOct > 0 || cvPitchAiDownOct > 0) {
                             int minMidi = bms[0], maxMidi = bms[0];
