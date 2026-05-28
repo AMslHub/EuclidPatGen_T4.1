@@ -19,6 +19,8 @@ static inline void fillScreenIfNeeded() {
 
 static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
 static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave, 3=iv
+static bool valStepEditActive[3]   = {false, false, false};
+static int  valStepEditCursor[3]   = {0, 0, 0};
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
 static int lastYellowPxX[3]   = { -1, -1, -1 };
@@ -1209,6 +1211,8 @@ void drawRatchetBar(int setIdx, int idx) {
             tft.print(rval);
         }
     }
+    if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
+        tft.drawRect(x, y0, w, h, ILI9341_CYAN);
 }
 
 void drawRatchetBars(int setIdx) {
@@ -1235,6 +1239,8 @@ void drawOctaveBar(int setIdx, int idx) {
         if (octVal > 0) tft.fillRect(x, cy - barH, w, barH, col);
         else            tft.fillRect(x, cy + 1, w, barH, col);
     }
+    if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
+        tft.drawRect(x, y0, w, h, ILI9341_CYAN);
 }
 
 void drawOctaveBars(int setIdx) {
@@ -1265,6 +1271,8 @@ void drawIvStepBar(int setIdx, int idx) {
             tft.print(ivVal);
         }
     }
+    if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
+        tft.drawRect(x, y0, w, h, ILI9341_CYAN);
 }
 
 void drawIvStepBars(int setIdx) {
@@ -1369,6 +1377,8 @@ void drawValuesBar(int setIdx, int idx){
         int y = y0 + h - fillH;
         tft.fillRect(x, y, w, fillH, active ? hitCol : missCol);
     }
+    if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
+        tft.drawRect(x, y0, w, h, ILI9341_CYAN);
 }
 
 // Zweck: Zeichnet die Hold-Checkbox.
@@ -1744,6 +1754,8 @@ void drawGateLenBar(int setIdx, int idx){
         int y = y0 + h - fillH;
         tft.fillRect(x, y, w, fillH, active ? hitCol : missCol);
     }
+    if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
+        tft.drawRect(x, y0, w, h, ILI9341_CYAN);
 }
 
 // Zweck: Zeichnet die GateHold-Checkbox.
@@ -4236,4 +4248,81 @@ void flashCondBars(int setIdx) {
     tft.fillRect(0, 0, 320, 40, ILI9341_RED);
     delay(120);
     drawCondTitle(setIdx);
+}
+
+// ---------------------------------------------------------------------------
+// Values/GateLen/Ratchet/Octave/IvStep Step-Edit
+// ---------------------------------------------------------------------------
+
+static void redrawValBar(int ch, int idx) {
+    if (GUIState == (uint16_t)(GATELEN1 + ch)) {
+        drawGateLenBar(ch, idx);
+    } else {
+        int mode = valuesEditMode[ch];
+        if      (mode == 1) drawRatchetBar(ch, idx);
+        else if (mode == 2) drawOctaveBar(ch, idx);
+        else if (mode == 3) drawIvStepBar(ch, idx);
+        else                drawValuesBar(ch, idx);
+    }
+}
+
+bool getValStepEditActive(int ch) { return (ch >= 0 && ch < 3) ? valStepEditActive[ch] : false; }
+int  getValStepEditCursor(int ch) { return (ch >= 0 && ch < 3) ? valStepEditCursor[ch] : 0; }
+
+void toggleValStepEdit(int ch) {
+    if (ch < 0 || ch > 2) return;
+    valStepEditActive[ch] = !valStepEditActive[ch];
+    if (valStepEditActive[ch]) {
+        int len = clampVal(PatLen[ch], 1, 32);
+        valStepEditCursor[ch] = clampVal(valStepEditCursor[ch], 0, len - 1);
+    }
+    redrawValBar(ch, valStepEditCursor[ch]);
+}
+
+void moveValStepCursor(int ch, int delta) {
+    if (ch < 0 || ch > 2 || !valStepEditActive[ch]) return;
+    int len  = clampVal(PatLen[ch], 1, 32);
+    int prev = valStepEditCursor[ch];
+    valStepEditCursor[ch] = ((valStepEditCursor[ch] + delta) % len + len) % len;
+    if (valStepEditCursor[ch] == prev) return;
+    redrawValBar(ch, prev);
+    redrawValBar(ch, valStepEditCursor[ch]);
+}
+
+void adjustValStep(int ch, int delta) {
+    if (ch < 0 || ch > 2 || !valStepEditActive[ch]) return;
+    int idx        = valStepEditCursor[ch];
+    bool isGateLen = (GUIState == (uint16_t)(GATELEN1 + ch));
+    int  mode      = isGateLen ? -1 : valuesEditMode[ch];
+
+    if (isGateLen || mode == 0) {
+        bool useRotate = isGateLen ? RotateGateLen[ch] : RotateValues[ch];
+        int src = useRotate ? layerRotatedSrc(ch, idx) : layerBaseSrc(ch, idx);
+        uint8_t *arr = isGateLen ? (abEditMode ? GateLenBArr[ch] : GateLenArr[ch])
+                                 : (abEditMode ? ValuesBArr[ch]  : ValuesArr[ch]);
+        arr[src] = (uint8_t)clampVal((int)arr[src] + delta * 4, 0, 255);
+    } else if (mode == 1) {
+        int src = RotateRatchet[ch] ? layerRotatedSrc(ch, idx) : layerBaseSrc(ch, idx);
+        RatchetArr[ch][src] = (uint8_t)clampVal((int)RatchetArr[ch][src] + delta, 1, 4);
+    } else if (mode == 2) {
+        int src = RotateOctave[ch] ? layerRotatedSrc(ch, idx) : layerBaseSrc(ch, idx);
+        OctaveNote1[src] = (int8_t)clampVal((int)OctaveNote1[src] + delta, -3, 3);
+    } else if (mode == 3) {
+        int src = RotateIvStep ? layerRotatedSrc(ch, idx) : layerBaseSrc(ch, idx);
+        IvStep1[src] = (uint8_t)clampVal((int)IvStep1[src] + delta, 0, 7);
+    }
+
+    scheduleSaveParams();
+    redrawValBar(ch, idx);
+}
+
+void flashValBars(int ch) {
+    (void)ch;
+    int x0 = 10, y0 = 240 - 5 - 160, h = 160, totalW = 320 - 2 * x0;
+    for (int i = 0; i < 2; i++) {
+        tft.drawRect(x0 - 1, y0 - 1, totalW + 2, h + 2, ILI9341_ORANGE);
+        delay(80);
+        tft.drawRect(x0 - 1, y0 - 1, totalW + 2, h + 2, ILI9341_DARKGREY);
+        delay(60);
+    }
 }

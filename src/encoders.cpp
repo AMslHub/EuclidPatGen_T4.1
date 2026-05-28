@@ -477,11 +477,20 @@ void handleEncoders() {
                 enc3VlpFlashed   = false;
             } else {
                 uint32_t held = now - enc3PressStartMs;
+                bool isValGate = (GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3 ||
+                                  GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3);
+                int vgCh = isValGate ? ((GUIState >= GATELEN1) ? GUIState - GATELEN1 : GUIState - VALUES1) : -1;
                 if (enc3VlpFlashed) {
-                    togglePitchStepEdit();
+                    if (GUIState == PITCH1) {
+                        togglePitchStepEdit();
+                    } else if (isValGate) {
+                        toggleValStepEdit(vgCh);
+                    }
                 } else if (held >= LONG_PRESS_MS) {
                     if (GUIState == PITCH1 && getPitchStepEditActive()) {
                         togglePitchStepEdit();
+                    } else if (isValGate && getValStepEditActive(vgCh)) {
+                        toggleValStepEdit(vgCh);
                     } else if (GUIState == NAV) {
                         requestNavigateTo(navPrevState);
                     } else {
@@ -501,12 +510,21 @@ void handleEncoders() {
                 }
             }
         }
-        // Continuous VLP-Check für Enc3 auf PITCH1
-        if (btnLastState[2] == LOW && GUIState == PITCH1 && !enc3VlpFlashed &&
-            !getPitchStepEditActive()) {
-            if (now - enc3PressStartMs >= VERY_LONG_PRESS_MS) {
-                enc3VlpFlashed = true;
-                flashPitchBars();
+        // Continuous VLP-Check für Enc3 auf PITCH1 und VALUES/GATELEN
+        if (btnLastState[2] == LOW && !enc3VlpFlashed) {
+            bool isVG = (GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3 ||
+                         GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3);
+            int vgCh2 = isVG ? ((GUIState >= GATELEN1) ? GUIState - GATELEN1 : GUIState - VALUES1) : -1;
+            if (GUIState == PITCH1 && !getPitchStepEditActive()) {
+                if (now - enc3PressStartMs >= VERY_LONG_PRESS_MS) {
+                    enc3VlpFlashed = true;
+                    flashPitchBars();
+                }
+            } else if (isVG && !getValStepEditActive(vgCh2)) {
+                if (now - enc3PressStartMs >= VERY_LONG_PRESS_MS) {
+                    enc3VlpFlashed = true;
+                    flashValBars(vgCh2);
+                }
             }
         }
     }
@@ -515,7 +533,9 @@ void handleEncoders() {
     bool encActive = (GUIState == EUCLCIRCS   || GUIState == PERFORMANCE ||
                       GUIState == EUCLPARAM1  || GUIState == EUCLPARAM2  || GUIState == EUCLPARAM3 ||
                       GUIState == PITCH1      || GUIState == NAV         || GUIState == SONG      ||
-                      GUIState == COND1       || GUIState == COND2       || GUIState == COND3);
+                      GUIState == COND1       || GUIState == COND2       || GUIState == COND3     ||
+                      GUIState == VALUES1     || GUIState == VALUES2     || GUIState == VALUES3   ||
+                      GUIState == GATELEN1    || GUIState == GATELEN2    || GUIState == GATELEN3);
     if (!encActive) return;
 
     for (int i = 0; i < 3; i++) {
@@ -538,6 +558,13 @@ void handleEncoders() {
             } else if (GUIState == COND1 || GUIState == COND2 || GUIState == COND3) {
                 int ch = (GUIState == COND1) ? 0 : (GUIState == COND2) ? 1 : 2;
                 handleCondEncoder(ch, i, delta);
+            } else if (GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3 ||
+                       GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3) {
+                int ch = (GUIState >= GATELEN1) ? GUIState - GATELEN1 : GUIState - VALUES1;
+                if (getValStepEditActive(ch)) {
+                    if (i == 0) adjustValStep(ch, delta);
+                    else if (i == 2) moveValStepCursor(ch, delta);
+                }
             } else if (GUIState != PERFORMANCE) {
                 handleNormalEncoder(i, delta);
             }
@@ -573,6 +600,9 @@ void handleEncoders() {
                         handleCondButtonPress(ch);
                     }
                     // Short press: no action
+                } else if (GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3 ||
+                           GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3) {
+                    // Short/long press on Values/GateLen: no action (encoders control step-edit)
                 } else if (GUIState != NAV && GUIState != PERFORMANCE && GUIState != SONG) {
                     handleNormalButton(0);
                 }
