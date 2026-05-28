@@ -3792,6 +3792,7 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
             songPos       = 0;
             songLoadedPos = 0;
             songCursor    = 0;
+            for (int ch = 0; ch < 3; ch++) cycleCount[ch] = 1;
             requestLoadSlot((int)(songSeq[0] & 0x0F));
         }
         drawSongBottomButtons();

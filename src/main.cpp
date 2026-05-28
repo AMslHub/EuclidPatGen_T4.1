@@ -771,6 +771,16 @@ void loop() {
         }
     }
 
+    // Cycle counter: vor dem Load-Check, damit cntCh noch nicht durch Load=0 überschrieben ist.
+    for (int ch = 0; ch < 3; ch++) {
+        if (!chFired[ch]) continue;
+        int len = clampVal(PatLen[ch], 1, 32);
+        if (cntCh[ch] != 0 && (cntCh[ch] % (unsigned int)len) == 0) {
+            cycleCount[ch]++;
+            if (cycleCount[ch] == 0) cycleCount[ch] = 1;  // wrap-safe, never zero
+        }
+    }
+
     // Pending Preset-Load am Pattern-Start anwenden
     int slotBeforeLoad = getActiveSlot();
     if(applyPendingLoadIfReady(cnt)){
@@ -850,16 +860,6 @@ void loop() {
             while (newRot > maxRot) newRot -= len;
             PatRotSel[ch] = newRot;
             refreshUiForPatternUpdate(ch);
-        }
-    }
-
-    // Cycle counter: increment at each pattern wrap (same cntCh[ch]!=0 guard as song auto-stop)
-    for (int ch = 0; ch < 3; ch++) {
-        if (!chFired[ch]) continue;
-        int len = clampVal(PatLen[ch], 1, 32);
-        if (cntCh[ch] != 0 && (cntCh[ch] % (unsigned int)len) == 0) {
-            cycleCount[ch]++;
-            if (cycleCount[ch] == 0) cycleCount[ch] = 1;  // wrap-safe, never zero
         }
     }
 
