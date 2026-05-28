@@ -18,6 +18,7 @@ uint8_t cvPitchIvSteps     = 0;
 uint8_t cvPitchAiUpOct     = 0;
 uint8_t cvPitchAiDownOct   = 0;
 float   cvMorph            = 0.0f;
+uint8_t morphChannelMask   = 0b111;  // default: alle Kanäle
 
 // Index des CV-Eingangs der VALUE_MOD für Kanal ch steuert (-1 = inaktiv)
 static int8_t   cvValueModCvIdx[3] = {-1, -1, -1};
@@ -34,7 +35,7 @@ static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 static const char* const CV_TARGET_LABELS[CV_TARGET_COUNT] = {
     "---", "Rat1", "Rat2", "Rat3", "Swing", "P.Sh",
     "Rot1", "Rot2", "Rot3", "Val1", "Val2", "Val3", "Slot", "Fold", "1V/O",
-    "IV", "AI+", "AI-", "Mrph"
+    "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3"
 };
 
 const char* cvTargetLabel(uint8_t t) {
@@ -68,6 +69,7 @@ void applyCvTargets() {
     cvPitchAiUpOct     = 0;
     cvPitchAiDownOct   = 0;
     cvMorph            = 0.0f;
+    morphChannelMask   = 0;
 
     for (int ci = 0; ci < 3; ci++) {
         uint8_t  target = cvTargetMap[ci];
@@ -168,6 +170,19 @@ void applyCvTargets() {
             }
             case CV_TARGET_MORPH:
                 cvMorph = (float)cv / 4095.0f;
+                morphChannelMask |= 0b111;
+                break;
+            case CV_TARGET_MORPH_CH1:
+                cvMorph = (float)cv / 4095.0f;
+                morphChannelMask |= 0b001;
+                break;
+            case CV_TARGET_MORPH_CH2:
+                cvMorph = (float)cv / 4095.0f;
+                morphChannelMask |= 0b010;
+                break;
+            case CV_TARGET_MORPH_CH3:
+                cvMorph = (float)cv / 4095.0f;
+                morphChannelMask |= 0b100;
                 break;
             default:
                 break;

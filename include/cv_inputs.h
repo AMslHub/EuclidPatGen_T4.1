@@ -21,7 +21,10 @@ enum CvTarget : uint8_t {
     CV_TARGET_PITCH_IV,         // 0-4095 → 0..7 Inversions-Stufen on-the-fly
     CV_TARGET_PITCH_AI_UP,      // 0-4095 → 0..3 Okt: tiefste Ebene anheben on-the-fly
     CV_TARGET_PITCH_AI_DOWN,    // 0-4095 → 0..3 Okt: höchste Ebene absenken on-the-fly
-    CV_TARGET_MORPH,            // 0-4095 → 0.0..1.0 (Values + GateLen A→B Morph)
+    CV_TARGET_MORPH,            // 0-4095 → 0.0..1.0 (Values + GateLen A→B Morph, alle Kanäle)
+    CV_TARGET_MORPH_CH1,        // Morph nur Kanal 1
+    CV_TARGET_MORPH_CH2,        // Morph nur Kanal 2
+    CV_TARGET_MORPH_CH3,        // Morph nur Kanal 3
     CV_TARGET_COUNT
 };
 
@@ -41,6 +44,7 @@ extern uint8_t cvPitchIvSteps;      // 0=inaktiv, 1..7: wie viele untere Stufen 
 extern uint8_t cvPitchAiUpOct;      // 0=inaktiv, 1..3: tiefste Ebene N Okt anheben (on-the-fly)
 extern uint8_t cvPitchAiDownOct;    // 0=inaktiv, 1..3: höchste Ebene N Okt absenken (on-the-fly)
 extern float   cvMorph;             // 0.0..1.0 (Values + GateLen A→B Interpolation)
+extern uint8_t morphChannelMask;    // Bit 0=Ch1, Bit 1=Ch2, Bit 2=Ch3 — welche Kanäle morphen
 
 // Exponentieller Lautstärke-Faktor innerhalb eines Ratchet-Bursts.
 // ratchetIdx=0 → erster Hit, ratchetTotal = Gesamtzahl der Hits im Burst.

@@ -86,6 +86,7 @@ bool RotateValues[3]  = { false, false, false };
 bool RotateGateLen[3] = { false, false, false };
 bool RotateRatchet[3] = { false, false, false };
 bool RotateOctave[3]  = { false, false, false };
+bool RotateCond[3]    = { false, false, false };
 uint32_t DurationOfOneStep = 0;
 
 // Performance (Mute/Solo)
@@ -977,8 +978,13 @@ void loop() {
         if (!chFired[ch]) continue;
         int len = clampVal(PatLen[ch], 1, 32);
         int idx = (int)(cntCh[ch] % (unsigned int)len);
-        uint8_t ct = condTypeArr[ch][idx];
-        uint8_t ca = condActionArr[ch][idx];
+        int condSrc = idx;
+        if (RotateCond[ch]) {
+            int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+            condSrc = euclidRotatedSrc(idx, len, effRotSel);
+        }
+        uint8_t ct = condTypeArr[ch][condSrc];
+        uint8_t ca = condActionArr[ch][condSrc];
         if (ct == COND_NONE || ca == COND_ACT_NONE) continue;
         bool fired = false;
         switch (ct) {

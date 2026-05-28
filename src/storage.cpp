@@ -8,8 +8,8 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB4A;  // bumped: +condType/condAction Conditional Actions
-static const uint16_t SD_MAGIC_SLOTS = 0xEB63;  // bumped: +condType/condAction in ParamBlock
+static const uint16_t EEPROM_MAGIC   = 0xEB4B;  // bumped: +rotCond
+static const uint16_t SD_MAGIC_SLOTS = 0xEB64;  // bumped: +rotCond in ParamBlock
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
 static bool sdOK = false;
@@ -53,6 +53,7 @@ struct ParamBlock {
     uint8_t gateLenB[3][32];
     uint8_t condType[3][32];
     uint8_t condAction[3][32];
+    uint8_t rotCond[3];
 };
 
 struct PitchBlock {
@@ -140,6 +141,7 @@ static void packParamsCore(ParamBlock &p) {
         p.rotGateLen[i]= RotateGateLen[i]  ? 1 : 0;
         p.rotRatchet[i]= RotateRatchet[i]  ? 1 : 0;
         p.rotOctave[i] = RotateOctave[i]   ? 1 : 0;
+        p.rotCond[i]   = RotateCond[i]     ? 1 : 0;
         p.speed[i]     = (int8_t)clampVal(chSpeedIdx[i], -3, 3);
         p.autoRotate[i]= (uint8_t)clampVal((int)autoRotateStep[i], 0, 4);
     }
@@ -170,6 +172,7 @@ static void unpackParamsCore(const ParamBlock &p) {
         RotateGateLen[i] = (p.rotGateLen[i] != 0);
         RotateRatchet[i] = (p.rotRatchet[i] != 0);
         RotateOctave[i]  = (p.rotOctave[i]  != 0);
+        RotateCond[i]    = (p.rotCond[i]    != 0);
         chSpeedIdx[i]    = clampVal((int)p.speed[i], -3, 3);
         autoRotateStep[i]= (uint8_t)clampVal((int)p.autoRotate[i], 0, 4);
     }
@@ -367,6 +370,7 @@ void loadParams() {
         RotateGateLen[i]   = false;
         RotateRatchet[i]   = false;
         RotateOctave[i]    = false;
+        RotateCond[i]      = false;
         PatProb[i]         = 10;
         PatProbAuto[i]     = false;
         ProbEuclidRebuild[i] = false;
@@ -432,6 +436,7 @@ static void copyParamChannel(ParamBlock &dst, const ParamBlock &src, int i) {
     dst.rotGateLen[i]= src.rotGateLen[i];
     dst.rotRatchet[i]= src.rotRatchet[i];
     dst.rotOctave[i] = src.rotOctave[i];
+    dst.rotCond[i]   = src.rotCond[i];
     dst.speed[i]     = src.speed[i];
     dst.autoRotate[i]= src.autoRotate[i];
     for (int j = 0; j < 32; j++) {

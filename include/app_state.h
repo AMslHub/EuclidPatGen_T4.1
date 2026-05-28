@@ -136,6 +136,7 @@ extern bool RotateValues[3];
 extern bool RotateGateLen[3];
 extern bool RotateRatchet[3];
 extern bool RotateOctave[3];
+extern bool RotateCond[3];
 
 // Performance (Mute/Solo)
 extern bool MuteSeq[3];

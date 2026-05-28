@@ -85,7 +85,7 @@ uint32_t gateLenForStep(int ch, unsigned int step) {
     int src = RotateGateLen[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
     uint8_t vA = GateLenArr[ch][src];
     uint8_t vB = GateLenBArr[ch][src];
-    uint8_t v  = cvMorph > 0.0f
+    uint8_t v  = (cvMorph > 0.0f && (morphChannelMask & (1u << ch)))
         ? (uint8_t)clampVal((int)((float)vA * (1.0f - cvMorph) + (float)vB * cvMorph + 0.5f), 0, 255)
         : vA;
     if (condGateLenOvr[ch] > 0) v = condGateLenOvr[ch];
@@ -177,7 +177,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
         int src    = RotateValues[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
         uint8_t vA = ValuesArr[ch][src];
         uint8_t vB = ValuesBArr[ch][src];
-        uint8_t v  = cvMorph > 0.0f
+        uint8_t v  = (cvMorph > 0.0f && (morphChannelMask & (1u << ch)))
             ? (uint8_t)clampVal((int)((float)vA * (1.0f - cvMorph) + (float)vB * cvMorph + 0.5f), 0, 255)
             : vA;
         if (condAccentActive[ch]) v = 255;

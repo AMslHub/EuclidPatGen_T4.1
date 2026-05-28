@@ -4109,7 +4109,21 @@ static void drawCondLabels() {  // only used internally
     tft.setCursor(0, COND_ROW3_Y + COND_ROW3_H / 2 - 6);  tft.print("A");
 }
 
-// Draws the title row (page indicator + channel label).
+static void drawRotateCondCheckbox(int setIdx) {
+    int x = 268, y = 50, s = 20;
+    tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
+    tft.fillRect(x + 1, y + 1, s - 2, s - 2, ILI9341_BLACK);
+    tft.setFont(Arial_10);
+    tft.setCursor(x - 22, y + 5);
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.print("RC");
+    if (RotateCond[setIdx]) {
+        tft.drawLine(x + 3, y + 10, x + 8, y + 15, ILI9341_GREEN);
+        tft.drawLine(x + 8, y + 15, x + 17, y + 5, ILI9341_GREEN);
+    }
+}
+
+// Draws the title row (page indicator + channel label) and RC checkbox.
 void drawCondTitle(int setIdx) {
     tft.fillRect(0, 0, 320, COND_ROW0_Y, ILI9341_BLACK);
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
@@ -4126,6 +4140,7 @@ void drawCondTitle(int setIdx) {
     tft.setTextColor(ILI9341_DARKGREY);
     tft.setCursor(248, 14);
     tft.printf("C%lu", (unsigned long)cycleCount[setIdx]);
+    drawRotateCondCheckbox(setIdx);
 }
 
 void drawCondScreen(int setIdx) {
@@ -4153,9 +4168,14 @@ void drawCondButton(int setIdx) {
 }
 
 void handleCond(int setIdx, int mapX, int mapY, uint16_t tipPos) {
-    (void)mapX; (void)mapY;
     if (tipPos == UL) {
         requestNavigateTo((setIdx == 0) ? GATELEN1 : (setIdx == 1) ? GATELEN2 : GATELEN3);
+        return;
+    }
+    if (hitBox(mapX, mapY, 268, 50, 20, 20, 8)) {
+        RotateCond[setIdx] = !RotateCond[setIdx];
+        scheduleSaveParams();
+        drawRotateCondCheckbox(setIdx);
     }
 }
 
