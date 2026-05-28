@@ -761,6 +761,7 @@ void loop() {
     }
 
     // Pending Preset-Load am Pattern-Start anwenden
+    int slotBeforeLoad = getActiveSlot();
     if(applyPendingLoadIfReady(cnt)){
       syncEPatBFromEPat(0);
       syncEPatBFromEPat(1);
@@ -775,12 +776,15 @@ void loop() {
       PendingPerfRefresh = true;
       cnt = 0;
       cnthold = 0;
+      // cycleCount nur resetten wenn ein anderer Slot geladen wurde.
+      // Gleicher Slot im Song-Sequencer: Zähler weiterlaufen lassen.
+      bool sameSlot = songPlaying && (getActiveSlot() == slotBeforeLoad);
       for (int ch = 0; ch < 3; ch++) {
           cntCh[ch]          = 0;
           cntChHold[ch]      = 0;
           chDivPhase[ch]     = 0;
           chSubTicksDone[ch] = 0;
-          cycleCount[ch]     = 1;
+          if (!sameSlot) cycleCount[ch] = 1;
       }
       // SD-Read dauert 10–20ms → akkumulierte Ticks verwerfen, um Burst zu verhindern
       discardPendingTicks();
