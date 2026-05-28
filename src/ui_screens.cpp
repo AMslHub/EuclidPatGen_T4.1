@@ -24,14 +24,21 @@ static int lastXYDotIdx[3]     = { -1, -1, -1 };
 static int lastYellowPxX[3]   = { -1, -1, -1 };
 static int lastYellowPxY[3]   = { -1, -1, -1 };
 
-// Wie patternRotatedSrc, aber mit vollem effRotSel (PatRot+PatRotSel+cvOffset).
-// Verwenden für VALUE/GATELEN/PITCH/RATCHET/OCTAVE-Datenzugriff (nicht für Hit-Erkennung).
+// Verwendet effRotSel (PatRot+PatRotSel+cvOffset) — für angekreuzte Schichten (folgen R+r).
 static inline int layerRotatedSrc(int ch, int idx) {
     int len = PatLen[ch];
     if (len <= 0) return idx;
     int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch],
                              -(len - 1), len - 1);
     return euclidRotatedSrc(idx, len, effRotSel);
+}
+
+// Verwendet effRot (PatRot+cvOffset) — für nicht-angekreuzte Schichten (folgen nur R).
+static inline int layerBaseSrc(int ch, int idx) {
+    int len = PatLen[ch];
+    if (len <= 0) return idx;
+    int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+    return euclidRotatedSrc(idx, len, effRot);
 }
 static const uint16_t XY_GRID_COLOR = 0x2104;  // dunkles Grau fuer XY-Raster
 static int  xyPadPitchMode = 0;  // 0=GateLen, 1=Pitch 1oct, 2=Pitch 3oct, 3=Pitch 5oct
@@ -1187,7 +1194,7 @@ void drawRatchetBar(int setIdx, int idx) {
     int x     = x0 + (idx       * totalW) / len;
     int xNext = x0 + ((idx + 1) * totalW) / len;
     int w     = xNext - x - 1;
-    int src = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+    int src = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     uint8_t rval = (uint8_t)clampVal((int)RatchetArr[setIdx][src], 1, 4);
     int fillH = (rval * h) / 4;  // 1→40, 2→80, 3→120, 4→160
     bool active = patternIsHit(setIdx, idx);
@@ -1216,7 +1223,7 @@ void drawOctaveBar(int setIdx, int idx) {
     int x     = x0 + (idx       * totalW) / len;
     int xNext = x0 + ((idx + 1) * totalW) / len;
     int w     = xNext - x - 1;
-    int osrc = RotateOctave[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+    int osrc = RotateOctave[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int8_t octVal = OctaveNote1[osrc];
     bool active = patternIsHit(setIdx, idx);
     tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
@@ -1243,7 +1250,7 @@ void drawIvStepBar(int setIdx, int idx) {
     int x     = x0 + (idx       * totalW) / len;
     int xNext = x0 + ((idx + 1) * totalW) / len;
     int w     = xNext - x - 1;
-    int src = RotateIvStep ? layerRotatedSrc(setIdx, idx) : idx;
+    int src = RotateIvStep ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     uint8_t ivVal = IvStep1[src];
     bool active = patternIsHit(setIdx, idx);
     tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
@@ -1349,7 +1356,7 @@ void drawValuesBar(int setIdx, int idx){
     int xNext = x0 + ((idx + 1) * totalW) / len;
     int w     = xNext - x - 1;
 
-    int src = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+    int src = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     uint8_t val = abEditMode ? ValuesBArr[setIdx][src] : ValuesArr[setIdx][src];
     int fillH = (int)((val * (long)h) / 255L);
     bool active = patternIsHit(setIdx, idx);
@@ -1606,25 +1613,25 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
 
     int idx = (mapX - x0) / w;
     if (valuesEditMode[setIdx] == 1) {
-        int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
         RatchetArr[setIdx][writeIdx] = (uint8_t)v;
         scheduleSaveParams();
         drawRatchetBar(setIdx, idx);
     } else if (valuesEditMode[setIdx] == 2 && setIdx == 0) {
-        int writeIdx = RotateOctave[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateOctave[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(3 - (mapY - y0) * 7 / h, -3, 3);
         OctaveNote1[writeIdx] = (int8_t)v;
         scheduleSaveParams();
         drawOctaveBar(setIdx, idx);
     } else if (valuesEditMode[setIdx] == 3 && setIdx == 0) {
-        int writeIdx = RotateIvStep ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateIvStep ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal((y0 + h - mapY) * 8 / h, 0, 7);
         IvStep1[writeIdx] = (uint8_t)v;
         scheduleSaveParams();
         drawIvStepBar(setIdx, idx);
     } else {
-        int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = map(mapY, y0 + h, y0, 0, 255);
         v = clampVal(v, 0, 255);
         uint8_t *arr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
@@ -1650,25 +1657,25 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
 
     int idx = (mapX - x0) / w;
     if (valuesEditMode[setIdx] == 1) {
-        int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
         RatchetArr[setIdx][writeIdx] = (uint8_t)v;
         scheduleSaveParams();
         drawRatchetBar(setIdx, idx);
     } else if (valuesEditMode[setIdx] == 2 && setIdx == 0) {
-        int writeIdx = RotateOctave[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateOctave[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(3 - (mapY - y0) * 7 / h, -3, 3);
         OctaveNote1[writeIdx] = (int8_t)v;
         scheduleSaveParams();
         drawOctaveBar(setIdx, idx);
     } else if (valuesEditMode[setIdx] == 3 && setIdx == 0) {
-        int writeIdx = RotateIvStep ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateIvStep ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal((y0 + h - mapY) * 8 / h, 0, 7);
         IvStep1[writeIdx] = (uint8_t)v;
         scheduleSaveParams();
         drawIvStepBar(setIdx, idx);
     } else {
-        int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+        int writeIdx = RotateValues[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = map(mapY, y0 + h, y0, 0, 255);
         v = clampVal(v, 0, 255);
         uint8_t *arr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
@@ -1724,7 +1731,7 @@ void drawGateLenBar(int setIdx, int idx){
     int xNext = x0 + ((idx + 1) * totalW) / len;
     int w     = xNext - x - 1;
 
-    int src = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+    int src = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     uint8_t val = abEditMode ? GateLenBArr[setIdx][src] : GateLenArr[setIdx][src];
     int fillH = (int)((val * (long)h) / 255L);
     bool active = patternIsHit(setIdx, idx);
@@ -1826,7 +1833,7 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+    int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
     uint8_t *glArr = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
@@ -1849,7 +1856,7 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
     }
 
     int idx = (mapX - x0) / w;
-    int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : idx;
+    int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
     uint8_t *glArr = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
@@ -1864,13 +1871,13 @@ static int calcPvMaxRaw();  // forward
 // Assumptions: setIdx in 0..2.
 // Berechnet die Pad-Pixelposition eines Steps (Value=X, GateLen=Y invertiert).
 static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
-    int vi = RotateValues[setIdx]  ? layerRotatedSrc(setIdx, stepIdx) : stepIdx;
+    int vi = RotateValues[setIdx]  ? layerRotatedSrc(setIdx, stepIdx) : layerBaseSrc(setIdx, stepIdx);
     uint8_t *xyVals = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
     dotX = 90 + ((int)xyVals[vi] * 179) / 255;
     if (setIdx == 0 && xyPadPitchMode == 4) {
         // RO-Modus: X=Ratchet-Zellmitte, Y=Oktave-Zellmitte
-        int rsrc = RotateRatchet[0] ? layerRotatedSrc(0, stepIdx) : stepIdx;
-        int osrc = RotateOctave[0]  ? layerRotatedSrc(0, stepIdx) : stepIdx;
+        int rsrc = RotateRatchet[0] ? layerRotatedSrc(0, stepIdx) : layerBaseSrc(0, stepIdx);
+        int osrc = RotateOctave[0]  ? layerRotatedSrc(0, stepIdx) : layerBaseSrc(0, stepIdx);
         int rat = clampVal((int)RatchetArr[0][rsrc], 1, 4);
         int oct = clampVal((int)OctaveNote1[osrc], -3, 3);
         dotX = 90 + (rat - 1) * 45 + 22;
@@ -1879,12 +1886,12 @@ static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
     } else if (setIdx == 0 && xyPadPitchMode > 0) {
         // Y-Bereich dynamisch nach PV-Modus und pitchSpread skaliert
         int mr = calcPvMaxRaw();
-        int pitchSrc = pitchRotate ? layerRotatedSrc(0, stepIdx) : stepIdx;
+        int pitchSrc = pitchRotate ? layerRotatedSrc(0, stepIdx) : layerBaseSrc(0, stepIdx);
         int scaledY = ((int)PitchNote1[pitchSrc] * 179) / mr;
         if (scaledY > 179) scaledY = 179;
         dotY = 40 + 179 - scaledY;
     } else {
-        int gi = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, stepIdx) : stepIdx;
+        int gi = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, stepIdx) : layerBaseSrc(setIdx, stepIdx);
         uint8_t *xyGL = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
         dotY = 40 + 179 - ((int)xyGL[gi] * 179) / 255;
     }

@@ -978,11 +978,9 @@ void loop() {
         if (!chFired[ch]) continue;
         int len = clampVal(PatLen[ch], 1, 32);
         int idx = (int)(cntCh[ch] % (unsigned int)len);
-        int condSrc = idx;
-        if (RotateCond[ch]) {
-            int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
-            condSrc = euclidRotatedSrc(idx, len, effRotSel);
-        }
+        int effRot    = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int condSrc = RotateCond[ch] ? euclidRotatedSrc(idx, len, effRotSel) : euclidRotatedSrc(idx, len, effRot);
         uint8_t ct = condTypeArr[ch][condSrc];
         uint8_t ca = condActionArr[ch][condSrc];
         if (ct == COND_NONE || ca == COND_ACT_NONE) continue;
@@ -1059,7 +1057,7 @@ void loop() {
         } else {
             swingPending[ch] = false;
             {
-                int rIdx = RotateRatchet[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
+                int rIdx = RotateRatchet[ch] ? euclidRotatedSrc(idx, len, effRotSel) : euclidRotatedSrc(idx, len, effRot);
                 uint8_t perStepR = RatchetArr[ch][rIdx];
                 uint8_t effR = (cvRatchetCount[ch] > perStepR) ? cvRatchetCount[ch] : perStepR;
                 if (condRatchetOvr[ch] > effR) effR = condRatchetOvr[ch];

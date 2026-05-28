@@ -81,8 +81,9 @@ uint32_t gateLenForStep(int ch, unsigned int step) {
         return GATE_PULSE_US;
     }
     int idx       = step % len;
+    int effRot    = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
     int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
-    int src = RotateGateLen[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
+    int src = RotateGateLen[ch] ? euclidRotatedSrc(idx, len, effRotSel) : euclidRotatedSrc(idx, len, effRot);
     uint8_t vA = GateLenArr[ch][src];
     uint8_t vB = GateLenBArr[ch][src];
     uint8_t v  = (cvMorph > 0.0f && (morphChannelMask & (1u << ch)))
@@ -174,7 +175,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
         int effRot    = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         bool hit   = EPatArr[ch][euclidRotatedSrc(idx, len, effRot)];
-        int src    = RotateValues[ch] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
+        int src    = RotateValues[ch] ? euclidRotatedSrc(idx, len, effRotSel) : euclidRotatedSrc(idx, len, effRot);
         uint8_t vA = ValuesArr[ch][src];
         uint8_t vB = ValuesBArr[ch][src];
         uint8_t v  = (cvMorph > 0.0f && (morphChannelMask & (1u << ch)))
@@ -201,15 +202,15 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
             bool hit    = EPatArr[0][euclidRotatedSrc(pidx, len0, effRot0)];
             uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
             int effPidx = foldPitchIdx(pidx, len0, effFold);
-            int src     = pitchRotate ? euclidRotatedSrc(effPidx, len0, effRotSel0) : effPidx;
+            int src     = pitchRotate ? euclidRotatedSrc(effPidx, len0, effRotSel0) : euclidRotatedSrc(effPidx, len0, effRot0);
             if (!pitchHold || hit) {
-                int octSrc = RotateOctave[0] ? euclidRotatedSrc(pidx, len0, effRotSel0) : pidx;
+                int octSrc = RotateOctave[0] ? euclidRotatedSrc(pidx, len0, effRotSel0) : euclidRotatedSrc(pidx, len0, effRot0);
                 int totalShift = (int)pitchShift + (int)cvPitchShiftOffset + (int)OctaveNote1[octSrc];
                 int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                           pitchRoot, pitchIntervalMask);
 
                 // Per-Step IV: IvStep1[step]>0 überschreibt CV-IV
-                int ivSrc = RotateIvStep ? euclidRotatedSrc(pidx, len0, effRotSel0) : pidx;
+                int ivSrc = RotateIvStep ? euclidRotatedSrc(pidx, len0, effRotSel0) : euclidRotatedSrc(pidx, len0, effRot0);
                 int effectiveCvIv = ((int)IvStep1[ivSrc] > 0) ? (int)IvStep1[ivSrc] : (int)cvPitchIvSteps;
 
                 // On-the-fly IV / AI: Basis-MIDI aller Hit-Steps scannen
