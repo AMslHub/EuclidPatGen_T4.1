@@ -12,6 +12,7 @@ bool saveParamsSlot(int slot);
 bool deleteParamsSlot(int slot);
 bool mergeParamsSlot(int src, int dst, uint8_t copyMask);
 bool requestLoadSlot(int slot);
+void cancelPendingLoad();
 bool applyPendingLoadIfReady(unsigned int step, bool forceNow = false);
 int getActiveSlot();
 

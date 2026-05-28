@@ -169,6 +169,17 @@ static bool pendingSongUiUpdate  = false;
 static bool pendingSongSlotLoad  = false;
 static bool pendingSongAutoStop  = false;  // letzter Slot geladen → nach 1 Zyklus anhalten
 
+void resetSongPlayback() {
+    songPlaying         = false;
+    songHalted          = false;
+    pendingSongHalt     = false;
+    pendingSongAutoStop = false;
+    pendingSongSlotLoad = false;
+    songPos             = 0;
+    songLoadedPos       = 0;
+    cancelPendingLoad();   // ausstehenden Lookahead-SlotLoad in storage.cpp verwerfen
+}
+
 // Performance touch gating
 bool PerfIgnoreUntilRelease = false;
 

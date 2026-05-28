@@ -3684,11 +3684,9 @@ static void drawSongLoopCheckbox() {
 }
 
 void drawSongScreen() {
+    resetSongPlayback();   // Stop + Lookahead-Flags löschen; songPos=0
     songUsedMask = getSlotsUsedMask();
-    if (!songPlaying) {
-        songCursor    = (int)songLen;  // Cursor ans Ende → Append-Modus
-        clampSongView();
-    }
+    songCursor   = (int)songLen;  // Cursor ans Ende → Append-Modus
     fillScreenIfNeeded();
     tft.setFont(AwesomeF100_24);
     tft.setTextColor(ILI9341_LIGHTGREY);

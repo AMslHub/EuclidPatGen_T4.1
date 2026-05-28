@@ -529,6 +529,8 @@ bool requestLoadSlot(int slot) {
     return true;
 }
 
+void cancelPendingLoad() { pendingLoad = false; }
+
 bool applyPendingLoadIfReady(unsigned int step, bool forceNow) {
     if (!pendingLoad) return false;
     if (PatLen[0] <= 0) { pendingLoad = false; return false; }

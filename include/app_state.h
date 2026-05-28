@@ -222,6 +222,10 @@ extern volatile bool extClockMode;
 // Wechselt den Clock-Modus und startet/stoppt den internen Timer entsprechend.
 void setExtClockMode(bool v);
 
+// Song-Sequencer: Playback sofort stoppen + alle Lookahead-Flags löschen.
+// Wird beim Navigieren zum Song-Screen aufgerufen.
+void resetSongPlayback();
+
 // Timing
 extern unsigned int cnthold;
 extern unsigned int cnt;
