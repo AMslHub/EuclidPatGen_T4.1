@@ -13,6 +13,7 @@ int8_t  cvPitchShiftOffset = 0;
 int8_t  cvPatRotOffset[3]  = {0, 0, 0};
 int8_t  cvSlotSel          = -1;
 int8_t  cvPitchFold        = -1;
+int8_t  cvSlotKey          = -1;
 int8_t  cvPitchTransposeST = 0;
 uint8_t cvPitchIvSteps     = 0;
 uint8_t cvPitchAiUpOct     = 0;
@@ -35,7 +36,7 @@ static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 static const char* const CV_TARGET_LABELS[CV_TARGET_COUNT] = {
     "---", "Rat1", "Rat2", "Rat3", "Swing", "P.Sh",
     "Rot1", "Rot2", "Rot3", "Val1", "Val2", "Val3", "Slot", "Fold", "1V/O",
-    "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3"
+    "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3", "PatK"
 };
 
 const char* cvTargetLabel(uint8_t t) {
@@ -64,6 +65,7 @@ void applyCvTargets() {
     cvPitchShiftOffset = 0;
     cvSlotSel          = -1;
     cvPitchFold        = -1;
+    cvSlotKey          = -1;
     cvPitchTransposeST = 0;
     cvPitchIvSteps     = 0;
     cvPitchAiUpOct     = 0;
@@ -184,6 +186,20 @@ void applyCvTargets() {
                 cvMorph = (float)cv / 4095.0f;
                 morphChannelMask |= 0b100;
                 break;
+            case CV_TARGET_SLOT_KEY: {
+                // 1V/Oct, C=0V. ADC-Schritte pro Halbton: 4095/6.6V/12 ≈ 51.8
+                // 16 White Keys C..D'' → Slot 0-15
+                // Semitöne:     0 2 4 5 7 9 11 12 14 16 17 19 21 23 24 26
+                static const int8_t WK[16] = {0,2,4,5,7,9,11,12,14,16,17,19,21,23,24,26};
+                int st = (int)((uint32_t)cv * 12u + 310u) / 621u;
+                int best = 0, bestDist = abs(st - (int)WK[0]);
+                for (int k = 1; k < 16; k++) {
+                    int d = abs(st - (int)WK[k]);
+                    if (d < bestDist) { bestDist = d; best = k; }
+                }
+                if (bestDist <= 1) cvSlotKey = (int8_t)best;
+                break;
+            }
             default:
                 break;
         }

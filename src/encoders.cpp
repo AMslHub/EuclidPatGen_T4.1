@@ -345,6 +345,10 @@ static void handleCondEncoder(int ch, int enc, int delta) {
             drawCondTitle(ch);
         }
     } else if (enc == 1) {
+        if (getCondPresetMode() && getCondPresetCh() == ch) {
+            condPresetModeRotate(ch, delta);
+            return;
+        }
         uint8_t &ct = condTypeArr[ch][cursor];
         ct = (uint8_t)(((int)ct + delta + COND_TYPE_COUNT) % COND_TYPE_COUNT);
         scheduleSaveParams();
@@ -435,6 +439,9 @@ void handleEncoders() {
             pitchBoxEditMode = false;
             resetPitchPresetBrowseState();
         }
+        if (lastGUIState == COND1 || lastGUIState == COND2 || lastGUIState == COND3) {
+            condPresetModeCancel();
+        }
         lastGUIState = GUIState;
     }
 
@@ -455,6 +462,9 @@ void handleEncoders() {
                 } else if (held < LONG_PRESS_MS) {
                     if (GUIState == PERFORMANCE) {
                         handlePerfButton2();
+                    } else if (GUIState == COND1 || GUIState == COND2 || GUIState == COND3) {
+                        int ch = (GUIState == COND1) ? 0 : (GUIState == COND2) ? 1 : 2;
+                        condPresetModeToggle(ch);
                     } else if (GUIState == PITCH1) {
                         handlePitchButton(1);
                     } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||

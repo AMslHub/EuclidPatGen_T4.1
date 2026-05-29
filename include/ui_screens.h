@@ -131,3 +131,9 @@ void drawCondButton(int setIdx);                    // kleiner COND-Button auf d
 void handleCond(int setIdx, int mapX, int mapY, uint16_t tipPos);
 void drawCondPlayhead(int setIdx, unsigned int step);
 void flashCondBars(int setIdx);                     // VLP-Feedback: Header kurz rot aufleuchten
+void applyCondPreset(int ch, int preset);           // Condition-Preset auf Kanal ch anwenden (kein Draw)
+bool getCondPresetMode();
+int  getCondPresetCh();
+void condPresetModeToggle(int ch);   // Enter (first press) or Apply+Exit (second press)
+void condPresetModeCancel();         // Exit without applying
+void condPresetModeRotate(int ch, int delta);

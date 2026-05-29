@@ -21,6 +21,18 @@ static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
 static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave, 3=iv
 static bool valStepEditActive[3]   = {false, false, false};
 static int  valStepEditCursor[3]   = {0, 0, 0};
+
+// Condition Preset Mode
+static bool condPresetMode = false;
+static int  condPresetCh   = -1;
+static int  condPresetIdx  = 0;
+static const int COND_PRESET_COUNT = 16;
+static const char* const condPresetNames[COND_PRESET_COUNT] = {
+    "Thin Out", "Accent", "Groove",  "Fill",    "Chaos",
+    "Alternate","Stutter","Swell",   "Punchy",  "Ghost",
+    "Double",   "Humanize","4-Bar",  "Stairs",  "Heavy",
+    "Bounce"
+};
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
 static int lastYellowPxX[3]   = { -1, -1, -1 };
@@ -3685,6 +3697,7 @@ static void drawSongLoopCheckbox() {
 
 void drawSongScreen() {
     resetSongPlayback();   // Stop + Lookahead-Flags löschen; songPos=0
+    songHalted = true;     // Tick-Schleife pausieren bis PLAY gedrückt wird
     songUsedMask = getSlotsUsedMask();
     songCursor   = (int)songLen;  // Cursor ans Ende → Append-Modus
     fillScreenIfNeeded();
@@ -3792,7 +3805,10 @@ void handleSong(int mapX, int mapY, uint16_t tipPos) {
             songPos       = 0;
             songLoadedPos = 0;
             songCursor    = 0;
-            for (int ch = 0; ch < 3; ch++) cycleCount[ch] = 1;
+            // cnt auf PatLen-1 setzen: erste Load feuert sofort im ersten Tick
+            cnt    = (PatLen[0] > 0) ? (unsigned int)(PatLen[0] - 1) : 0u;
+            cnthold = 0;
+            for (int ch = 0; ch < 3; ch++) { cntCh[ch] = 0; cycleCount[ch] = 1; }
             requestLoadSlot((int)(songSeq[0] & 0x0F));
         }
         drawSongBottomButtons();
@@ -3828,6 +3844,10 @@ void navigateToScreen(uint16_t target) {
     if (PendingSave && bpm == 0) {
         PendingSave = false;
         saveParams();
+    }
+    // Song-Screen verlassen: Playback stoppen, normal weiterlaufen
+    if (GUIState == SONG && target != SONG) {
+        resetSongPlayback();   // setzt songHalted=false, löscht alle Song-Flags
     }
     GUIState = target;
     switch (target) {
@@ -4127,6 +4147,265 @@ static void drawCondLabels() {  // only used internally
     tft.setCursor(0, COND_ROW3_Y + COND_ROW3_H / 2 - 6);  tft.print("A");
 }
 
+static void drawCondClearButton() {
+    int x = 10, y = 46, w = 54, h = 26;
+    tft.drawRect(x, y, w, h, 0x4A49);
+    tft.fillRect(x + 1, y + 1, w - 2, h - 2, 0x2104);
+    tft.setFont(Arial_12);
+    tft.setTextColor(ILI9341_DARKGREY);
+    tft.setCursor(x + 9, y + 7);
+    tft.print("CLR");
+}
+
+static void drawCondPresetWidget(int ch) {
+    int x = 72, y = 46, w = 186, h = 26;
+    tft.fillRect(x, y, w, h, ILI9341_BLACK);
+    if (condPresetMode && condPresetCh == ch) {
+        tft.drawRect(x, y, w, h, ILI9341_CYAN);
+        tft.setFont(Arial_12);
+        tft.setTextColor(ILI9341_WHITE);
+        tft.setCursor(x + 4, y + 7);
+        tft.print("<");
+        tft.setCursor(x + w - 13, y + 7);
+        tft.print(">");
+        tft.setTextColor(ILI9341_CYAN);
+        tft.setCursor(x + 18, y + 7);
+        tft.print(condPresetNames[condPresetIdx]);
+    } else {
+        tft.setFont(Arial_10);
+        tft.setTextColor(0x2945);
+        tft.setCursor(x + 4, y + 8);
+        tft.print("Enc2: RND preset");
+    }
+}
+
+void applyCondPreset(int ch, int preset) {
+    int len = clampVal(PatLen[ch], 1, 32);
+    memset(condTypeArr[ch],   COND_NONE,     32 * sizeof(condTypeArr[ch][0]));
+    memset(condActionArr[ch], COND_ACT_NONE, 32 * sizeof(condActionArr[ch][0]));
+
+    // Collect hit steps
+    int hits[32];
+    int hitCount = 0;
+    for (int i = 0; i < len; i++) {
+        if (patternIsHit(ch, i)) hits[hitCount++] = i;
+    }
+    if (hitCount == 0) { scheduleSaveParams(); return; }
+
+    randomSeed(micros());
+
+    switch (preset) {
+    case 0: {  // Thin Out: ~35% of hits get probabilistic MUTE
+        static const uint8_t probs[] = { COND_P25, COND_P50, COND_P50, COND_P75 };
+        for (int i = 0; i < hitCount; i++) {
+            if (random(10) < 4) {
+                condTypeArr[ch][hits[i]]   = probs[random(4)];
+                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+            }
+        }
+        break;
+    }
+    case 1: {  // Accent Map: first hit always, ~30% of others probabilistic
+        condTypeArr[ch][hits[0]]   = COND_NONE;
+        condActionArr[ch][hits[0]] = COND_ACT_ACCENT;
+        static const uint8_t ap[] = { COND_P50, COND_P75 };
+        for (int i = 1; i < hitCount; i++) {
+            if (random(10) < 3) {
+                condTypeArr[ch][hits[i]]   = ap[random(2)];
+                condActionArr[ch][hits[i]] = COND_ACT_ACCENT;
+            }
+        }
+        break;
+    }
+    case 2: {  // Groove: alternating hits get EVEN+GATE_L / ODD+GATE_S
+        for (int i = 0; i < hitCount; i++) {
+            if (i % 2 == 0) {
+                condTypeArr[ch][hits[i]]   = COND_EVEN;
+                condActionArr[ch][hits[i]] = COND_ACT_GATE_L;
+            } else {
+                condTypeArr[ch][hits[i]]   = COND_ODD;
+                condActionArr[ch][hits[i]] = COND_ACT_GATE_S;
+            }
+        }
+        break;
+    }
+    case 3: {  // Fill: last ~33% of hits get ODD+R2
+        int fillCount = (hitCount + 2) / 3;
+        if (fillCount < 1) fillCount = 1;
+        for (int i = hitCount - fillCount; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_ODD;
+            condActionArr[ch][hits[i]] = COND_ACT_R2;
+        }
+        break;
+    }
+    case 4: {  // Chaos: weighted random mix
+        static const uint8_t muteProbs[]   = { COND_P25, COND_P50, COND_P50 };
+        static const uint8_t accentProbs[] = { COND_P50, COND_P75, COND_ODD, COND_EVEN };
+        static const uint8_t gateProbs[]   = { COND_ODD, COND_EVEN, COND_P50 };
+        for (int i = 0; i < hitCount; i++) {
+            int r = (int)random(100);
+            if (r < 25) {
+                condTypeArr[ch][hits[i]]   = muteProbs[random(3)];
+                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+            } else if (r < 50) {
+                condTypeArr[ch][hits[i]]   = accentProbs[random(4)];
+                condActionArr[ch][hits[i]] = COND_ACT_ACCENT;
+            } else if (r < 65) {
+                condTypeArr[ch][hits[i]]   = gateProbs[random(3)];
+                condActionArr[ch][hits[i]] = random(2) ? COND_ACT_GATE_S : COND_ACT_GATE_L;
+            } else if (r < 80) {
+                condTypeArr[ch][hits[i]]   = gateProbs[random(3)];
+                condActionArr[ch][hits[i]] = COND_ACT_R2;
+            }
+            // 20% chance: stays NONE
+        }
+        break;
+    }
+    case 5: {  // Alternate: all hits ODD+MUTE → plays only on even cycles
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_ODD;
+            condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+        }
+        break;
+    }
+    case 6: {  // Stutter: ~20% of hits get P25+R3 (rare triple ratchets)
+        for (int i = 0; i < hitCount; i++) {
+            if (random(10) < 2) {
+                condTypeArr[ch][hits[i]]   = COND_P25;
+                condActionArr[ch][hits[i]] = COND_ACT_R3;
+            }
+        }
+        break;
+    }
+    case 7: {  // Swell: first hit GATE_TIE, all others GATE_S
+        condTypeArr[ch][hits[0]]   = COND_NONE;
+        condActionArr[ch][hits[0]] = COND_ACT_GATE_TIE;
+        for (int i = 1; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_NONE;
+            condActionArr[ch][hits[i]] = COND_ACT_GATE_S;
+        }
+        break;
+    }
+    case 8: {  // Punchy: all hits ODD+ACCENT (strong every odd cycle)
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_ODD;
+            condActionArr[ch][hits[i]] = COND_ACT_ACCENT;
+        }
+        break;
+    }
+    case 9: {  // Ghost: ~35% of non-first hits get P25+ACCENT (whisper accents)
+        for (int i = 1; i < hitCount; i++) {
+            if (random(10) < 4) {
+                condTypeArr[ch][hits[i]]   = COND_P25;
+                condActionArr[ch][hits[i]] = COND_ACT_ACCENT;
+            }
+        }
+        break;
+    }
+    case 10: {  // Double: all hits ODD+R2 (double-time on odd cycles)
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_ODD;
+            condActionArr[ch][hits[i]] = COND_ACT_R2;
+        }
+        break;
+    }
+    case 11: {  // Humanize: 40% of hits get P75+ACCENT or P25+MUTE (live dynamics)
+        for (int i = 0; i < hitCount; i++) {
+            int r = (int)random(10);
+            if (r < 2) {
+                condTypeArr[ch][hits[i]]   = COND_P25;
+                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+            } else if (r < 4) {
+                condTypeArr[ch][hits[i]]   = COND_P75;
+                condActionArr[ch][hits[i]] = COND_ACT_ACCENT;
+            }
+        }
+        break;
+    }
+    case 12: {  // 4-Bar: last ¼ of hits get MOD4+R2 (ratchet fill every 4 cycles)
+        int fillCount = (hitCount + 3) / 4;
+        if (fillCount < 1) fillCount = 1;
+        for (int i = hitCount - fillCount; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_MOD4;
+            condActionArr[ch][hits[i]] = COND_ACT_R2;
+        }
+        break;
+    }
+    case 13: {  // Stairs: hits in thirds get R2/R3/R4 with P50
+        int t1 = hitCount / 3;
+        int t2 = 2 * hitCount / 3;
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]] = COND_P50;
+            condActionArr[ch][hits[i]] = (i < t1) ? COND_ACT_R2
+                                       : (i < t2) ? COND_ACT_R3
+                                                  : COND_ACT_R4;
+        }
+        break;
+    }
+    case 14: {  // Heavy: ~60% of hits get P50+MUTE (aggressive dropout)
+        for (int i = 0; i < hitCount; i++) {
+            if (random(10) < 6) {
+                condTypeArr[ch][hits[i]]   = COND_P50;
+                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+            }
+        }
+        break;
+    }
+    case 15: {  // Bounce: alternating hits ODD+T+12 / EVEN+T-12 (octave ping-pong, Ch1)
+        for (int i = 0; i < hitCount; i++) {
+            if (i % 2 == 0) {
+                condTypeArr[ch][hits[i]]   = COND_ODD;
+                condActionArr[ch][hits[i]] = COND_ACT_T_PLUS_12;
+            } else {
+                condTypeArr[ch][hits[i]]   = COND_EVEN;
+                condActionArr[ch][hits[i]] = COND_ACT_T_MINUS_12;
+            }
+        }
+        break;
+    }
+    default: break;
+    }
+
+    scheduleSaveParams();
+}
+
+// Public API for encoders.cpp
+bool getCondPresetMode()          { return condPresetMode; }
+int  getCondPresetCh()            { return condPresetCh; }
+
+void condPresetModeToggle(int ch) {
+    if (condPresetMode && condPresetCh == ch) {
+        // Second press → apply
+        applyCondPreset(ch, condPresetIdx);
+        condPresetMode = false;
+        condPresetCh   = -1;
+        drawCondTitle(ch);
+        // Redraw visible page after applying
+        int cursor = getCondStepCursor(ch);
+        int page   = cursor / 8;
+        for (int c = 0; c < 8; c++) drawCondCell(ch, page, c);
+    } else {
+        condPresetMode = true;
+        condPresetCh   = ch;
+        condPresetIdx  = 0;
+        drawCondPresetWidget(ch);
+    }
+}
+
+void condPresetModeCancel() {
+    if (!condPresetMode) return;
+    int ch = condPresetCh;
+    condPresetMode = false;
+    condPresetCh   = -1;
+    if (ch >= 0 && ch < 3) drawCondPresetWidget(ch);
+}
+
+void condPresetModeRotate(int ch, int delta) {
+    if (!condPresetMode || condPresetCh != ch) return;
+    condPresetIdx = ((condPresetIdx + delta) % COND_PRESET_COUNT + COND_PRESET_COUNT) % COND_PRESET_COUNT;
+    drawCondPresetWidget(ch);
+}
+
 static void drawRotateCondCheckbox(int setIdx) {
     int x = 268, y = 50, s = 20;
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
@@ -4158,10 +4437,14 @@ void drawCondTitle(int setIdx) {
     tft.setTextColor(ILI9341_DARKGREY);
     tft.setCursor(248, 14);
     tft.printf("C%lu", (unsigned long)cycleCount[setIdx]);
+    drawCondClearButton();
+    drawCondPresetWidget(setIdx);
     drawRotateCondCheckbox(setIdx);
 }
 
 void drawCondScreen(int setIdx) {
+    condPresetMode = false;  // cancel any active preset selection on screen entry
+    condPresetCh   = -1;
     fillScreenIfNeeded();
     condPhStep[setIdx] = -1;  // invalidate playhead
     drawCondTitle(setIdx);
@@ -4194,6 +4477,17 @@ void handleCond(int setIdx, int mapX, int mapY, uint16_t tipPos) {
         RotateCond[setIdx] = !RotateCond[setIdx];
         scheduleSaveParams();
         drawRotateCondCheckbox(setIdx);
+        return;
+    }
+    // CLR: alle Conditions des aktuellen Kanals auf NONE zurücksetzen
+    if (hitBox(mapX, mapY, 10, 46, 54, 26, 8)) {
+        memset(condTypeArr[setIdx],   COND_NONE,     32 * sizeof(condTypeArr[setIdx][0]));
+        memset(condActionArr[setIdx], COND_ACT_NONE, 32 * sizeof(condActionArr[setIdx][0]));
+        scheduleSaveParams();
+        int cursor = getCondStepCursor(setIdx);
+        int page   = cursor / 8;
+        for (int c = 0; c < 8; c++) drawCondCell(setIdx, page, c);
+        return;
     }
 }
 

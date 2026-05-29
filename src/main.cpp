@@ -165,6 +165,8 @@ bool PendingPerfRefresh = false;
 bool PendingCircsRedraw = false;
 // Deferred Pitch-Controls+Bars Redraw (verhindert SPI-Block in Encoder-Handler und Tick-Schleife)
 bool pendingPitchDraw = false;
+static bool  pendingSlotKeyLoad    = false;  // CV-Keyboard Slot-Load am Kanal-1-Pattern-Ende
+static int8_t lastCvSlotKey        = -1;     // Change-Detection: nur bei neuer Note feuern
 static bool pendingSongUiUpdate  = false;
 static bool pendingSongSlotLoad  = false;
 static bool pendingSongAutoStop  = false;  // letzter Slot geladen → nach 1 Zyklus anhalten
@@ -778,6 +780,11 @@ void loop() {
         if (cntCh[ch] != 0 && (cntCh[ch] % (unsigned int)len) == 0) {
             cycleCount[ch]++;
             if (cycleCount[ch] == 0) cycleCount[ch] = 1;  // wrap-safe, never zero
+            // Kanal 1 Muster-Ende: CV-Keyboard Slot-Load nur bei neuer Note vormerken
+            if (ch == 0 && cvSlotKey >= 0 && cvSlotKey != lastCvSlotKey) {
+                pendingSlotKeyLoad = true;
+                lastCvSlotKey      = cvSlotKey;
+            }
         }
     }
 
@@ -1207,6 +1214,17 @@ void loop() {
     drawPitchControls();
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
+  }
+
+  // CV-Keyboard Slot-Load: am Kanal-1-Pattern-Ende den per 1V/Oct-Key gewählten Slot laden.
+  if (pendingSlotKeyLoad && cvSlotKey >= 0) {
+    pendingSlotKeyLoad = false;
+    int slot = cvSlotKey;
+    if (getSlotsUsedMask() & (1u << slot)) {
+      requestLoadSlot(slot);
+      resetQuickSavePointer();
+      PendingPerfRefresh = true;
+    }
   }
 
   // Song-Slot-Load: erst nach der Tick-Schleife, um SD-Kaskaden zu verhindern.
