@@ -33,7 +33,7 @@ static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 static const char* const CV_TARGET_LABELS[CV_TARGET_COUNT] = {
     "---", "Rat1", "Rat2", "Rat3", "Swing", "P.Sh",
     "Rot1", "Rot2", "Rot3", "Cmp1", "Cmp2", "Cmp3", "Slot", "Fold", "1V/O",
-    "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3", "PatK"
+    "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3", "PatK", "CmpA"
 };
 
 const char* cvTargetLabel(uint8_t t) {
@@ -181,6 +181,9 @@ void applyCvTargets() {
             case CV_TARGET_MORPH_CH3:
                 cvMorph = (float)cv / 4095.0f;
                 morphChannelMask |= 0b100;
+                break;
+            case CV_TARGET_COMPRESS_ALL:
+                cvCompress[0] = cvCompress[1] = cvCompress[2] = (float)cv / 4095.0f;
                 break;
             case CV_TARGET_SLOT_KEY: {
                 // 1V/Oct, C=0V. ADC-Schritte pro Halbton: 4095/6.6V/12 ≈ 51.8

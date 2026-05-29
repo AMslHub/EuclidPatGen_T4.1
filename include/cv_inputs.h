@@ -26,6 +26,7 @@ enum CvTarget : uint8_t {
     CV_TARGET_MORPH_CH2,        // Morph nur Kanal 2
     CV_TARGET_MORPH_CH3,        // Morph nur Kanal 3
     CV_TARGET_SLOT_KEY,         // 1V/Okt White-Keys C..D'' → Slot 0-15 am Pattern-Ende laden
+    CV_TARGET_COMPRESS_ALL,    // 0-4095 → 0.0..1.0 Kompression aller 3 Kanäle gleichzeitig
     CV_TARGET_COUNT
 };
 
