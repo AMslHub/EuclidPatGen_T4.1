@@ -4613,6 +4613,32 @@ void adjustValStep(int ch, int delta) {
     redrawValBar(ch, idx);
 }
 
+void shiftValues(int ch, int amount) {
+    int len = clampVal(PatLen[ch], 1, 32);
+    uint8_t* arr = abEditMode ? ValuesBArr[ch] : ValuesArr[ch];
+    for (int i = 0; i < len; i++) {
+        int v = (int)arr[i] + amount;
+        arr[i] = (uint8_t)clampVal(v, 0, 255);
+    }
+    drawValuesBars(ch);
+    scheduleSaveParams();
+}
+
+void scaleValues(int ch, float mf) {
+    int len = clampVal(PatLen[ch], 1, 32);
+    uint8_t* arr = abEditMode ? ValuesBArr[ch] : ValuesArr[ch];
+    float sum = 0.0f;
+    for (int i = 0; i < len; i++) sum += (float)arr[i];
+    float mw = sum / (float)len;
+    for (int i = 0; i < len; i++) {
+        float v = ((float)arr[i] - mw) * mf + mw;
+        int vi = (int)(v + 0.5f);
+        arr[i] = (uint8_t)clampVal(vi, 0, 255);
+    }
+    drawValuesBars(ch);
+    scheduleSaveParams();
+}
+
 void flashValBars(int ch) {
     (void)ch;
     int x0 = 10, y0 = 240 - 5 - 160, h = 160, totalW = 320 - 2 * x0;

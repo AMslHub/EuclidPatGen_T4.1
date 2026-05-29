@@ -86,6 +86,8 @@ int  getValStepEditCursor(int ch);
 void toggleValStepEdit(int ch);
 void moveValStepCursor(int ch, int delta);
 void adjustValStep(int ch, int delta);
+void shiftValues(int ch, int amount);  // Enc1: alle Values ±amount (0-255 clamped)
+void scaleValues(int ch, float mf);    // Enc2: Expand/Compress um Mittelwert
 void flashValBars(int ch);
 void handlePITCH(int mapX, int mapY, uint16_t tipPos);
 void handlePITCHDrag(int mapX, int mapY);
