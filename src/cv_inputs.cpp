@@ -21,10 +21,7 @@ uint8_t cvPitchAiDownOct   = 0;
 float   cvMorph            = 0.0f;
 uint8_t morphChannelMask   = 0b111;  // default: alle Kanäle
 
-// Index des CV-Eingangs der VALUE_MOD für Kanal ch steuert (-1 = inaktiv)
-static int8_t   cvValueModCvIdx[3] = {-1, -1, -1};
-// Geglätteter CV-Wert für Value-Modulation
-static uint16_t cvValueModRaw[3]   = {0, 0, 0};
+float cvCompress[3] = {0.0f, 0.0f, 0.0f};  // 0=unkomprimiert, 1=voll auf MW
 
 // Slot-Sel Hysterese: letzter bestätigter Slot (-1 = noch nicht initialisiert)
 static int8_t   cvSlotSelHyst      = -1;
@@ -35,7 +32,7 @@ static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 
 static const char* const CV_TARGET_LABELS[CV_TARGET_COUNT] = {
     "---", "Rat1", "Rat2", "Rat3", "Swing", "P.Sh",
-    "Rot1", "Rot2", "Rot3", "Val1", "Val2", "Val3", "Slot", "Fold", "1V/O",
+    "Rot1", "Rot2", "Rot3", "Cmp1", "Cmp2", "Cmp3", "Slot", "Fold", "1V/O",
     "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3", "PatK"
 };
 
@@ -59,7 +56,7 @@ void applyCvTargets() {
     for (int ch = 0; ch < 3; ch++) {
         cvRatchetCount[ch]  = 1;
         cvPatRotOffset[ch]  = 0;
-        cvValueModCvIdx[ch] = -1;
+        cvCompress[ch]      = 0.0f;
     }
     cvSwingPct         = 0;
     cvPitchShiftOffset = 0;
@@ -112,8 +109,7 @@ void applyCvTargets() {
             case CV_TARGET_VALUE_MOD_CH2:
             case CV_TARGET_VALUE_MOD_CH3: {
                 int ch = target - CV_TARGET_VALUE_MOD_CH1;
-                cvValueModCvIdx[ch] = (int8_t)ci;
-                cvValueModRaw[ch]   = cv;
+                cvCompress[ch] = (float)cv / 4095.0f;  // 0V=unkomprimiert, max=auf MW
                 break;
             }
             case CV_TARGET_SLOT_SEL: {
@@ -206,29 +202,11 @@ void applyCvTargets() {
     }
 }
 
-// Exponentielle Hüllkurve innerhalb eines Ratchet-Bursts:
-//   cvNorm = 0.0  → starker Abfall   (1. Hit laut, letzte leise)
-//   cvNorm = 0.5  → flach            (alle Ratchet-Hits gleich laut)
-//   cvNorm = 1.0  → starker Anstieg  (1. Hit leise, letzter laut)
-//   ratchetIdx  = Position im Burst (0 = erster Hit)
-//   ratchetTotal = Gesamtzahl der Hits im Burst
+// Ratchet-Decay-Hüllkurve: globale Dämpfung (ratchetDecay=0 → flach, 255 → max Abfall)
 float getValueModFactor(int ch, int ratchetIdx, int ratchetTotal) {
-    if (ch < 0 || ch > 2 || ratchetTotal <= 1) return 1.0f;
-    if (cvValueModCvIdx[ch] < 0) {
-        // No CV mapped: apply global ratchet decay (0=flat, 255=max decay)
-        if (ratchetDecay == 0) return 1.0f;
-        float s = ratchetDecay / 255.0f;
-        float t = (float)ratchetIdx / (float)(ratchetTotal - 1);
-        return 1.0f - s * t;
-    }
-    float cvNorm = cvValueModRaw[ch] / 4095.0f;
-    float t = (float)ratchetIdx / (float)(ratchetTotal - 1);  // 0..1
-    float s = fabsf(cvNorm - 0.5f) * 2.0f;  // 0..1 (Stärke)
-    if (cvNorm >= 0.5f) {
-        // Crescendo (linear): 1. Hit bei (1-s), letzter bei 1.0
-        return (1.0f - s) + s * t;
-    } else {
-        // Decrescendo (linear): 1. Hit bei 1.0, letzter bei (1-s)
-        return 1.0f - s * t;
-    }
+    (void)ch;
+    if (ratchetTotal <= 1 || ratchetDecay == 0) return 1.0f;
+    float s = ratchetDecay / 255.0f;
+    float t = (float)ratchetIdx / (float)(ratchetTotal - 1);
+    return 1.0f - s * t;
 }

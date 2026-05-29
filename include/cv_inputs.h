@@ -47,6 +47,7 @@ extern uint8_t cvPitchAiDownOct;    // 0=inaktiv, 1..3: höchste Ebene N Okt abs
 extern float   cvMorph;             // 0.0..1.0 (Values + GateLen A→B Interpolation)
 extern uint8_t morphChannelMask;    // Bit 0=Ch1, Bit 1=Ch2, Bit 2=Ch3 — welche Kanäle morphen
 extern int8_t  cvSlotKey;           // -1=inaktiv, 0-15=Slot-Index (CV_TARGET_SLOT_KEY)
+extern float   cvCompress[3];       // 0.0=unkomprimiert, 1.0=alle Values auf Mittelwert
 
 // Exponentieller Lautstärke-Faktor innerhalb eines Ratchet-Bursts.
 // ratchetIdx=0 → erster Hit, ratchetTotal = Gesamtzahl der Hits im Burst.
