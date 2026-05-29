@@ -182,6 +182,16 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
             ? (uint8_t)clampVal((int)((float)vA * (1.0f - cvMorph) + (float)vB * cvMorph + 0.5f), 0, 255)
             : vA;
         if (condAccentActive[ch]) v = 255;
+        if (condValueMul[ch] > 0 && v > 0) {
+            uint16_t vv = v;
+            switch (condValueMul[ch]) {
+                case 1: vv = (uint16_t)v * 2u;       break;  // ×2
+                case 2: vv = (uint16_t)v * 3u / 2u;  break;  // ×3/2
+                case 3: vv = (uint16_t)v * 4u / 3u;  break;  // ×4/3
+                case 4: vv = (uint16_t)v * 5u / 4u;  break;  // ×5/4
+            }
+            v = (vv > 255u) ? 255u : (uint8_t)vv;
+        }
 
         if (*HoldArr[ch]) {
             if (hit) lastOut[ch] = v;

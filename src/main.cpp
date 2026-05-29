@@ -74,6 +74,7 @@ bool     condAccentActive[3] = { false, false, false };
 int8_t   condTransposeAdd[3] = { 0, 0, 0 };
 uint8_t  condRatchetOvr[3]   = { 0, 0, 0 };
 uint8_t  condGateLenOvr[3]   = { 0, 0, 0 };
+uint8_t  condValueMul[3]     = { 0, 0, 0 };
 bool GateHold1 = false;
 bool GateHold2 = false;
 bool GateHold3 = false;
@@ -997,6 +998,7 @@ void loop() {
         condTransposeAdd[ch] = 0;
         condRatchetOvr[ch]   = 0;
         condGateLenOvr[ch]   = 0;
+        condValueMul[ch]     = 0;
         if (!chFired[ch]) continue;
         int len = clampVal(PatLen[ch], 1, 32);
         int idx = (int)(cntCh[ch] % (unsigned int)len);
@@ -1028,6 +1030,12 @@ void loop() {
             case COND_ACT_R2:       condRatchetOvr[ch]  = 2;    break;
             case COND_ACT_R3:       condRatchetOvr[ch]  = 3;    break;
             case COND_ACT_R4:       condRatchetOvr[ch]  = 4;    break;
+            case COND_ACT_VAL_X2:    condValueMul[ch] = 1; break;
+            case COND_ACT_VAL_X1_5:  condValueMul[ch] = 2; break;
+            case COND_ACT_VAL_X1_33: condValueMul[ch] = 3; break;
+            case COND_ACT_VAL_X1_25: condValueMul[ch] = 4; break;
+            case COND_ACT_T_PLUS_24:  condTransposeAdd[ch] = 24;  break;
+            case COND_ACT_T_MINUS_24: condTransposeAdd[ch] = -24; break;
             default:
                 if (ca >= COND_ACT_T_PLUS_1 && ca <= COND_ACT_T_PLUS_12)
                     condTransposeAdd[ch] = (int8_t)(ca - COND_ACT_T_PLUS_1 + 1);

@@ -59,7 +59,13 @@ enum CondAction : uint8_t {
     COND_ACT_T_PLUS_12  = COND_ACT_T_PLUS_1 + 11,
     COND_ACT_T_MINUS_1,   // transpose -1 semitone (= 22)
     COND_ACT_T_MINUS_12 = COND_ACT_T_MINUS_1 + 11,
-    COND_ACT_COUNT        // = 34
+    COND_ACT_VAL_X2,      // value ×2, capped 255       (= 34)
+    COND_ACT_VAL_X1_5,    // value ×1.5, capped 255     (= 35)
+    COND_ACT_VAL_X1_33,   // value ×4/3, capped 255     (= 36)
+    COND_ACT_VAL_X1_25,   // value ×5/4, capped 255     (= 37)
+    COND_ACT_T_PLUS_24,   // transpose +24 semitones    (= 38)
+    COND_ACT_T_MINUS_24,  // transpose -24 semitones    (= 39)
+    COND_ACT_COUNT        // = 40
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
 
@@ -216,6 +222,7 @@ extern bool    condAccentActive[3];
 extern int8_t  condTransposeAdd[3];
 extern uint8_t condRatchetOvr[3];   // 0=no override, 2..4=ratchet count
 extern uint8_t condGateLenOvr[3];   // 0=no override, else gate-len value
+extern uint8_t condValueMul[3];     // 0=none, 1=×2, 2=×3/2, 3=×4/3, 4=×5/4
 
 // Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)
 extern volatile bool extClockMode;

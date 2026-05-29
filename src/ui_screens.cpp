@@ -4044,7 +4044,8 @@ static const char* condActionLabel(uint8_t a) {
         "---", "MUT", "ACC", "G.S", "G.M", "G.L", "TIE",
         "R:2", "R:3", "R:4",
         "+1","+2","+3","+4","+5","+6","+7","+8","+9","+10","+11","+12",
-        "-1","-2","-3","-4","-5","-6","-7","-8","-9","-10","-11","-12"
+        "-1","-2","-3","-4","-5","-6","-7","-8","-9","-10","-11","-12",
+        "+V2", "+V/2", "+V/3", "+V/4", "+2O", "-2O"
     };
     return (a < COND_ACT_COUNT) ? lbl[a] : "---";
 }
@@ -4057,6 +4058,9 @@ static uint16_t condActionDisplayColor(uint8_t a) {
     if (a >= COND_ACT_R2      && a <= COND_ACT_R4)       return ILI9341_MAGENTA;
     if (a >= COND_ACT_T_PLUS_1  && a <= COND_ACT_T_PLUS_12)  return ILI9341_GREEN;
     if (a >= COND_ACT_T_MINUS_1 && a <= COND_ACT_T_MINUS_12) return 0xFD20;  // orange
+    if (a >= COND_ACT_VAL_X2   && a <= COND_ACT_VAL_X1_25)  return ILI9341_WHITE;  // value mul
+    if (a == COND_ACT_T_PLUS_24)  return ILI9341_GREEN;
+    if (a == COND_ACT_T_MINUS_24) return 0xFD20;  // orange, matches -transpose
     return ILI9341_LIGHTGREY;
 }
 
