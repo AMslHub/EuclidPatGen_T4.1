@@ -345,7 +345,7 @@ unsigned long initialText() {
   tft.setFont(Arial_12);
   tft.setTextColor(ILI9341_DARKGREY);
   tft.setCursor(8, 36);
-  tft.print("v1.2  (c) 2026 AMsl");
+  tft.print("v2.0  (c) 2026 AMsl");
 
   tft.setFont(Arial_12);
   tft.setTextColor(ILI9341_GREEN);
@@ -355,7 +355,11 @@ unsigned long initialText() {
   tft.setCursor(8, 106); tft.print("31 Rhythmus- / 16+ Pitch-Presets");
   tft.setCursor(8, 122); tft.print("Performance: Mute / Solo / 7 Slots");
   tft.setCursor(8, 138); tft.print("Song-Sequencer: 64 Schritte / Loop");
-  tft.setCursor(8, 154); tft.print("CV-In 3x \x7C Clock+Reset \x7C Auto-Save");
+  tft.setTextColor(ILI9341_CYAN);
+  tft.setCursor(8, 154); tft.print("COND: 16 Presets \x7C +V*2/1.5/1.3/1.25");
+  tft.setCursor(8, 170); tft.print("COND: +/-2Oct \x7C Mute \x7C Acc \x7C Gate \x7C R");
+  tft.setCursor(8, 186); tft.print("CV: Cmp1/2/3/A \x7C PatK \x7C Morph \x7C Rot");
+  tft.setCursor(8, 202); tft.print("Values: Enc1=Shift \x7C Enc2=Expand/Cmp");
 
   return micros() - start;
 }
