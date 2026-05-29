@@ -28,10 +28,9 @@ static int  condPresetCh   = -1;
 static int  condPresetIdx  = 0;
 static const int COND_PRESET_COUNT = 16;
 static const char* const condPresetNames[COND_PRESET_COUNT] = {
-    "Thin Out", "Accent", "Groove",  "Fill",    "Chaos",
-    "Alternate","Stutter","Swell",   "Punchy",  "Ghost",
-    "Double",   "Humanize","4-Bar",  "Stairs",  "Heavy",
-    "Bounce"
+    "4-Bar",   "ACC23",   "Accent",  "Alternate","Bounce",  "Chaos",
+    "Fill",    "Ghost",   "Groove",  "Heavy",    "HUMAN234","Humanize",
+    "Punchy",  "Stutter", "Swell",   "Thin Out"
 };
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
@@ -4199,17 +4198,28 @@ void applyCondPreset(int ch, int preset) {
     randomSeed(micros());
 
     switch (preset) {
-    case 0: {  // Thin Out: ~35% of hits get probabilistic MUTE
-        static const uint8_t probs[] = { COND_P25, COND_P50, COND_P50, COND_P75 };
-        for (int i = 0; i < hitCount; i++) {
-            if (random(10) < 4) {
-                condTypeArr[ch][hits[i]]   = probs[random(4)];
-                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+    case 0: {  // 4-Bar: last ¼ of hits get MOD4+R2 (ratchet fill every 4 cycles)
+        int fillCount = (hitCount + 3) / 4;
+        if (fillCount < 1) fillCount = 1;
+        for (int i = hitCount - fillCount; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_MOD4;
+            condActionArr[ch][hits[i]] = COND_ACT_R2;
+        }
+        break;
+    }
+    case 1: {  // ACC23: odd positions (1,3,5...) P50+V/2, even positions (2,4,6...) P50+V/3
+        for (int i = 0; i < len; i++) {
+            if (i % 2 == 0) {  // positions 1,3,5,... (1-based)
+                condTypeArr[ch][i]   = COND_P50;
+                condActionArr[ch][i] = COND_ACT_VAL_X1_5;
+            } else {           // positions 2,4,6,... (1-based)
+                condTypeArr[ch][i]   = COND_P50;
+                condActionArr[ch][i] = COND_ACT_VAL_X1_33;
             }
         }
         break;
     }
-    case 1: {  // Accent Map: first hit always, ~30% of others probabilistic
+    case 2: {  // Accent: first hit always, ~30% of others probabilistic
         condTypeArr[ch][hits[0]]   = COND_NONE;
         condActionArr[ch][hits[0]] = COND_ACT_ACCENT;
         static const uint8_t ap[] = { COND_P50, COND_P75 };
@@ -4221,28 +4231,26 @@ void applyCondPreset(int ch, int preset) {
         }
         break;
     }
-    case 2: {  // Groove: alternating hits get EVEN+GATE_L / ODD+GATE_S
+    case 3: {  // Alternate: all hits ODD+MUTE → plays only on even cycles
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_ODD;
+            condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+        }
+        break;
+    }
+    case 4: {  // Bounce: alternating hits ODD+T+12 / EVEN+T-12 (octave ping-pong)
         for (int i = 0; i < hitCount; i++) {
             if (i % 2 == 0) {
-                condTypeArr[ch][hits[i]]   = COND_EVEN;
-                condActionArr[ch][hits[i]] = COND_ACT_GATE_L;
-            } else {
                 condTypeArr[ch][hits[i]]   = COND_ODD;
-                condActionArr[ch][hits[i]] = COND_ACT_GATE_S;
+                condActionArr[ch][hits[i]] = COND_ACT_T_PLUS_12;
+            } else {
+                condTypeArr[ch][hits[i]]   = COND_EVEN;
+                condActionArr[ch][hits[i]] = COND_ACT_T_MINUS_12;
             }
         }
         break;
     }
-    case 3: {  // Fill: last ~33% of hits get ODD+R2
-        int fillCount = (hitCount + 2) / 3;
-        if (fillCount < 1) fillCount = 1;
-        for (int i = hitCount - fillCount; i < hitCount; i++) {
-            condTypeArr[ch][hits[i]]   = COND_ODD;
-            condActionArr[ch][hits[i]] = COND_ACT_R2;
-        }
-        break;
-    }
-    case 4: {  // Chaos: weighted random mix
+    case 5: {  // Chaos: weighted random mix
         static const uint8_t muteProbs[]   = { COND_P25, COND_P50, COND_P50 };
         static const uint8_t accentProbs[] = { COND_P50, COND_P75, COND_ODD, COND_EVEN };
         static const uint8_t gateProbs[]   = { COND_ODD, COND_EVEN, COND_P50 };
@@ -4265,39 +4273,16 @@ void applyCondPreset(int ch, int preset) {
         }
         break;
     }
-    case 5: {  // Alternate: all hits ODD+MUTE → plays only on even cycles
-        for (int i = 0; i < hitCount; i++) {
+    case 6: {  // Fill: last ~33% of hits get ODD+R2
+        int fillCount = (hitCount + 2) / 3;
+        if (fillCount < 1) fillCount = 1;
+        for (int i = hitCount - fillCount; i < hitCount; i++) {
             condTypeArr[ch][hits[i]]   = COND_ODD;
-            condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+            condActionArr[ch][hits[i]] = COND_ACT_R2;
         }
         break;
     }
-    case 6: {  // Stutter: ~20% of hits get P25+R3 (rare triple ratchets)
-        for (int i = 0; i < hitCount; i++) {
-            if (random(10) < 2) {
-                condTypeArr[ch][hits[i]]   = COND_P25;
-                condActionArr[ch][hits[i]] = COND_ACT_R3;
-            }
-        }
-        break;
-    }
-    case 7: {  // Swell: first hit GATE_TIE, all others GATE_S
-        condTypeArr[ch][hits[0]]   = COND_NONE;
-        condActionArr[ch][hits[0]] = COND_ACT_GATE_TIE;
-        for (int i = 1; i < hitCount; i++) {
-            condTypeArr[ch][hits[i]]   = COND_NONE;
-            condActionArr[ch][hits[i]] = COND_ACT_GATE_S;
-        }
-        break;
-    }
-    case 8: {  // Punchy: all hits ODD+ACCENT (strong every odd cycle)
-        for (int i = 0; i < hitCount; i++) {
-            condTypeArr[ch][hits[i]]   = COND_ODD;
-            condActionArr[ch][hits[i]] = COND_ACT_ACCENT;
-        }
-        break;
-    }
-    case 9: {  // Ghost: ~35% of non-first hits get P25+ACCENT (whisper accents)
+    case 7: {  // Ghost: ~35% of non-first hits get P25+ACCENT (whisper accents)
         for (int i = 1; i < hitCount; i++) {
             if (random(10) < 4) {
                 condTypeArr[ch][hits[i]]   = COND_P25;
@@ -4306,10 +4291,32 @@ void applyCondPreset(int ch, int preset) {
         }
         break;
     }
-    case 10: {  // Double: all hits ODD+R2 (double-time on odd cycles)
+    case 8: {  // Groove: alternating hits get EVEN+GATE_L / ODD+GATE_S
         for (int i = 0; i < hitCount; i++) {
-            condTypeArr[ch][hits[i]]   = COND_ODD;
-            condActionArr[ch][hits[i]] = COND_ACT_R2;
+            if (i % 2 == 0) {
+                condTypeArr[ch][hits[i]]   = COND_EVEN;
+                condActionArr[ch][hits[i]] = COND_ACT_GATE_L;
+            } else {
+                condTypeArr[ch][hits[i]]   = COND_ODD;
+                condActionArr[ch][hits[i]] = COND_ACT_GATE_S;
+            }
+        }
+        break;
+    }
+    case 9: {  // Heavy: ~60% of hits get P50+MUTE (aggressive dropout)
+        for (int i = 0; i < hitCount; i++) {
+            if (random(10) < 6) {
+                condTypeArr[ch][hits[i]]   = COND_P50;
+                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+            }
+        }
+        break;
+    }
+    case 10: {  // HUMAN234: all hits P75 + random +V/2 / +V/3 / +V/4
+        static const uint8_t valActs[] = { COND_ACT_VAL_X1_5, COND_ACT_VAL_X1_33, COND_ACT_VAL_X1_25 };
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_P75;
+            condActionArr[ch][hits[i]] = valActs[random(3)];
         }
         break;
     }
@@ -4326,43 +4333,37 @@ void applyCondPreset(int ch, int preset) {
         }
         break;
     }
-    case 12: {  // 4-Bar: last ¼ of hits get MOD4+R2 (ratchet fill every 4 cycles)
-        int fillCount = (hitCount + 3) / 4;
-        if (fillCount < 1) fillCount = 1;
-        for (int i = hitCount - fillCount; i < hitCount; i++) {
-            condTypeArr[ch][hits[i]]   = COND_MOD4;
-            condActionArr[ch][hits[i]] = COND_ACT_R2;
+    case 12: {  // Punchy: all hits ODD+ACCENT (strong every odd cycle)
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_ODD;
+            condActionArr[ch][hits[i]] = COND_ACT_ACCENT;
         }
         break;
     }
-    case 13: {  // Stairs: hits in thirds get R2/R3/R4 with P50
-        int t1 = hitCount / 3;
-        int t2 = 2 * hitCount / 3;
+    case 13: {  // Stutter: ~20% of hits get P25+R3 (rare triple ratchets)
         for (int i = 0; i < hitCount; i++) {
-            condTypeArr[ch][hits[i]] = COND_P50;
-            condActionArr[ch][hits[i]] = (i < t1) ? COND_ACT_R2
-                                       : (i < t2) ? COND_ACT_R3
-                                                  : COND_ACT_R4;
-        }
-        break;
-    }
-    case 14: {  // Heavy: ~60% of hits get P50+MUTE (aggressive dropout)
-        for (int i = 0; i < hitCount; i++) {
-            if (random(10) < 6) {
-                condTypeArr[ch][hits[i]]   = COND_P50;
-                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
+            if (random(10) < 2) {
+                condTypeArr[ch][hits[i]]   = COND_P25;
+                condActionArr[ch][hits[i]] = COND_ACT_R3;
             }
         }
         break;
     }
-    case 15: {  // Bounce: alternating hits ODD+T+12 / EVEN+T-12 (octave ping-pong, Ch1)
+    case 14: {  // Swell: first hit GATE_TIE, all others GATE_S
+        condTypeArr[ch][hits[0]]   = COND_NONE;
+        condActionArr[ch][hits[0]] = COND_ACT_GATE_TIE;
+        for (int i = 1; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_NONE;
+            condActionArr[ch][hits[i]] = COND_ACT_GATE_S;
+        }
+        break;
+    }
+    case 15: {  // Thin Out: ~35% of hits get probabilistic MUTE
+        static const uint8_t probs[] = { COND_P25, COND_P50, COND_P50, COND_P75 };
         for (int i = 0; i < hitCount; i++) {
-            if (i % 2 == 0) {
-                condTypeArr[ch][hits[i]]   = COND_ODD;
-                condActionArr[ch][hits[i]] = COND_ACT_T_PLUS_12;
-            } else {
-                condTypeArr[ch][hits[i]]   = COND_EVEN;
-                condActionArr[ch][hits[i]] = COND_ACT_T_MINUS_12;
+            if (random(10) < 4) {
+                condTypeArr[ch][hits[i]]   = probs[random(4)];
+                condActionArr[ch][hits[i]] = COND_ACT_MUTE;
             }
         }
         break;
@@ -4391,7 +4392,6 @@ void condPresetModeToggle(int ch) {
     } else {
         condPresetMode = true;
         condPresetCh   = ch;
-        condPresetIdx  = 0;
         drawCondPresetWidget(ch);
     }
 }
