@@ -54,6 +54,15 @@ static inline int layerBaseSrc(int ch, int idx) {
     return euclidRotatedSrc(idx, len, effRot);
 }
 static const uint16_t XY_GRID_COLOR = 0x2104;  // dunkles Grau fuer XY-Raster
+static const uint16_t BAR_GRID_COL  = 0x630C;  // mittleres Grau (~RGB 99,97,99) fuer 4-Schritt-Raster
+
+// Zeichnet vertikale Gitterlinien an jeder 4. Step-Grenze (idx=4,8,12,...).
+// x0=10, totalW=300 entspricht dem gemeinsamen Koordinatensystem aller Bar-Screens.
+static void drawStepGridLines(int y0, int h, int len) {
+    for (int gi = 4; gi < len; gi += 4) {
+        tft.drawFastVLine(10 + (gi * 300) / len, y0, h, BAR_GRID_COL);
+    }
+}
 static int  xyPadPitchMode = 0;  // 0=GateLen, 1=Pitch 1oct, 2=Pitch 3oct, 3=Pitch 5oct
 static uint16_t keyBgCache[180];  // Hintergrundfarbe pro Y-Pixel (y=40..219)
 static bool     xyKeyboardMode = false;  // true wenn Klaviatur-BG aktiv
@@ -1228,11 +1237,13 @@ void drawRatchetBar(int setIdx, int idx) {
     }
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
 }
 
 void drawRatchetBars(int setIdx) {
     int len = clampVal(PatLen[setIdx], 1, 32);
     for (int i = 0; i < len; i++) drawRatchetBar(setIdx, i);
+    drawStepGridLines(240 - 5 - 160, 160, len);
 }
 
 void drawOctaveBar(int setIdx, int idx) {
@@ -1256,11 +1267,13 @@ void drawOctaveBar(int setIdx, int idx) {
     }
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
 }
 
 void drawOctaveBars(int setIdx) {
     int len = clampVal(PatLen[setIdx], 1, 32);
     for (int i = 0; i < len; i++) drawOctaveBar(setIdx, i);
+    drawStepGridLines(240 - 5 - 160, 160, len);
 }
 
 void drawIvStepBar(int setIdx, int idx) {
@@ -1288,12 +1301,14 @@ void drawIvStepBar(int setIdx, int idx) {
     }
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
 }
 
 void drawIvStepBars(int setIdx) {
     if (setIdx != 0) return;
     int len = clampVal(PatLen[setIdx], 1, 32);
     for (int i = 0; i < len; i++) drawIvStepBar(setIdx, i);
+    drawStepGridLines(240 - 5 - 160, 160, len);
 }
 
 // Zweck: Baut den Values-Screen fuer ein Pattern auf.
@@ -1330,6 +1345,7 @@ void drawValuesBars(int setIdx){
     for(int i=0;i<len;i++){
         drawValuesBar(setIdx, i);
     }
+    drawStepGridLines(240 - 5 - 160, 160, len);
 }
 
 // Zweck: Setzt den gemerkten Playhead fuer ein Pattern zurueck.
@@ -1394,6 +1410,7 @@ void drawValuesBar(int setIdx, int idx){
     }
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
 }
 
 // Zweck: Zeichnet die Hold-Checkbox.
@@ -1737,10 +1754,10 @@ void drawGateLenScreen(int setIdx){
 // Assumptions: PatLen[setIdx] in 1..32.
 void drawGateLenBars(int setIdx){
     int len = clampVal(PatLen[setIdx], 1, 32);
-
     for(int i=0;i<len;i++){
         drawGateLenBar(setIdx, i);
     }
+    drawStepGridLines(240 - 5 - 160, 160, len);
 }
 
 // Zweck: Zeichnet einen einzelnen GateLen-Balken.
@@ -1771,6 +1788,7 @@ void drawGateLenBar(int setIdx, int idx){
     }
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
 }
 
 // Zweck: Zeichnet die GateHold-Checkbox.
@@ -2514,6 +2532,7 @@ static void drawPitchBar(int idx) {
             }
         }
     }
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, PITCH_BAR_Y, PITCH_BAR_H, BAR_GRID_COL);
 }
 
 void drawPitchBars() {
@@ -2521,6 +2540,7 @@ void drawPitchBars() {
     for (int i = 0; i < len; i++) {
         drawPitchBar(i);
     }
+    drawStepGridLines(PITCH_BAR_Y, PITCH_BAR_H, len);
 }
 
 void drawPitchBarRange(int from, int to) {
@@ -2770,7 +2790,7 @@ void adjustPitchStepNote(int delta) {
         int st_old  = ((int)PitchNote1[src] * totalSt) / 256;
         int st_new  = clampVal(st_old + delta, 0, totalSt - 1);
         if (st_new != st_old)
-            PitchNote1[src] = (uint8_t)(st_new * 256 / totalSt);
+            PitchNote1[src] = (uint8_t)((st_new * 256 + 128) / totalSt);
         else if (delta > 0) PitchNote1[src] = 255;
         else if (delta < 0) PitchNote1[src] = 0;
     } else {
@@ -2782,8 +2802,6 @@ void adjustPitchStepNote(int delta) {
         int k_new = clampVal(k_old + delta, 0, nc - 1);
         if (k_new != k_old)
             PitchNote1[src] = (uint8_t)clampVal((k_new * 256 + 128) / nc, 0, 255);
-        else if (delta > 0) PitchNote1[src] = 255;
-        else if (delta < 0) PitchNote1[src] = 0;
     }
     scheduleSaveParams();
     stepLabelShowOctave = false;

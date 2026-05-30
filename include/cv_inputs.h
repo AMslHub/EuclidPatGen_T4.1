@@ -27,6 +27,14 @@ enum CvTarget : uint8_t {
     CV_TARGET_MORPH_CH3,        // Morph nur Kanal 3
     CV_TARGET_SLOT_KEY,         // 1V/Okt White-Keys C..D'' → Slot 0-15 am Pattern-Ende laden
     CV_TARGET_COMPRESS_ALL,    // 0-4095 → 0.0..1.0 Kompression aller 3 Kanäle gleichzeitig
+    CV_TARGET_VAL_PLUS_CH1,    // 0-4095 → +0..+255 additiver Offset auf Values-Output Ch1
+    CV_TARGET_VAL_PLUS_CH2,    // 0-4095 → +0..+255 additiver Offset auf Values-Output Ch2
+    CV_TARGET_VAL_PLUS_CH3,    // 0-4095 → +0..+255 additiver Offset auf Values-Output Ch3
+    CV_TARGET_VAL_PLUS_ALL,    // 0-4095 → +0..+255 additiver Offset auf Values-Output alle Kanäle
+    CV_TARGET_VAL_MINUS_CH1,   // 0-4095 → -0..-255 subtraktiver Offset auf Values-Output Ch1
+    CV_TARGET_VAL_MINUS_CH2,   // 0-4095 → -0..-255 subtraktiver Offset auf Values-Output Ch2
+    CV_TARGET_VAL_MINUS_CH3,   // 0-4095 → -0..-255 subtraktiver Offset auf Values-Output Ch3
+    CV_TARGET_VAL_MINUS_ALL,   // 0-4095 → -0..-255 subtraktiver Offset auf Values-Output alle Kanäle
     CV_TARGET_COUNT
 };
 
@@ -49,6 +57,7 @@ extern float   cvMorph;             // 0.0..1.0 (Values + GateLen A→B Interpol
 extern uint8_t morphChannelMask;    // Bit 0=Ch1, Bit 1=Ch2, Bit 2=Ch3 — welche Kanäle morphen
 extern int8_t  cvSlotKey;           // -1=inaktiv, 0-15=Slot-Index (CV_TARGET_SLOT_KEY)
 extern float   cvCompress[3];       // 0.0=unkomprimiert, 1.0=alle Values auf Mittelwert
+extern int16_t cvValOffset[3];      // -255..+255 additiver Offset auf Values-Output (Val+/Val-)
 
 // Exponentieller Lautstärke-Faktor innerhalb eines Ratchet-Bursts.
 // ratchetIdx=0 → erster Hit, ratchetTotal = Gesamtzahl der Hits im Burst.

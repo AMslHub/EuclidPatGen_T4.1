@@ -21,7 +21,8 @@ uint8_t cvPitchAiDownOct   = 0;
 float   cvMorph            = 0.0f;
 uint8_t morphChannelMask   = 0b111;  // default: alle Kanäle
 
-float cvCompress[3] = {0.0f, 0.0f, 0.0f};  // 0=unkomprimiert, 1=voll auf MW
+float   cvCompress[3]  = {0.0f, 0.0f, 0.0f};  // 0=unkomprimiert, 1=voll auf MW
+int16_t cvValOffset[3] = {0, 0, 0};           // -255..+255 Val+/Val- Offset
 
 // Slot-Sel Hysterese: letzter bestätigter Slot (-1 = noch nicht initialisiert)
 static int8_t   cvSlotSelHyst      = -1;
@@ -33,7 +34,8 @@ static const uint8_t CV_PINS[3] = {CV_IN_1_PIN, CV_IN_2_PIN, CV_IN_3_PIN};
 static const char* const CV_TARGET_LABELS[CV_TARGET_COUNT] = {
     "---", "Rat1", "Rat2", "Rat3", "Swing", "P.Sh",
     "Rot1", "Rot2", "Rot3", "Cmp1", "Cmp2", "Cmp3", "Slot", "Fold", "1V/O",
-    "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3", "PatK", "CmpA"
+    "IV", "AI+", "AI-", "Mrph", "Mrp1", "Mrp2", "Mrp3", "PatK", "CmpA",
+    "V1+", "V2+", "V3+", "VA+", "V1-", "V2-", "V3-", "VA-"
 };
 
 const char* cvTargetLabel(uint8_t t) {
@@ -58,6 +60,7 @@ void applyCvTargets() {
         cvPatRotOffset[ch]  = 0;
         cvCompress[ch]      = 0.0f;
     }
+    cvValOffset[0] = cvValOffset[1] = cvValOffset[2] = 0;
     cvSwingPct         = 0;
     cvPitchShiftOffset = 0;
     cvSlotSel          = -1;
@@ -197,6 +200,34 @@ void applyCvTargets() {
                     if (d < bestDist) { bestDist = d; best = k; }
                 }
                 if (bestDist <= 1) cvSlotKey = (int8_t)best;
+                break;
+            }
+            case CV_TARGET_VAL_PLUS_CH1:
+                cvValOffset[0] += (int16_t)((cv * 255u) / 4095u);
+                break;
+            case CV_TARGET_VAL_PLUS_CH2:
+                cvValOffset[1] += (int16_t)((cv * 255u) / 4095u);
+                break;
+            case CV_TARGET_VAL_PLUS_CH3:
+                cvValOffset[2] += (int16_t)((cv * 255u) / 4095u);
+                break;
+            case CV_TARGET_VAL_PLUS_ALL: {
+                int16_t off = (int16_t)((cv * 255u) / 4095u);
+                cvValOffset[0] += off; cvValOffset[1] += off; cvValOffset[2] += off;
+                break;
+            }
+            case CV_TARGET_VAL_MINUS_CH1:
+                cvValOffset[0] -= (int16_t)((cv * 255u) / 4095u);
+                break;
+            case CV_TARGET_VAL_MINUS_CH2:
+                cvValOffset[1] -= (int16_t)((cv * 255u) / 4095u);
+                break;
+            case CV_TARGET_VAL_MINUS_CH3:
+                cvValOffset[2] -= (int16_t)((cv * 255u) / 4095u);
+                break;
+            case CV_TARGET_VAL_MINUS_ALL: {
+                int16_t off = (int16_t)((cv * 255u) / 4095u);
+                cvValOffset[0] -= off; cvValOffset[1] -= off; cvValOffset[2] -= off;
                 break;
             }
             default:
