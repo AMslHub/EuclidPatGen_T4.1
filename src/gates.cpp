@@ -205,7 +205,8 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
             v = (vv > 255u) ? 255u : (uint8_t)vv;
         }
         if (cvValOffset[ch] != 0) {
-            int vv = (int)v + (int)cvValOffset[ch];
+            float scale = (255.0f + (float)cvValOffset[ch]) / 255.0f;
+            int vv = (int)((float)v * scale + 0.5f);
             v = (vv < 0) ? 0 : (vv > 255) ? 255 : (uint8_t)vv;
         }
 

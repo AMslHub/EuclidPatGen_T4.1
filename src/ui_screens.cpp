@@ -26,11 +26,11 @@ static int  valStepEditCursor[3]   = {0, 0, 0};
 static bool condPresetMode = false;
 static int  condPresetCh   = -1;
 static int  condPresetIdx  = 0;
-static const int COND_PRESET_COUNT = 16;
+static const int COND_PRESET_COUNT = 18;
 static const char* const condPresetNames[COND_PRESET_COUNT] = {
     "4-Bar",   "ACC23",   "Accent",  "Alternate","Bounce",  "Chaos",
     "Fill",    "Ghost",   "Groove",  "Heavy",    "HUMAN234","Humanize",
-    "Punchy",  "Stutter", "Swell",   "Thin Out"
+    "Punchy",  "Stutter", "Swell",   "Thin Out", "All Odd", "All Even"
 };
 static int lastXYPlayIdx[3]    = { -1, -1, -1 };
 static int lastXYDotIdx[3]     = { -1, -1, -1 };
@@ -2834,6 +2834,7 @@ void flashPitchBars() {
         tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1, PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_BLACK);
         delay(60);
     }
+    discardPendingTicks();  // Verhindert Tick-Aufholburst nach den delay()-Calls
 }
 
 static int findBestChordMatch(uint8_t scaleIdx, uint8_t iMask) {
@@ -4390,6 +4391,20 @@ void applyCondPreset(int ch, int preset) {
         }
         break;
     }
+    case 16: {  // All Odd: alle Hits COND_ODD ohne Action (Template für manuelle Action-Zuweisung)
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_ODD;
+            condActionArr[ch][hits[i]] = COND_ACT_NONE;
+        }
+        break;
+    }
+    case 17: {  // All Even: alle Hits COND_EVEN ohne Action
+        for (int i = 0; i < hitCount; i++) {
+            condTypeArr[ch][hits[i]]   = COND_EVEN;
+            condActionArr[ch][hits[i]] = COND_ACT_NONE;
+        }
+        break;
+    }
     default: break;
     }
 
@@ -4670,4 +4685,5 @@ void flashValBars(int ch) {
         tft.drawRect(x0 - 1, y0 - 1, totalW + 2, h + 2, ILI9341_DARKGREY);
         delay(60);
     }
+    discardPendingTicks();  // Verhindert Tick-Aufholburst nach den delay()-Calls
 }

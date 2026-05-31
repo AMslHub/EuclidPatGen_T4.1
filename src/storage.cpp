@@ -595,7 +595,20 @@ bool loadSong(int songNum) {
     char path[16];
     getSongPath(songNum, path);
     File f = SD.open(path);
-    if (!f) return false;
+    if (!f) {
+        if (getSongUsedBit(songNum)) return false;  // Datei fehlt, aber Song war gespeichert → Fehler
+        // Ungenutzter Song → alle 16 Slots löschen (leeres Projekt)
+        for (int i = 0; i < SLOT_COUNT; i++) {
+            yield();
+            char sp[16];
+            getSlotPath(i, sp);
+            SD.remove(sp);
+        }
+        SlotsHeader sh = { SD_MAGIC_SLOTS, 0 };
+        writeSlotsHeader(sh);
+        activeSlot = -1;
+        return true;
+    }
 
     uint16_t hdr[2];
     if (f.size() < sizeof(hdr)) { f.close(); return false; }
