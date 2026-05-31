@@ -1222,6 +1222,7 @@ void loop() {
     drawPitchControls();
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
+    discardPendingTicks();  // Tick-Burst nach längerem Balken-Redraw verhindern
   }
 
   // CV-Keyboard Slot-Load: am Kanal-1-Pattern-Ende den per 1V/Oct-Key gewählten Slot laden.

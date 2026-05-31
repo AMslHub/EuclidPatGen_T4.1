@@ -2516,15 +2516,13 @@ static void drawPitchBar(int idx) {
     int src    = pitchRotate ? layerRotatedSrc(0, effIdx) : effIdx;
     bool hit   = patternIsHit(0, idx);
 
-    tft.fillRect(x, PITCH_BAR_Y, xN - x, PITCH_BAR_H, ILI9341_BLACK);
-
     int bottom = PITCH_BAR_Y + PITCH_BAR_H;
-
     bool isCursor = stepEditActive && (idx == stepEditCursor);
 
     if (pitchDisplayMode) {
-        // Raw PitchNote1[] value as proportional bar height for drawing
-        int fillH = (int)((PitchNote1[src] * (long)PITCH_BAR_H) / 255L);
+        int fillH  = (int)((PitchNote1[src] * (long)PITCH_BAR_H) / 255L);
+        int emptyH = PITCH_BAR_H - fillH;
+        if (emptyH > 0) tft.fillRect(x, PITCH_BAR_Y, xN - x, emptyH, ILI9341_BLACK);
         if (fillH > 0) {
             int midiQ = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
                                        pitchRoot, pitchIntervalMask);
@@ -2538,14 +2536,16 @@ static void drawPitchBar(int idx) {
                                    pitchRoot, pitchIntervalMask);
         midi = clampVal(midi + ((int)pitchShift + (int)OctaveNote1[src]) * 12, 36, 96);
         bool isRoot = ((midi % 12) == (int)pitchRoot);
-        int noteY = pitchNoteToBarY(midi);
-        int fillH = bottom - noteY;
+        int noteY  = pitchNoteToBarY(midi);
+        int fillH  = bottom - noteY;
+        int emptyH = PITCH_BAR_H - fillH;  // = noteY - PITCH_BAR_Y
+        if (emptyH > 0) tft.fillRect(x, PITCH_BAR_Y, xN - x, emptyH, ILI9341_BLACK);
         if (fillH > 0) {
             uint16_t col = hit ? (isCursor ? ILI9341_YELLOW : (isRoot ? ILI9341_ORANGE : ILI9341_WHITE))
                                : (isCursor ? 0x8400          : (isRoot ? 0x6200         : 0x4208));
             tft.fillRect(x, noteY, w, fillH, col);
         }
-        // Restore octave grid lines that pass through this column.
+        // Restore octave grid lines across the full bar height.
         static const int PITCH_OCT[] = { 48, 60, 72, 84 };
         for (int i = 0; i < 4; i++) {
             int gy = pitchNoteToBarY(PITCH_OCT[i]);
