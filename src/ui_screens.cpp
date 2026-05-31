@@ -18,6 +18,7 @@ static inline void fillScreenIfNeeded() {
 }
 
 static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
+static int dragLockIdx = -1;  // Gesperrter Balken-Index für Drag-Hysterese (-1 = nicht aktiv)
 static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave, 3=iv
 static bool valStepEditActive[3]   = {false, false, false};
 static int  valStepEditCursor[3]   = {0, 0, 0};
@@ -1566,6 +1567,7 @@ void handleEUCLPARAM(int idx, int mapX, int mapY, uint16_t tipPos){
 // Side Effects: veraendert Values/Hold/Rotate, schreibt auf TFT, speichert EEPROM.
 // Assumptions: setIdx in 0..2; mapX/mapY sind gemappt.
 void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
+    dragLockIdx = -1;
     if(tipPos == UL){
         requestNavigateTo(setIdx == 0 ? PITCH1 : (setIdx == 1) ? EUCLPARAM2 : EUCLPARAM3);
         return;
@@ -1654,6 +1656,7 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
     }
 
     int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
+    dragLockIdx = idx;
     if (valuesEditMode[setIdx] == 1) {
         int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
@@ -1697,7 +1700,18 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
         return;
     }
 
-    int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
+    // Hysterese: Balken wechselt erst wenn X den Mittelpunkt des Kandidaten überschreitet.
+    int candidateIdx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
+    if (dragLockIdx >= 0 && dragLockIdx < len && candidateIdx != dragLockIdx) {
+        int mid = (x0 + (candidateIdx * totalW) / len +
+                   x0 + ((candidateIdx + 1) * totalW) / len) / 2;
+        if ((candidateIdx > dragLockIdx && mapX >= mid) ||
+            (candidateIdx < dragLockIdx && mapX <  mid))
+            dragLockIdx = candidateIdx;
+    } else if (dragLockIdx < 0 || dragLockIdx >= len) {
+        dragLockIdx = candidateIdx;
+    }
+    int idx = dragLockIdx;
     if (valuesEditMode[setIdx] == 1) {
         int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
@@ -1837,6 +1851,7 @@ void drawRotateGateLenCheckbox(int setIdx){
 // Side Effects: veraendert GateLen/GateHold/Rotate, schreibt auf TFT.
 // Assumptions: setIdx in 0..2; mapX/mapY sind gemappt.
 void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
+    dragLockIdx = -1;
     if(tipPos == UL){
         requestNavigateTo((setIdx == 0) ? VALUES1 : (setIdx == 1) ? VALUES2 : VALUES3);
         return;
@@ -1878,6 +1893,7 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     }
 
     int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
+    dragLockIdx = idx;
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
@@ -1900,7 +1916,17 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
         return;
     }
 
-    int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
+    int candidateIdx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
+    if (dragLockIdx >= 0 && dragLockIdx < len && candidateIdx != dragLockIdx) {
+        int mid = (x0 + (candidateIdx * totalW) / len +
+                   x0 + ((candidateIdx + 1) * totalW) / len) / 2;
+        if ((candidateIdx > dragLockIdx && mapX >= mid) ||
+            (candidateIdx < dragLockIdx && mapX <  mid))
+            dragLockIdx = candidateIdx;
+    } else if (dragLockIdx < 0 || dragLockIdx >= len) {
+        dragLockIdx = candidateIdx;
+    }
+    int idx = dragLockIdx;
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
