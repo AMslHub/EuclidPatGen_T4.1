@@ -465,6 +465,9 @@ void setup() {
   tft.begin(40000000); // SPI Speed 40 MHz (60 MHz führte zu DMA-Instabilität)
   tft.fillScreen(ILI9341_BLACK);
   tft.setRotation(3); // Screen rotation
+  tft.useFrameBuffer(true);      // Framebuffer im OCRAM (153 KB) — alle Draws gehen in RAM statt SPI
+  tft.fillScreen(ILI9341_BLACK); // Framebuffer initialisieren (malloc ist uninit)
+  tft.updateScreenAsync(true);   // Kontinuierlicher DMA-Refresh (~32 Hz) — blockiert nie mehr den Main-Loop
 
   ts.begin();
 
@@ -1222,7 +1225,6 @@ void loop() {
     drawPitchControls();
     drawPitchBars();
     drawPitchPlayhead(cntCh[0]);
-    discardPendingTicks();  // Tick-Burst nach längerem Balken-Redraw verhindern
   }
 
   // CV-Keyboard Slot-Load: am Kanal-1-Pattern-Ende den per 1V/Oct-Key gewählten Slot laden.
