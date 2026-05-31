@@ -1225,9 +1225,10 @@ void drawRatchetBar(int setIdx, int idx) {
     uint8_t rval = (uint8_t)clampVal((int)RatchetArr[setIdx][src], 1, 4);
     int fillH = (rval * h) / 4;  // 1→40, 2→80, 3→120, 4→160
     bool active = patternIsHit(setIdx, idx);
-    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
+    int emptyH = h - fillH;
+    if (emptyH > 0) tft.fillRect(x, y0,          xNext - x, emptyH, ILI9341_BLACK);
     if (fillH > 0) {
-        int y = y0 + h - fillH;
+        int y = y0 + emptyH;
         tft.fillRect(x, y, w, fillH, active ? ILI9341_YELLOW : ILI9341_DARKGREY);
         if (w >= 10 && fillH >= 12) {
             tft.setFont(Arial_12);
@@ -1288,10 +1289,11 @@ void drawIvStepBar(int setIdx, int idx) {
     int src = RotateIvStep ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     uint8_t ivVal = IvStep1[src];
     bool active = patternIsHit(setIdx, idx);
-    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
+    int fillH = ivVal > 0 ? ((int)ivVal * h) / 7 : 0;
+    int emptyH = h - fillH;
+    if (emptyH > 0) tft.fillRect(x, y0,          xNext - x, emptyH, ILI9341_BLACK);
     if (ivVal > 0) {
-        int fillH = ((int)ivVal * h) / 7;
-        int y = y0 + h - fillH;
+        int y = y0 + emptyH;
         tft.fillRect(x, y, w, fillH, active ? ILI9341_GREEN : ILI9341_DARKGREY);
         if (w >= 10 && fillH >= 12) {
             tft.setFont(Arial_12);
@@ -1403,12 +1405,9 @@ void drawValuesBar(int setIdx, int idx){
     uint16_t hitCol  = abEditMode ? 0xFD20 : ILI9341_WHITE;
     uint16_t missCol = abEditMode ? 0x8400 : ILI9341_DARKGREY;
 
-    // Clear full step area
-    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
-    if(fillH > 0){
-        int y = y0 + h - fillH;
-        tft.fillRect(x, y, w, fillH, active ? hitCol : missCol);
-    }
+    int emptyH = h - fillH;
+    if (emptyH > 0) tft.fillRect(x, y0,          xNext - x, emptyH, ILI9341_BLACK);
+    if (fillH  > 0) tft.fillRect(x, y0 + emptyH, w,         fillH,  active ? hitCol : missCol);
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
     if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
@@ -1794,12 +1793,9 @@ void drawGateLenBar(int setIdx, int idx){
     uint16_t hitCol  = abEditMode ? 0xFD20 : ILI9341_WHITE;
     uint16_t missCol = abEditMode ? 0x8400 : ILI9341_DARKGREY;
 
-    // Clear full step area
-    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
-    if(fillH > 0){
-        int y = y0 + h - fillH;
-        tft.fillRect(x, y, w, fillH, active ? hitCol : missCol);
-    }
+    int emptyH = h - fillH;
+    if (emptyH > 0) tft.fillRect(x, y0,          xNext - x, emptyH, ILI9341_BLACK);
+    if (fillH  > 0) tft.fillRect(x, y0 + emptyH, w,         fillH,  active ? hitCol : missCol);
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
     if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
