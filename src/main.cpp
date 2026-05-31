@@ -16,6 +16,8 @@ XPT2046_Touchscreen ts(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
 ILI9341_t3n tft = ILI9341_t3n(
   TFT_CS_PIN, TFT_DC_PIN, TFT_RST_PIN, TFT_MOSI_PIN, TFT_SCLK_PIN, TFT_MISO_PIN
 );
+// Non-cacheable OCRAM: arm_dcache_flush() ist darauf ein No-op → kein Cache-Flush-Overhead im DMA-ISR
+DMAMEM static uint16_t tft_framebuf[320 * 240];
 
 // ------- M O D U L G L O B A LE   V A R I A B L E N --------
 // Grafikparameter
@@ -465,9 +467,11 @@ void setup() {
   tft.begin(40000000); // SPI Speed 40 MHz (60 MHz führte zu DMA-Instabilität)
   tft.fillScreen(ILI9341_BLACK);
   tft.setRotation(3); // Screen rotation
-  tft.useFrameBuffer(true);      // Framebuffer im OCRAM (153 KB) — alle Draws gehen in RAM statt SPI
-  tft.fillScreen(ILI9341_BLACK); // Framebuffer initialisieren (malloc ist uninit)
-  tft.updateScreenAsync(true);   // Kontinuierlicher DMA-Refresh (~32 Hz) — blockiert nie mehr den Main-Loop
+  // DMAMEM-Puffer: non-cacheable → arm_dcache_flush() ist No-op → kein Cache-Flush-Overhead
+  // tft_framebuf ist statisch initialisiert (=0 = schwarz), kein extra fillScreen nötig
+  tft.setFrameBuffer(tft_framebuf); // Externen Puffer setzen (verhindert internen malloc)
+  tft.useFrameBuffer(true);         // Framebuffer-Modus aktivieren
+  tft.updateScreenAsync(true);      // Kontinuierlicher DMA-Refresh (~32 Hz)
 
   ts.begin();
 

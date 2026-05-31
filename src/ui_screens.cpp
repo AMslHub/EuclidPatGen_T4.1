@@ -2849,14 +2849,13 @@ void togglePitchStepChromatic() {
 bool getPitchChordMode() { return pitchChordMode; }
 
 void flashPitchBars() {
-    // Nur den Rahmen der Balkenbox zweimal orange blinken lassen (kein Balken-Flackern)
     for (int i = 0; i < 2; i++) {
         tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1, PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_ORANGE);
-        delay(80);
+        delay(25);
         tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1, PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_BLACK);
-        delay(60);
+        delay(15);
     }
-    discardPendingTicks();  // Verhindert Tick-Aufholburst nach den delay()-Calls
+    discardPendingTicks();
 }
 
 static int findBestChordMatch(uint8_t scaleIdx, uint8_t iMask) {
@@ -4703,9 +4702,9 @@ void flashValBars(int ch) {
     int x0 = 10, y0 = 240 - 5 - 160, h = 160, totalW = 320 - 2 * x0;
     for (int i = 0; i < 2; i++) {
         tft.drawRect(x0 - 1, y0 - 1, totalW + 2, h + 2, ILI9341_ORANGE);
-        delay(80);
+        delay(25);
         tft.drawRect(x0 - 1, y0 - 1, totalW + 2, h + 2, ILI9341_DARKGREY);
-        delay(60);
+        delay(15);
     }
-    discardPendingTicks();  // Verhindert Tick-Aufholburst nach den delay()-Calls
+    discardPendingTicks();
 }
