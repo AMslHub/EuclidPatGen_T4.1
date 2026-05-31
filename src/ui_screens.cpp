@@ -1647,13 +1647,13 @@ void handleVALUES(int setIdx, int mapX, int mapY, uint16_t tipPos){
     int x0 = 10;
     int y0 = 240 - 5 - 160;
     int h  = 160;
-    int w  = (320 - 2 * x0) / len;
+    int totalW = 320 - 2 * x0;  // = 300
 
-    if(mapX < x0 || mapX >= (x0 + len * w) || mapY < y0 || mapY >= (y0 + h)){
+    if(mapX < x0 || mapX >= (x0 + totalW) || mapY < y0 || mapY >= (y0 + h)){
         return;
     }
 
-    int idx = (mapX - x0) / w;
+    int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     if (valuesEditMode[setIdx] == 1) {
         int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
@@ -1691,13 +1691,13 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
     int x0 = 10;
     int y0 = 240 - 5 - 160;
     int h  = 160;
-    int w  = (320 - 2 * x0) / len;
+    int totalW = 320 - 2 * x0;  // = 300
 
-    if(mapX < x0 || mapX >= (x0 + len * w) || mapY < y0 || mapY >= (y0 + h)){
+    if(mapX < x0 || mapX >= (x0 + totalW) || mapY < y0 || mapY >= (y0 + h)){
         return;
     }
 
-    int idx = (mapX - x0) / w;
+    int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     if (valuesEditMode[setIdx] == 1) {
         int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
@@ -1871,13 +1871,13 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
     int x0 = 10;
     int y0 = 240 - 5 - 160;
     int h  = 160;
-    int w  = (320 - 2 * x0) / len;
+    int totalW = 320 - 2 * x0;  // = 300
 
-    if(mapX < x0 || mapX >= (x0 + len * w) || mapY < y0 || mapY >= (y0 + h)){
+    if(mapX < x0 || mapX >= (x0 + totalW) || mapY < y0 || mapY >= (y0 + h)){
         return;
     }
 
-    int idx = (mapX - x0) / w;
+    int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
@@ -1894,13 +1894,13 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
     int x0 = 10;
     int y0 = 240 - 5 - 160;
     int h  = 160;
-    int w  = (320 - 2 * x0) / len;
+    int totalW = 320 - 2 * x0;  // = 300
 
-    if(mapX < x0 || mapX >= (x0 + len * w) || mapY < y0 || mapY >= (y0 + h)){
+    if(mapX < x0 || mapX >= (x0 + totalW) || mapY < y0 || mapY >= (y0 + h)){
         return;
     }
 
-    int idx = (mapX - x0) / w;
+    int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
