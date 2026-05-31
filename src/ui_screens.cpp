@@ -3913,28 +3913,28 @@ void navigateToScreen(uint16_t target) {
 // Navigation-Übersicht: 4×4-Grid aller Screens.
 // fromState = Screen von dem aus NAV geöffnet wurde (wird hervorgehoben).
 // ---------------------------------------------------------------------------
-static const int NAV_COLS = 4, NAV_ROWS = 4;
-static const int NAV_TW   = 80, NAV_TH  = 60;
+static const int NAV_COLS = 5, NAV_ROWS = 4;
+static const int NAV_TW   = 64, NAV_TH  = 60;
 
 static const uint16_t NAV_STATE[NAV_ROWS][NAV_COLS] = {
-    { EUCLCIRCS,  PERFORMANCE, PITCH1,   CV_CONFIG },
-    { EUCLPARAM1, VALUES1,     GATELEN1, XY1       },
-    { EUCLPARAM2, VALUES2,     GATELEN2, XY2       },
-    { EUCLPARAM3, VALUES3,     GATELEN3, XY3       },
+    { EUCLCIRCS,  PERFORMANCE, PITCH1,   CV_CONFIG, SONG  },
+    { EUCLPARAM1, VALUES1,     GATELEN1, XY1,       COND1 },
+    { EUCLPARAM2, VALUES2,     GATELEN2, XY2,       COND2 },
+    { EUCLPARAM3, VALUES3,     GATELEN3, XY3,       COND3 },
 };
 
 static const char* const NAV_L1[NAV_ROWS][NAV_COLS] = {
-    { "",    "",    "",    ""    },
-    { "Ch1", "Ch1", "Ch1", "Ch1" },
-    { "Ch2", "Ch2", "Ch2", "Ch2" },
-    { "Ch3", "Ch3", "Ch3", "Ch3" },
+    { "",    "",    "",    "",    ""    },
+    { "Ch1", "Ch1", "Ch1", "Ch1", "Ch1" },
+    { "Ch2", "Ch2", "Ch2", "Ch2", "Ch2" },
+    { "Ch3", "Ch3", "Ch3", "Ch3", "Ch3" },
 };
 
 static const char* const NAV_L2[NAV_ROWS][NAV_COLS] = {
-    { "Circles", "Perform", "Pitch",  "CV Cfg" },
-    { "Param",   "Values",  "Gate",   "XY"     },
-    { "Param",   "Values",  "Gate",   "XY"     },
-    { "Param",   "Values",  "Gate",   "XY"     },
+    { "Circles", "Perform", "Pitch",  "CV Cfg", "Song" },
+    { "Param",   "Values",  "Gate",   "XY",     "Cond" },
+    { "Param",   "Values",  "Gate",   "XY",     "Cond" },
+    { "Param",   "Values",  "Gate",   "XY",     "Cond" },
 };
 
 // Hintergrundfarben pro Zeile (global / Ch1 / Ch2 / Ch3)
@@ -3989,7 +3989,7 @@ void drawNavScreen(uint16_t fromState) {
 // Enc3-Drehung auf NAV: Cursor verschieben, nur die zwei betroffenen Tiles neu zeichnen.
 void moveNavCursor(int delta) {
     int oldCursor = navCursor;
-    navCursor = ((navCursor + delta) % 16 + 16) % 16;
+    navCursor = ((navCursor + delta) % 20 + 20) % 20;
     if (navCursor == oldCursor) return;
     int r1 = oldCursor / NAV_COLS, c1 = oldCursor % NAV_COLS;
     int r2 = navCursor  / NAV_COLS, c2 = navCursor  % NAV_COLS;
