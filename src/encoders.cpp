@@ -338,7 +338,11 @@ static void handleCondEncoder(int ch, int enc, int delta) {
         condStepCursor[ch] = cursor;
         int newPage = cursor / 8;
         if (newPage != oldPage) {
-            drawCondScreen(ch);   // page changed → full redraw
+            // Kein fillScreen: drawCondCell löscht seinen Spaltenbereich selbst.
+            // Labels ändern sich nicht → drawCondLabels entfällt.
+            drawCondTitle(ch);
+            for (int c = 0; c < 8; c++) drawCondCell(ch, newPage, c);
+            discardPendingTicks();  // Akkumulierte Ticks nach dem Redraw verwerfen
         } else {
             drawCondCell(ch, newPage, oldCursor % 8);  // erase old border
             drawCondCell(ch, newPage, cursor    % 8);  // draw new border
