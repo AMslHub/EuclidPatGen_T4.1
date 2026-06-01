@@ -4601,8 +4601,9 @@ void drawCondPlayhead(int setIdx, unsigned int step) {
 // Briefly flashes the title bar red as VLP feedback.
 void flashCondBars(int setIdx) {
     tft.fillRect(0, 0, 320, 40, ILI9341_RED);
-    delay(120);
+    delay(40);
     drawCondTitle(setIdx);
+    discardPendingTicks();
 }
 
 // ---------------------------------------------------------------------------
