@@ -1936,10 +1936,14 @@ static void getXYDotXY(int setIdx, int stepIdx, int &dotX, int &dotY) {
         int ri = 3 - oct;  // Zeilenindex: 0=oben(+3)..6=unten(-3)
         dotY = 40 + (2 * ri + 1) * 90 / 7;
     } else if (setIdx == 0 && xyPadPitchMode > 0) {
-        // Y-Bereich dynamisch nach PV-Modus und pitchSpread skaliert
+        // Dot zeigt tatsächlich klingende Tonhöhe (inkl. pitchShift + OctaveNote1)
         int mr = calcPvMaxRaw();
         int pitchSrc = pitchRotate ? layerRotatedSrc(0, stepIdx) : layerBaseSrc(0, stepIdx);
-        int scaledY = ((int)PitchNote1[pitchSrc] * 179) / mr;
+        int octSrc   = RotateOctave[0] ? layerRotatedSrc(0, stepIdx) : layerBaseSrc(0, stepIdx);
+        int shiftSteps = (int)pitchShift + (int)OctaveNote1[octSrc];
+        int shiftComp  = shiftSteps * mr / (int)pitchSpread;
+        int displayVal = clampVal((int)PitchNote1[pitchSrc] + shiftComp, 0, mr);
+        int scaledY = (displayVal * 179) / mr;
         if (scaledY > 179) scaledY = 179;
         dotY = 40 + 179 - scaledY;
     } else {
@@ -2309,6 +2313,14 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
             int mr = calcPvMaxRaw();
             int g = map(mapY, y + h - 1, y, 0, mr);
             g = clampVal(g, 0, mr);
+            // pitchShift + OctaveNote1 kompensieren: Y-Position = tatsächlich klingende Tonhöhe
+            {
+                int octSrc = RotateOctave[0] ? euclidRotatedSrc(idx, len, effRotSel)
+                                             : euclidRotatedSrc(idx, len, effRot);
+                int shiftSteps = (int)pitchShift + (int)OctaveNote1[octSrc];
+                int shiftComp  = shiftSteps * mr / (int)pitchSpread;
+                g = clampVal(g - shiftComp, 0, mr);
+            }
             // Y-Position auf nächste Skalennote quantisieren
             {
                 int noteList[60];
