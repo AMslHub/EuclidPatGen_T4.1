@@ -2282,6 +2282,9 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
     int effRot    = clampVal(PatRot[setIdx] + (int)cvPatRotOffset[setIdx], -(len - 1), len - 1);
     int effRotSel = clampVal(PatRot[setIdx] + PatRotSel[setIdx] + (int)cvPatRotOffset[setIdx],
                              -(len - 1), len - 1);
+    // Pitch wird nur auf Hit-Steps geschrieben/ausgegeben — so bleibt der Pitch-CV zwischen
+    // Hits am letzten gespielten Wert, unabhängig vom pitchHold-Flag.
+    bool isHit = EPatArr[setIdx][euclidRotatedSrc(idx, len, effRot)];
 
     if (setIdx == 0 && xyPadPitchMode == 4) {
         // RO-Modus: X→Ratchet (1-4), Y→Oktave (-3..+3)
@@ -2302,7 +2305,7 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
         v = clampVal(v, 0, 255);
         uint8_t *xyValArr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
         xyValArr[writeValIdx] = (uint8_t)v;
-        if (setIdx == 0 && xyPadPitchMode > 0) {
+        if (setIdx == 0 && xyPadPitchMode > 0 && isHit) {
             int mr = calcPvMaxRaw();
             int g = map(mapY, y + h - 1, y, 0, mr);
             g = clampVal(g, 0, mr);
