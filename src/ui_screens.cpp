@@ -2315,7 +2315,7 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
                 int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot,
                                        pitchIntervalMask, noteList);
                 if (nc > 0) {
-                    int noteIdx = clampVal(((int)g * nc + nc / 2) / (mr + 1), 0, nc - 1);
+                    int noteIdx = clampVal((int)g * nc / 256, 0, nc - 1);
                     g = clampVal((noteIdx * 256 + 128) / nc, 0, 255);
                 }
             }
