@@ -1699,18 +1699,10 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
         return;
     }
 
-    // Hysterese: Balken wechselt erst wenn X den Mittelpunkt des Kandidaten überschreitet.
-    int candidateIdx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
-    if (dragLockIdx >= 0 && dragLockIdx < len && candidateIdx != dragLockIdx) {
-        int mid = (x0 + (candidateIdx * totalW) / len +
-                   x0 + ((candidateIdx + 1) * totalW) / len) / 2;
-        if ((candidateIdx > dragLockIdx && mapX >= mid) ||
-            (candidateIdx < dragLockIdx && mapX <  mid))
-            dragLockIdx = candidateIdx;
-    } else if (dragLockIdx < 0 || dragLockIdx >= len) {
-        dragLockIdx = candidateIdx;
-    }
-    int idx = dragLockIdx;
+    // X-Lock: beim ersten Touch gewählter Balken bleibt für den gesamten Drag gesperrt.
+    int idx = (dragLockIdx >= 0 && dragLockIdx < len)
+            ? dragLockIdx
+            : clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     if (valuesEditMode[setIdx] == 1) {
         int writeIdx = RotateRatchet[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
         int v = clampVal(1 + (y0 + h - mapY) * 4 / h, 1, 4);
@@ -1912,17 +1904,10 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
         return;
     }
 
-    int candidateIdx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
-    if (dragLockIdx >= 0 && dragLockIdx < len && candidateIdx != dragLockIdx) {
-        int mid = (x0 + (candidateIdx * totalW) / len +
-                   x0 + ((candidateIdx + 1) * totalW) / len) / 2;
-        if ((candidateIdx > dragLockIdx && mapX >= mid) ||
-            (candidateIdx < dragLockIdx && mapX <  mid))
-            dragLockIdx = candidateIdx;
-    } else if (dragLockIdx < 0 || dragLockIdx >= len) {
-        dragLockIdx = candidateIdx;
-    }
-    int idx = dragLockIdx;
+    // X-Lock: beim ersten Touch gewählter Balken bleibt für den gesamten Drag gesperrt.
+    int idx = (dragLockIdx >= 0 && dragLockIdx < len)
+            ? dragLockIdx
+            : clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
@@ -3214,22 +3199,22 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     }
 
     // Bar area — exclude UL zone (back arrow), set raw pitch value
+    dragLockIdx = -1;  // Reset für folgenden Drag
     if (!(mapX < 80 && mapY < 80) &&
         mapX >= PITCH_BAR_X && mapX < PITCH_BAR_X + PITCH_BAR_W &&
         mapY >= PITCH_BAR_Y && mapY < PITCH_BAR_Y + PITCH_BAR_H) {
         int len = clampVal(PatLen[0], 1, 32);
-        int idx = ((mapX - PITCH_BAR_X) * len) / PITCH_BAR_W;
-        if (idx >= 0 && idx < len) {
-            int v = map(mapY, PITCH_BAR_Y + PITCH_BAR_H - 1, PITCH_BAR_Y, 0, 255);
-            v -= (int)pitchShift * 255 / (int)pitchSpread;
-            v = clampVal(v, 0, 255);
-            uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
-            int effIdx = foldPitchIdx(idx, len, effFold);
-            int src = pitchRotate ? layerRotatedSrc(0, effIdx) : effIdx;
-            PitchNote1[src] = (uint8_t)v;
-            scheduleSaveParams();
-            drawPitchBar(idx);
-        }
+        int idx = clampVal(((mapX - PITCH_BAR_X) * len + len - 1) / PITCH_BAR_W, 0, len - 1);
+        dragLockIdx = idx;  // Balken für folgenden Drag sperren
+        int v = map(mapY, PITCH_BAR_Y + PITCH_BAR_H - 1, PITCH_BAR_Y, 0, 255);
+        v -= (int)pitchShift * 255 / (int)pitchSpread;
+        v = clampVal(v, 0, 255);
+        uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
+        int effIdx = foldPitchIdx(idx, len, effFold);
+        int src = pitchRotate ? layerRotatedSrc(0, effIdx) : effIdx;
+        PitchNote1[src] = (uint8_t)v;
+        scheduleSaveParams();
+        drawPitchBar(idx);
     }
 }
 
@@ -3238,8 +3223,11 @@ void handlePITCHDrag(int mapX, int mapY) {
     if (mapX >= PITCH_BAR_X && mapX < PITCH_BAR_X + PITCH_BAR_W &&
         mapY >= PITCH_BAR_Y && mapY < PITCH_BAR_Y + PITCH_BAR_H) {
         int len = clampVal(PatLen[0], 1, 32);
-        int idx = ((mapX - PITCH_BAR_X) * len) / PITCH_BAR_W;
-        if (idx >= 0 && idx < len) {
+        // X-Lock: beim ersten Touch gewählter Balken bleibt für den gesamten Drag gesperrt.
+        int idx = (dragLockIdx >= 0 && dragLockIdx < len)
+                ? dragLockIdx
+                : clampVal(((mapX - PITCH_BAR_X) * len + len - 1) / PITCH_BAR_W, 0, len - 1);
+        {
             int v = map(mapY, PITCH_BAR_Y + PITCH_BAR_H - 1, PITCH_BAR_Y, 0, 255);
             v -= (int)pitchShift * 255 / (int)pitchSpread;
             v = clampVal(v, 0, 255);
