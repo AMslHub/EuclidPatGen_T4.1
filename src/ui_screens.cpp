@@ -2275,34 +2275,38 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
     int oldDotX, oldDotY;
     getXYDotXY(setIdx, idx, oldDotX, oldDotY);
 
-    // effRotSel muss mit outputValuesForStep/gateLenForStep übereinstimmen
+    // Basis-Rotation (ohne PatRotSel) und Selektion-Rotation — müssen mit
+    // outputValuesForStep/gateLenForStep/getXYDotXY übereinstimmen.
+    // Auch wenn das Rotate-Flag nicht gesetzt ist, wird die Basis-Rotation (effRot)
+    // immer angewendet, damit Schreib- und Leseindex identisch sind.
+    int effRot    = clampVal(PatRot[setIdx] + (int)cvPatRotOffset[setIdx], -(len - 1), len - 1);
     int effRotSel = clampVal(PatRot[setIdx] + PatRotSel[setIdx] + (int)cvPatRotOffset[setIdx],
                              -(len - 1), len - 1);
 
     if (setIdx == 0 && xyPadPitchMode == 4) {
-        // RO-Modus: X→Ratchet (1-4), Y→Oktave (-3..+3), kontinuierlich (nicht quantisiert)
+        // RO-Modus: X→Ratchet (1-4), Y→Oktave (-3..+3)
         int rat = (mapX - x) * 4 / w + 1;
         rat = clampVal(rat, 1, 4);
         int oct = (y + h - 1 - mapY) * 7 / h - 3;  // unten=-3, oben=+3
         oct = clampVal(oct, -3, 3);
-        int rWriteIdx = RotateRatchet[0] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
-        int oWriteIdx = RotateOctave[0]  ? euclidRotatedSrc(idx, len, effRotSel) : idx;
+        int rWriteIdx = RotateRatchet[0] ? euclidRotatedSrc(idx, len, effRotSel)
+                                         : euclidRotatedSrc(idx, len, effRot);
+        int oWriteIdx = RotateOctave[0]  ? euclidRotatedSrc(idx, len, effRotSel)
+                                         : euclidRotatedSrc(idx, len, effRot);
         RatchetArr[0][rWriteIdx] = (uint8_t)rat;
         OctaveNote1[oWriteIdx] = (int8_t)oct;
     } else {
-        int writeValIdx = RotateValues[setIdx] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
+        int writeValIdx = RotateValues[setIdx] ? euclidRotatedSrc(idx, len, effRotSel)
+                                               : euclidRotatedSrc(idx, len, effRot);
         int v = map(mapX, x, x + w - 1, 0, 255);
         v = clampVal(v, 0, 255);
         uint8_t *xyValArr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
         xyValArr[writeValIdx] = (uint8_t)v;
         if (setIdx == 0 && xyPadPitchMode > 0) {
-            int effRotSel0 = clampVal(PatRot[0] + PatRotSel[0] + (int)cvPatRotOffset[0],
-                                      -(len - 1), len - 1);
             int mr = calcPvMaxRaw();
             int g = map(mapY, y + h - 1, y, 0, mr);
             g = clampVal(g, 0, mr);
-            // Y-Position auf nächste Skalennote quantisieren:
-            // Dot-Position und CV-Ausgabe stimmen dann exakt überein.
+            // Y-Position auf nächste Skalennote quantisieren
             {
                 int noteList[60];
                 int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot,
@@ -2312,12 +2316,14 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
                     g = clampVal((noteIdx * 256 + 128) / nc, 0, 255);
                 }
             }
-            int pitchWriteIdx = pitchRotate ? euclidRotatedSrc(idx, len, effRotSel0) : idx;
+            int pitchWriteIdx = pitchRotate ? euclidRotatedSrc(idx, len, effRotSel)
+                                            : euclidRotatedSrc(idx, len, effRot);
             PitchNote1[pitchWriteIdx] = (uint8_t)g;
         } else {
             int g = map(mapY, y + h - 1, y, 0, 255);
             g = clampVal(g, 0, 255);
-            int writeGateIdx = RotateGateLen[setIdx] ? euclidRotatedSrc(idx, len, effRotSel) : idx;
+            int writeGateIdx = RotateGateLen[setIdx] ? euclidRotatedSrc(idx, len, effRotSel)
+                                                     : euclidRotatedSrc(idx, len, effRot);
             uint8_t *xyGLArr = abEditMode ? GateLenBArr[setIdx] : GateLenArr[setIdx];
             xyGLArr[writeGateIdx] = (uint8_t)g;
         }
