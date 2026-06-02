@@ -2301,6 +2301,17 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
             int mr = calcPvMaxRaw();
             int g = map(mapY, y + h - 1, y, 0, mr);
             g = clampVal(g, 0, mr);
+            // Y-Position auf nächste Skalennote quantisieren:
+            // Dot-Position und CV-Ausgabe stimmen dann exakt überein.
+            {
+                int noteList[60];
+                int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot,
+                                       pitchIntervalMask, noteList);
+                if (nc > 0) {
+                    int noteIdx = clampVal(((int)g * nc + nc / 2) / (mr + 1), 0, nc - 1);
+                    g = clampVal((noteIdx * 256 + 128) / nc, 0, 255);
+                }
+            }
             int pitchWriteIdx = pitchRotate ? euclidRotatedSrc(idx, len, effRotSel0) : idx;
             PitchNote1[pitchWriteIdx] = (uint8_t)g;
         } else {
