@@ -2332,14 +2332,11 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
         }
     }
 
-    // DAC sofort aktualisieren — Pitch-CV nur auf Hit-Steps (pitchHold-Semantik erzwingen),
-    // Values-CV immer (für Live-Feedback). pitchHold temporär auf true damit
-    // outputValuesForStep Pitch zwischen Hits nicht ändert, unabhängig vom gesetzten Flag.
-    {
-        bool savedPitchHold = pitchHold;
-        pitchHold = true;
+    // DAC-Update: in Pitch-Modi (xyPadPitchMode>0, ch0) KEIN sofortiger Update —
+    // Pitch-CV wird ausschließlich über die Tick-Schleife ausgegeben (pitchHold greift dort).
+    // In reinen Values/GateLen-Modi (xyPadPitchMode==0 oder ch1/ch2) live aktualisieren.
+    if (xyPadPitchMode == 0 || setIdx != 0) {
         outputValuesForStep(0);
-        pitchHold = savedPitchHold;
     }
 
     if (drawDot) {
