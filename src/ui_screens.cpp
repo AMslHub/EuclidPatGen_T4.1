@@ -2305,7 +2305,7 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
         v = clampVal(v, 0, 255);
         uint8_t *xyValArr = abEditMode ? ValuesBArr[setIdx] : ValuesArr[setIdx];
         xyValArr[writeValIdx] = (uint8_t)v;
-        if (setIdx == 0 && xyPadPitchMode > 0 && isHit) {
+        if (setIdx == 0 && xyPadPitchMode > 0) {
             int mr = calcPvMaxRaw();
             int g = map(mapY, y + h - 1, y, 0, mr);
             g = clampVal(g, 0, mr);
@@ -2332,8 +2332,15 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
         }
     }
 
-    // DAC sofort aktualisieren (auch wenn drawDot=false, damit CV live folgt)
-    outputValuesForStep(0);
+    // DAC sofort aktualisieren — Pitch-CV nur auf Hit-Steps (pitchHold-Semantik erzwingen),
+    // Values-CV immer (für Live-Feedback). pitchHold temporär auf true damit
+    // outputValuesForStep Pitch zwischen Hits nicht ändert, unabhängig vom gesetzten Flag.
+    {
+        bool savedPitchHold = pitchHold;
+        pitchHold = true;
+        outputValuesForStep(0);
+        pitchHold = savedPitchHold;
+    }
 
     if (drawDot) {
         // Neue Dot-Position NACH der Wert-Änderung berechnen
