@@ -1376,7 +1376,9 @@ void loop() {
       if(pt == 0){
         PendingSave = false;
         saveParams();
-        discardPendingTicks();
+        // Kein discardPendingTicks() hier: Beim seltenen FlexNVM-Sektorerase (~20ms)
+        // würde ein discard den laufenden Step überspringen ("kurz aussetzt").
+        // Die max. 1 akkumulierten Ticks werden stattdessen normal verarbeitet.
       } else {
         PendingSaveAt = nowMs + 5;
       }
