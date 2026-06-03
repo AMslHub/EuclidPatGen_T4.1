@@ -3694,6 +3694,25 @@ void drawGConfigScreen() {
     tft.print("Ratchet Decay:");
     drawGcDecaySlider();
 
+    // Autosave-Checkbox
+    {
+        int cx = 15, cy = 105, cs = 20;
+        tft.drawRect(cx, cy, cs, cs, ILI9341_DARKGREY);
+        tft.fillRect(cx+1, cy+1, cs-2, cs-2, ILI9341_BLACK);
+        tft.setFont(Arial_12);
+        tft.setTextColor(ILI9341_LIGHTGREY);
+        tft.setCursor(cx + cs + 6, cy + 5);
+        tft.print("Autosave");
+        if (autosaveEnabled) {
+            tft.drawLine(cx+3, cy+10, cx+8, cy+16, ILI9341_GREEN);
+            tft.drawLine(cx+8, cy+16, cx+17, cy+4, ILI9341_GREEN);
+        }
+        tft.setFont(Arial_10);
+        tft.setTextColor(autosaveEnabled ? ILI9341_GREEN : ILI9341_ORANGE);
+        tft.setCursor(cx + cs + 70, cy + 6);
+        tft.print(autosaveEnabled ? "Ein (Sound-Suche)" : "Aus (Live)");
+    }
+
     // Song Memory section
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_LIGHTGREY);
@@ -3711,6 +3730,15 @@ void handleGConfig(int mapX, int mapY, uint16_t tipPos) {
     // CV Config button (x=220, y=10, w=90, h=24)
     if (hitBox(mapX, mapY, 220, 10, 90, 24, 5)) {
         requestNavigateTo(CV_CONFIG);
+        return;
+    }
+    // Autosave-Checkbox (x=15, y=105, w=140, h=24)
+    if (hitBox(mapX, mapY, 15, 105, 230, 24, 4)) {
+        autosaveEnabled = !autosaveEnabled;
+        // Sofort speichern (unabhängig vom autosaveEnabled-Flag),
+        // damit die Einstellung den Neustart überlebt
+        saveParams();
+        drawGConfigScreen();
         return;
     }
     // Decay slider (full width touch)

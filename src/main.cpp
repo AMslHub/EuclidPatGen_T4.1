@@ -115,6 +115,7 @@ bool MuteSeq[3] = { false, false, false };
 bool SoloSeq[3] = { false, false, false };
 
 // Deferred save
+bool autosaveEnabled = true;  // false = kein Auto-EEPROM-Save (Live-Modus)
 bool PendingSave = false;
 uint32_t PendingSaveAt = 0;
 const uint32_t SAVE_DEBOUNCE_MS = 400;
