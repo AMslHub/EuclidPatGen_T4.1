@@ -1124,7 +1124,14 @@ void loop() {
             int muteSrc = RotateMuteStep[ch] ? euclidRotatedSrc(idx, len, effRotSel)
                                              : euclidRotatedSrc(idx, len, effRot);
             if (MuteStepArr[ch][muteSrc]) {
-                ratchetRemain[ch] = 0; swingPending[ch] = false; continue;
+                ratchetRemain[ch] = 0; swingPending[ch] = false;
+                if (isrFired) {
+                    // ISR hat Gate bereits gezündet — sofort abschalten
+                    digitalWrite(GatePins[ch], HIGH);
+                    gateOffAt[ch] = 0;
+                    gateIsHeld[ch] = false;
+                }
+                continue;
             }
         }
         if (condMuteActive[ch]) { ratchetRemain[ch] = 0; swingPending[ch] = false; continue; }

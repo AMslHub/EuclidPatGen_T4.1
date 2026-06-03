@@ -124,10 +124,24 @@ void triggerGateForCh(int ch) {
     int len = PatLen[ch];
     if (len <= 0) return;
     int idx = cntCh[ch] % len;
-    int effRot = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
-    if (EPatArr[ch][euclidRotatedSrc(idx, len, effRot)]) {
-        digitalWrite(GatePins[ch], LOW);
-        gateOffAt[ch] = micros() + gateLenForStep(ch, cntCh[ch]);
+    int effRot    = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+    int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+    if (!EPatArr[ch][euclidRotatedSrc(idx, len, effRot)]) return;
+    // Per-Step Mute: wie Non-Hit behandeln
+    int muteSrc = RotateMuteStep[ch] ? euclidRotatedSrc(idx, len, effRotSel)
+                                     : euclidRotatedSrc(idx, len, effRot);
+    if (MuteStepArr[ch][muteSrc]) return;
+    // Hold-Legato: Gate nur neu zünden wenn nicht schon gehalten
+    bool stepHold = (bool)HoldStepArr[ch][RotateHoldStep[ch]
+                       ? euclidRotatedSrc(idx, len, effRotSel)
+                       : euclidRotatedSrc(idx, len, effRot)];
+    if (!gateIsHeld[ch]) digitalWrite(GatePins[ch], LOW);
+    if (stepHold) {
+        gateIsHeld[ch] = true;
+        gateOffAt[ch]  = 0;
+    } else {
+        gateIsHeld[ch] = false;
+        gateOffAt[ch]  = micros() + gateLenForStep(ch, cntCh[ch]);
     }
 }
 
