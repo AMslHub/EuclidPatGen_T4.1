@@ -8,8 +8,8 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB4B;  // bumped: +rotCond
-static const uint16_t SD_MAGIC_SLOTS = 0xEB64;  // bumped: +rotCond in ParamBlock
+static const uint16_t EEPROM_MAGIC   = 0xEB4C;  // bumped: +HoldStep/MuteStep
+static const uint16_t SD_MAGIC_SLOTS = 0xEB65;  // bumped: +holdStep/muteStep in ParamBlock
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
 static bool sdOK = false;
@@ -54,6 +54,9 @@ struct ParamBlock {
     uint8_t condType[3][32];
     uint8_t condAction[3][32];
     uint8_t rotCond[3];
+    uint8_t holdStep[3][32];   // Per-Step Hold (Gate Legato)
+    uint8_t muteStep[3][32];   // Per-Step Mute
+    uint8_t rotHoldMute;       // bits 0-2: RotateHoldStep[0-2], bits 3-5: RotateMuteStep[0-2]
 };
 
 struct PitchBlock {
@@ -142,8 +145,17 @@ static void packParamsCore(ParamBlock &p) {
         p.rotRatchet[i]= RotateRatchet[i]  ? 1 : 0;
         p.rotOctave[i] = RotateOctave[i]   ? 1 : 0;
         p.rotCond[i]   = RotateCond[i]     ? 1 : 0;
+        for (int j = 0; j < 32; j++) {
+            p.holdStep[i][j] = HoldStepArr[i][j];
+            p.muteStep[i][j] = MuteStepArr[i][j];
+        }
         p.speed[i]     = (int8_t)clampVal(chSpeedIdx[i], -3, 3);
         p.autoRotate[i]= (uint8_t)clampVal((int)autoRotateStep[i], 0, 4);
+    }
+    p.rotHoldMute = 0;
+    for (int i = 0; i < 3; i++) {
+        if (RotateHoldStep[i]) p.rotHoldMute |= (uint8_t)(1u << i);
+        if (RotateMuteStep[i]) p.rotHoldMute |= (uint8_t)(1u << (i + 3));
     }
 }
 
@@ -175,6 +187,12 @@ static void unpackParamsCore(const ParamBlock &p) {
         RotateCond[i]    = (p.rotCond[i]    != 0);
         chSpeedIdx[i]    = clampVal((int)p.speed[i], -3, 3);
         autoRotateStep[i]= (uint8_t)clampVal((int)p.autoRotate[i], 0, 4);
+        for (int j = 0; j < 32; j++) {
+            HoldStepArr[i][j] = p.holdStep[i][j] ? 1 : 0;
+            MuteStepArr[i][j] = p.muteStep[i][j] ? 1 : 0;
+        }
+        RotateHoldStep[i] = (p.rotHoldMute & (1u << i))     != 0;
+        RotateMuteStep[i] = (p.rotHoldMute & (1u << (i+3))) != 0;
     }
 }
 
@@ -371,6 +389,9 @@ void loadParams() {
         RotateRatchet[i]   = false;
         RotateOctave[i]    = false;
         RotateCond[i]      = false;
+        RotateHoldStep[i]  = false;
+        RotateMuteStep[i]  = false;
+        for (int j = 0; j < 32; j++) { HoldStepArr[i][j] = 0; MuteStepArr[i][j] = 0; }
         PatProb[i]         = 10;
         PatProbAuto[i]     = false;
         ProbEuclidRebuild[i] = false;

@@ -144,6 +144,20 @@ extern bool RotateRatchet[3];
 extern bool RotateOctave[3];
 extern bool RotateCond[3];
 
+// Per-Step Hold: Gate bleibt bis zum nächsten (nicht gemuteten) Hit HIGH (Legato/Tie)
+extern uint8_t HoldStep1[32];
+extern uint8_t HoldStep2[32];
+extern uint8_t HoldStep3[32];
+extern uint8_t *HoldStepArr[3];
+extern bool RotateHoldStep[3];
+
+// Per-Step Mute: unterdrückt Gate an dieser Position unabhängig vom euklid. Pattern
+extern uint8_t MuteStep1[32];
+extern uint8_t MuteStep2[32];
+extern uint8_t MuteStep3[32];
+extern uint8_t *MuteStepArr[3];
+extern bool RotateMuteStep[3];
+
 // Performance (Mute/Solo)
 extern bool MuteSeq[3];
 extern bool SoloSeq[3];
@@ -242,6 +256,10 @@ extern volatile uint32_t pendingTicks;  // ISR-shared: volatile korrekt
 extern const uint32_t GATE_PULSE_US;
 extern const uint8_t GatePins[3];
 extern volatile uint32_t gateOffAt[3];
+// Hold-Gate: wenn true bleibt Gate HIGH bis zum nächsten nicht-gemuteten Hit (Legato)
+extern volatile bool gateIsHeld[3];
+// Pre-Arm Hold: ISR liest diesen Wert und entscheidet über Hold beim nächsten Gate
+extern volatile bool nextGateIsHold[3];
 
 inline int clampVal(int v, int lo, int hi){
   if(v < lo) return lo;

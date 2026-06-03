@@ -90,6 +90,24 @@ bool RotateGateLen[3] = { false, false, false };
 bool RotateRatchet[3] = { false, false, false };
 bool RotateOctave[3]  = { false, false, false };
 bool RotateCond[3]    = { false, false, false };
+
+// Per-Step Hold (Gate Legato/Tie)
+uint8_t HoldStep1[32] = { 0 };
+uint8_t HoldStep2[32] = { 0 };
+uint8_t HoldStep3[32] = { 0 };
+uint8_t *HoldStepArr[3] = { HoldStep1, HoldStep2, HoldStep3 };
+bool RotateHoldStep[3]  = { false, false, false };
+
+// Per-Step Mute
+uint8_t MuteStep1[32] = { 0 };
+uint8_t MuteStep2[32] = { 0 };
+uint8_t MuteStep3[32] = { 0 };
+uint8_t *MuteStepArr[3] = { MuteStep1, MuteStep2, MuteStep3 };
+bool RotateMuteStep[3]  = { false, false, false };
+
+// Gate-Hold-Zustand: true = Gate liegt an (von Hold-Step) bis nächstem nicht-gemuteten Hit
+volatile bool gateIsHeld[3]    = { false, false, false };
+volatile bool nextGateIsHold[3] = { false, false, false };
 uint32_t DurationOfOneStep = 0;
 
 // Performance (Mute/Solo)
@@ -232,6 +250,7 @@ static volatile bool     gateWasFiredByISR[3] = { false, false, false };
 static void gateOffISR() {
     uint32_t now = micros();
     for (int i = 0; i < 3; i++) {
+        if (gateIsHeld[i]) continue;  // Hold-Gate bleibt bis zum nächsten Hit HIGH
         uint32_t offAt = gateOffAt[i];
         if (offAt != 0 && (int32_t)(now - offAt) >= 0) {
             digitalWriteFast(GatePins[i], HIGH);
@@ -246,7 +265,16 @@ static void gateOffISR() {
 void discardPendingTicks() {
     noInterrupts();
     pendingTicks = 0;
-    for (int i = 0; i < 3; i++) gateWasFiredByISR[i] = false;
+    for (int i = 0; i < 3; i++) {
+        gateWasFiredByISR[i] = false;
+        if (gateIsHeld[i]) {
+            gateIsHeld[i] = false;
+            digitalWriteFast(GatePins[i], HIGH);  // Gehaltenes Gate beim Reset abschalten
+            gateOffAt[i] = 0;
+        }
+        nextGateArmed[i]    = false;
+        nextGateIsHold[i]   = false;
+    }
     interrupts();
 }
 
@@ -316,8 +344,17 @@ void timerISR() {
         if (nextGateArmed[i]) {
             nextGateArmed[i]     = false;
             gateWasFiredByISR[i] = true;
-            digitalWriteFast(GatePins[i], LOW);
-            gateOffAt[i] = micros() + nextGateDuration[i];
+            // Legato: Gate bleibt HIGH wenn es von einem Hold-Step gehalten wurde
+            if (!gateIsHeld[i]) {
+                digitalWriteFast(GatePins[i], LOW);   // Gate einschalten (active-low)
+            }
+            if (nextGateIsHold[i]) {
+                gateIsHeld[i] = true;
+                gateOffAt[i]  = 0;  // kein automatisches Abschalten
+            } else {
+                gateIsHeld[i] = false;
+                gateOffAt[i]  = micros() + nextGateDuration[i];
+            }
         }
     }
     if (pendingTicks != 0xFFFFFFFFu) pendingTicks++;
@@ -1082,6 +1119,14 @@ void loop() {
         int effRot   = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         if (!EPatArr[ch][euclidRotatedSrc(idx, len, effRot)]) { ratchetRemain[ch] = 0; continue; }
+        // Per-Step Mute: Gate unterdrücken, Hold von vorherigem Step bleibt aktiv
+        {
+            int muteSrc = RotateMuteStep[ch] ? euclidRotatedSrc(idx, len, effRotSel)
+                                             : euclidRotatedSrc(idx, len, effRot);
+            if (MuteStepArr[ch][muteSrc]) {
+                ratchetRemain[ch] = 0; swingPending[ch] = false; continue;
+            }
+        }
         if (condMuteActive[ch]) { ratchetRemain[ch] = 0; swingPending[ch] = false; continue; }
 
         bool applySwing = (cvSwingPct > 0) && ((cntCh[ch] % 2u) == 0u);
@@ -1099,18 +1144,29 @@ void loop() {
                 uint8_t effR = (cvRatchetCount[ch] > perStepR) ? cvRatchetCount[ch] : perStepR;
                 if (condRatchetOvr[ch] > effR) effR = condRatchetOvr[ch];
                 uint32_t gateDur = effR > 1 ? GATE_PULSE_US : gateLenForStep(ch, cntCh[ch]);
+                // Per-Step Hold: bestimmt ob Gate nach diesem Hit gehalten wird
+                int holdSrc = RotateHoldStep[ch] ? euclidRotatedSrc(idx, len, effRotSel)
+                                                  : euclidRotatedSrc(idx, len, effRot);
+                bool stepHold = (bool)HoldStepArr[ch][holdSrc] && (effR <= 1);
+                bool wasHeld  = gateIsHeld[ch];
                 if (!isrFired) {
-                    // Normalfall: Gate vom Main-Loop zünden
-                    digitalWrite(GatePins[ch], LOW);
-                    gateOffAt[ch] = micros() + gateDur;
-                } else if (gateOffAt[ch] != 0) {
-                    // ISR hat Gate gezündet und es ist noch offen: korrekte Dauer setzen
-                    gateOffAt[ch] = micros() + gateDur;
+                    // Normalfall: Gate vom Main-Loop zünden (Legato wenn war gehalten)
+                    if (!wasHeld) digitalWrite(GatePins[ch], LOW);
+                }
+                // Gate-Duration oder Hold setzen
+                if (stepHold) {
+                    gateIsHeld[ch] = true;
+                    gateOffAt[ch]  = 0;  // kein automatisches Abschalten
                 } else {
-                    // ISR hat gezündet, Gate aber schon geschlossen (Main-Loop war >GATE_PULSE_US spät):
-                    // Neu öffnen damit GateHold-Dauer noch korrekt wirkt
-                    digitalWrite(GatePins[ch], LOW);
-                    gateOffAt[ch] = micros() + gateDur;
+                    gateIsHeld[ch] = false;
+                    if (!isrFired) {
+                        gateOffAt[ch] = micros() + gateDur;
+                    } else if (gateOffAt[ch] != 0) {
+                        gateOffAt[ch] = micros() + gateDur;
+                    } else {
+                        if (!wasHeld) digitalWrite(GatePins[ch], LOW);
+                        gateOffAt[ch] = micros() + gateDur;
+                    }
                 }
                 if (effR > 1 && DurationOfOneStep > 0) {
                     ratchetTotal[ch]    = effR;
@@ -1140,11 +1196,17 @@ void loop() {
         int nextIdx = (int)(nextCnt % (unsigned int)len);
         int effRot  = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         if (!EPatArr[ch][euclidRotatedSrc(nextIdx, len, effRot)]) continue;
+        // Mute-Check: gemuteter Step wird nicht pre-armt
+        int nextMuteSrc = euclidRotatedSrc(nextIdx, len, effRot);
+        if (MuteStepArr[ch][nextMuteSrc]) continue;
         bool nextSwing   = (cvSwingPct > 0) && ((nextCnt % 2u) == 0u);
         bool noRatchet   = (cvRatchetCount[ch] <= 1u) && (RatchetArr[ch][nextIdx] <= 1u);
         if (nextSwing || !noRatchet) continue;
         nextGateArmed[ch]    = true;
         nextGateDuration[ch] = gateLenForStep(ch, nextCnt);
+        // Hold-Flag für ISR setzen
+        int nextHoldSrc = euclidRotatedSrc(nextIdx, len, effRot);
+        nextGateIsHold[ch] = (bool)HoldStepArr[ch][nextHoldSrc];
     }
 
     cnthold = cnt;

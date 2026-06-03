@@ -19,6 +19,10 @@ static inline void fillScreenIfNeeded() {
 
 static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
 static int dragLockIdx = -1;  // Gesperrter Balken-Index für Drag-Hysterese (-1 = nicht aktiv)
+static int gateLenEditMode[3] = { 0, 0, 0 };  // 0=GateLen, 1=HoldStep, 2=MuteStep
+static void drawGateLenModeButtons(int setIdx);  // forward
+static void drawRotateHoldStepCheckbox(int setIdx);  // forward
+static void drawRotateMuteStepCheckbox(int setIdx);  // forward
 static int  valuesEditMode[3]      = { 0, 0, 0 };  // 0=values, 1=ratchet, 2=octave, 3=iv
 static bool valStepEditActive[3]   = {false, false, false};
 static int  valStepEditCursor[3]   = {0, 0, 0};
@@ -1740,6 +1744,7 @@ void drawGateLenScreen(int setIdx){
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
     drawGateHoldCheckbox(setIdx);
     drawRotateGateLenCheckbox(setIdx);
+    drawGateLenModeButtons(setIdx);
     drawAbToggleButton();
     drawCondButton(setIdx);
     // Rahmen um den GateLen-Bereich
@@ -1758,6 +1763,8 @@ void drawGateLenScreen(int setIdx){
 // Side Effects: schreibt auf das TFT.
 // Assumptions: PatLen[setIdx] in 1..32.
 void drawGateLenBars(int setIdx){
+    if (gateLenEditMode[setIdx] == 1) { drawHoldStepBars(setIdx); return; }
+    if (gateLenEditMode[setIdx] == 2) { drawMuteStepBars(setIdx); return; }
     int len = clampVal(PatLen[setIdx], 1, 32);
     for(int i=0;i<len;i++){
         drawGateLenBar(setIdx, i);
@@ -1791,6 +1798,106 @@ void drawGateLenBar(int setIdx, int idx){
     if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
         tft.drawRect(x, y0, w, h, ILI9341_CYAN);
     if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
+}
+
+// Per-Step Hold Bar: CYAN wenn Hold an, leer wenn aus
+void drawHoldStepBar(int setIdx, int idx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    int x0 = 10, y0 = 240 - 5 - 160, h = 160;
+    int totalW = 320 - 2 * x0;
+    int x     = x0 + (idx       * totalW) / len;
+    int xNext = x0 + ((idx + 1) * totalW) / len;
+    int w     = xNext - x - 1;
+    int src = RotateHoldStep[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
+    bool holdOn = (bool)HoldStepArr[setIdx][src];
+    bool active = patternIsHit(setIdx, idx);
+    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
+    if (holdOn) {
+        int fillH = h * 3 / 4;
+        tft.fillRect(x, y0 + (h - fillH), w, fillH,
+                     active ? ILI9341_CYAN : 0x0318);  // Cyan / Dunkelcyan
+    }
+    if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
+        tft.drawRect(x, y0, w, h, ILI9341_YELLOW);
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
+}
+void drawHoldStepBars(int setIdx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    for (int i = 0; i < len; i++) drawHoldStepBar(setIdx, i);
+    drawStepGridLines(240 - 5 - 160, 160, len);
+}
+
+// Per-Step Mute Bar: ROT wenn Mute an, leer wenn aus
+void drawMuteStepBar(int setIdx, int idx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    int x0 = 10, y0 = 240 - 5 - 160, h = 160;
+    int totalW = 320 - 2 * x0;
+    int x     = x0 + (idx       * totalW) / len;
+    int xNext = x0 + ((idx + 1) * totalW) / len;
+    int w     = xNext - x - 1;
+    int src = RotateMuteStep[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
+    bool muteOn = (bool)MuteStepArr[setIdx][src];
+    bool active = patternIsHit(setIdx, idx);
+    tft.fillRect(x, y0, xNext - x, h, ILI9341_BLACK);
+    if (muteOn) {
+        int fillH = h * 3 / 4;
+        tft.fillRect(x, y0 + (h - fillH), w, fillH,
+                     active ? ILI9341_RED : 0x3800);  // Rot / Dunkelrot
+    }
+    if (valStepEditActive[setIdx] && idx == valStepEditCursor[setIdx])
+        tft.drawRect(x, y0, w, h, ILI9341_YELLOW);
+    if (idx > 0 && idx % 4 == 0) tft.drawFastVLine(x, y0, h, BAR_GRID_COL);
+}
+void drawMuteStepBars(int setIdx) {
+    int len = clampVal(PatLen[setIdx], 1, 32);
+    for (int i = 0; i < len; i++) drawMuteStepBar(setIdx, i);
+    drawStepGridLines(240 - 5 - 160, 160, len);
+}
+
+// Mode-Buttons und Rotate-Checkboxen für Hold/Mute auf dem GateLen-Screen
+static void drawRotateHoldStepCheckbox(int setIdx) {
+    int x = 54, y = 43, s = 18;
+    tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
+    tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
+    if (RotateHoldStep[setIdx]) {
+        tft.drawLine(x+3, y+9, x+7, y+14, ILI9341_CYAN);
+        tft.drawLine(x+7, y+14, x+14, y+4, ILI9341_CYAN);
+    }
+}
+static void drawRotateMuteStepCheckbox(int setIdx) {
+    int x = 124, y = 43, s = 18;
+    tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
+    tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
+    if (RotateMuteStep[setIdx]) {
+        tft.drawLine(x+3, y+9, x+7, y+14, ILI9341_RED);
+        tft.drawLine(x+7, y+14, x+14, y+4, ILI9341_RED);
+    }
+}
+static void drawGateLenModeButtons(int setIdx) {
+    // Hold-Button (Position wie Ratchet auf Values-Screen)
+    {
+        int x = 10, y = 42, w = 40, h = 24;
+        bool active = (gateLenEditMode[setIdx] == 1);
+        tft.fillRect(x, y, w, h, active ? 0x0318 : ILI9341_BLACK);
+        tft.drawRect(x, y, w, h, active ? ILI9341_CYAN : ILI9341_DARKGREY);
+        tft.setFont(Arial_12);
+        tft.setTextColor(active ? ILI9341_CYAN : ILI9341_LIGHTGREY);
+        tft.setCursor(x + 5, y + 6);
+        tft.print("HLD");
+    }
+    drawRotateHoldStepCheckbox(setIdx);
+    // Mute-Button (Position wie Octave auf Values-Screen)
+    {
+        int x = 80, y = 42, w = 40, h = 24;
+        bool active = (gateLenEditMode[setIdx] == 2);
+        tft.fillRect(x, y, w, h, active ? 0x3800 : ILI9341_BLACK);
+        tft.drawRect(x, y, w, h, active ? ILI9341_RED : ILI9341_DARKGREY);
+        tft.setFont(Arial_12);
+        tft.setTextColor(active ? ILI9341_RED : ILI9341_LIGHTGREY);
+        tft.setCursor(x + 4, y + 6);
+        tft.print("MUT");
+    }
+    drawRotateMuteStepCheckbox(setIdx);
 }
 
 // Zweck: Zeichnet die GateHold-Checkbox.
@@ -1855,11 +1962,40 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
         return;
     }
     if(hitBox(mapX, mapY, 268, 42, 24, 24, 8)){
-        // Rotate GateLen: Gate-Laengen relativ zur Pattern-Rotation interpretieren.
         RotateGateLen[setIdx] = !RotateGateLen[setIdx];
         scheduleSaveParams();
         drawRotateGateLenCheckbox(setIdx);
         drawGateLenBars(setIdx);
+        return;
+    }
+    // Hold-Mode-Button
+    if(hitBox(mapX, mapY, 10, 42, 40, 24, 6)){
+        gateLenEditMode[setIdx] = (gateLenEditMode[setIdx] == 1) ? 0 : 1;
+        drawGateLenModeButtons(setIdx);
+        drawGateLenBars(setIdx);
+        return;
+    }
+    // Rotate-HoldStep-Checkbox
+    if(hitBox(mapX, mapY, 54, 43, 18, 18, 6)){
+        RotateHoldStep[setIdx] = !RotateHoldStep[setIdx];
+        scheduleSaveParams();
+        drawRotateHoldStepCheckbox(setIdx);
+        if (gateLenEditMode[setIdx] == 1) drawHoldStepBars(setIdx);
+        return;
+    }
+    // Mute-Mode-Button
+    if(hitBox(mapX, mapY, 80, 42, 40, 24, 6)){
+        gateLenEditMode[setIdx] = (gateLenEditMode[setIdx] == 2) ? 0 : 2;
+        drawGateLenModeButtons(setIdx);
+        drawGateLenBars(setIdx);
+        return;
+    }
+    // Rotate-MuteStep-Checkbox
+    if(hitBox(mapX, mapY, 124, 43, 18, 18, 6)){
+        RotateMuteStep[setIdx] = !RotateMuteStep[setIdx];
+        scheduleSaveParams();
+        drawRotateMuteStepCheckbox(setIdx);
+        if (gateLenEditMode[setIdx] == 2) drawMuteStepBars(setIdx);
         return;
     }
     if(hitBox(mapX, mapY, 268, 10, 24, 24, 8)){
@@ -1882,6 +2018,24 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
 
     int idx = clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     dragLockIdx = idx;
+
+    if (gateLenEditMode[setIdx] == 1) {
+        // Hold-Modus: Toggle HoldStep
+        int src = RotateHoldStep[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
+        HoldStepArr[setIdx][src] = HoldStepArr[setIdx][src] ? 0 : 1;
+        scheduleSaveParams();
+        drawHoldStepBar(setIdx, idx);
+        return;
+    }
+    if (gateLenEditMode[setIdx] == 2) {
+        // Mute-Modus: Toggle MuteStep
+        int src = RotateMuteStep[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
+        MuteStepArr[setIdx][src] = MuteStepArr[setIdx][src] ? 0 : 1;
+        scheduleSaveParams();
+        drawMuteStepBar(setIdx, idx);
+        return;
+    }
+
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
     int v = map(mapY, y0 + h, y0, 0, 255);
     v = clampVal(v, 0, 255);
@@ -1894,6 +2048,8 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
 // Side Effects: veraendert GateLen, schreibt auf TFT.
 // Assumptions: setIdx in 0..2; mapX/mapY sind gemappt.
 void handleGATELENDrag(int setIdx, int mapX, int mapY){
+    // In Hold/Mute-Modi kein Drag (Boolean toggle nur per Tap)
+    if (gateLenEditMode[setIdx] != 0) return;
     int len = clampVal(PatLen[setIdx], 1, 32);
     int x0 = 10;
     int y0 = 240 - 5 - 160;
@@ -2286,10 +2442,6 @@ void handleXYPADRecord(int setIdx, int mapX, int mapY, bool drawDot){
     int effRot    = clampVal(PatRot[setIdx] + (int)cvPatRotOffset[setIdx], -(len - 1), len - 1);
     int effRotSel = clampVal(PatRot[setIdx] + PatRotSel[setIdx] + (int)cvPatRotOffset[setIdx],
                              -(len - 1), len - 1);
-    // Pitch wird nur auf Hit-Steps geschrieben/ausgegeben — so bleibt der Pitch-CV zwischen
-    // Hits am letzten gespielten Wert, unabhängig vom pitchHold-Flag.
-    bool isHit = EPatArr[setIdx][euclidRotatedSrc(idx, len, effRot)];
-
     if (setIdx == 0 && xyPadPitchMode == 4) {
         // RO-Modus: X→Ratchet (1-4), Y→Oktave (-3..+3)
         int rat = (mapX - x) * 4 / w + 1;
@@ -4636,7 +4788,9 @@ void flashCondBars(int setIdx) {
 
 static void redrawValBar(int ch, int idx) {
     if (GUIState == (uint16_t)(GATELEN1 + ch)) {
-        drawGateLenBar(ch, idx);
+        if      (gateLenEditMode[ch] == 1) drawHoldStepBar(ch, idx);
+        else if (gateLenEditMode[ch] == 2) drawMuteStepBar(ch, idx);
+        else                               drawGateLenBar(ch, idx);
     } else {
         int mode = valuesEditMode[ch];
         if      (mode == 1) drawRatchetBar(ch, idx);
@@ -4675,7 +4829,14 @@ void adjustValStep(int ch, int delta) {
     bool isGateLen = (GUIState == (uint16_t)(GATELEN1 + ch));
     int  mode      = isGateLen ? -1 : valuesEditMode[ch];
 
-    if (isGateLen || mode == 0) {
+    // GateLen-Screen: Hold/Mute-Modi haben eigene Behandlung
+    if (isGateLen && gateLenEditMode[ch] == 1) {
+        int src = RotateHoldStep[ch] ? layerRotatedSrc(ch, idx) : layerBaseSrc(ch, idx);
+        HoldStepArr[ch][src] = HoldStepArr[ch][src] ? 0 : 1;  // Toggle
+    } else if (isGateLen && gateLenEditMode[ch] == 2) {
+        int src = RotateMuteStep[ch] ? layerRotatedSrc(ch, idx) : layerBaseSrc(ch, idx);
+        MuteStepArr[ch][src] = MuteStepArr[ch][src] ? 0 : 1;  // Toggle
+    } else if (isGateLen || mode == 0) {
         bool useRotate = isGateLen ? RotateGateLen[ch] : RotateValues[ch];
         int src = useRotate ? layerRotatedSrc(ch, idx) : layerBaseSrc(ch, idx);
         uint8_t *arr = isGateLen ? (abEditMode ? GateLenBArr[ch] : GateLenArr[ch])
