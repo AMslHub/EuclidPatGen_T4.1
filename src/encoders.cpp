@@ -577,9 +577,14 @@ void handleEncoders() {
                 if (getValStepEditActive(ch)) {
                     if (i == 0) adjustValStep(ch, delta);
                     else if (i == 2) moveValStepCursor(ch, delta);
-                } else if (GUIState < GATELEN1) {  // VALUES screen only, not GATELEN
-                    if (i == 0) shiftValues(ch, (delta > 0) ? 4 : -4);
-                    else if (i == 1) scaleValues(ch, (delta > 0) ? 1.05f : 0.95f);
+                } else {
+                    if (i == 2) {
+                        // Enc3 links = Einzelschritt-Modus, rechts = Mal-Modus
+                        setBarPaintMode(delta > 0);
+                    } else if (GUIState < GATELEN1) {  // VALUES screen only
+                        if (i == 0) shiftValues(ch, (delta > 0) ? 4 : -4);
+                        else if (i == 1) scaleValues(ch, (delta > 0) ? 1.05f : 0.95f);
+                    }
                 }
             } else if (GUIState != PERFORMANCE) {
                 handleNormalEncoder(i, delta);

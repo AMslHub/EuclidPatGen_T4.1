@@ -19,7 +19,15 @@ static inline void fillScreenIfNeeded() {
 
 static int lastValuesPlayIdx[3]    = { -1, -1, -1 };
 static int dragLockIdx = -1;  // Gesperrter Balken-Index für Drag-Hysterese (-1 = nicht aktiv)
+// Betriebsart: false=Einzelschritt (X-Lock), true=Malen (horizontales Gleiten)
+static bool barPaintMode = false;
+bool getBarPaintMode()        { return barPaintMode; }
+void setBarPaintMode(bool v)  {
+    barPaintMode = v;
+    drawBarPaintModeIndicator();
+}
 static int gateLenEditMode[3] = { 0, 0, 0 };  // 0=GateLen, 1=HoldStep, 2=MuteStep
+static void drawBarPaintModeIndicator();  // forward
 static void drawGateLenModeButtons(int setIdx);  // forward
 static void drawRotateHoldStepCheckbox(int setIdx);  // forward
 static void drawRotateMuteStepCheckbox(int setIdx);  // forward
@@ -1328,6 +1336,7 @@ void drawValuesScreen(int setIdx){
     drawRotateValuesCheckbox(setIdx);
     drawGateLenButton();
     drawAbToggleButton();
+    drawBarPaintModeIndicator();
     drawValuesEditButtons(setIdx);
     // Rahmen um den Values-Bereich
     {
@@ -1703,8 +1712,8 @@ void handleVALUESDrag(int setIdx, int mapX, int mapY){
         return;
     }
 
-    // X-Lock: beim ersten Touch gewählter Balken bleibt für den gesamten Drag gesperrt.
-    int idx = (dragLockIdx >= 0 && dragLockIdx < len)
+    // Betriebsart: X-Lock (Einzelschritt) oder freies Gleiten (Malen)
+    int idx = (!barPaintMode && dragLockIdx >= 0 && dragLockIdx < len)
             ? dragLockIdx
             : clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     if (valuesEditMode[setIdx] == 1) {
@@ -1746,6 +1755,7 @@ void drawGateLenScreen(int setIdx){
     drawRotateGateLenCheckbox(setIdx);
     drawGateLenModeButtons(setIdx);
     drawAbToggleButton();
+    drawBarPaintModeIndicator();
     drawCondButton(setIdx);
     // Rahmen um den GateLen-Bereich
     {
@@ -1900,6 +1910,33 @@ static void drawGateLenModeButtons(int setIdx) {
     drawRotateMuteStepCheckbox(setIdx);
 }
 
+// Betriebsart-Indikator: "S◄" (Einzelschritt) oder "►P" (Malen), oben rechts im Screen
+static void drawBarPaintModeIndicator() {
+    // Nur auf VALUES- und GATELEN-Screens anzeigen
+    if (GUIState != VALUES1 && GUIState != VALUES2 && GUIState != VALUES3 &&
+        GUIState != GATELEN1 && GUIState != GATELEN2 && GUIState != GATELEN3) return;
+    int x = 212, y = 10, w = 46, h = 24;
+    tft.fillRect(x, y, w, h, ILI9341_BLACK);
+    tft.setFont(Arial_10);
+    // Linke Seite: "S" (Einzel-Schritt)
+    tft.setTextColor(barPaintMode ? ILI9341_DARKGREY : ILI9341_WHITE);
+    tft.setCursor(x + 2, y + 7);
+    tft.print("S");
+    // Trennlinie
+    tft.setTextColor(ILI9341_DARKGREY);
+    tft.setCursor(x + 14, y + 7);
+    tft.print("|");
+    // Rechte Seite: "P" (Malen)
+    tft.setTextColor(barPaintMode ? ILI9341_WHITE : ILI9341_DARKGREY);
+    tft.setCursor(x + 24, y + 7);
+    tft.print("P");
+    // Aktiver Modus: Rahmen
+    if (barPaintMode)
+        tft.drawRect(x + 20, y, w - 20, h, ILI9341_WHITE);
+    else
+        tft.drawRect(x, y, 20, h, ILI9341_WHITE);
+}
+
 // Zweck: Zeichnet die GateHold-Checkbox.
 // Side Effects: schreibt auf das TFT.
 // Assumptions: setIdx in 0..2.
@@ -2050,6 +2087,7 @@ void handleGATELEN(int setIdx, int mapX, int mapY, uint16_t tipPos){
 void handleGATELENDrag(int setIdx, int mapX, int mapY){
     // In Hold/Mute-Modi kein Drag (Boolean toggle nur per Tap)
     if (gateLenEditMode[setIdx] != 0) return;
+
     int len = clampVal(PatLen[setIdx], 1, 32);
     int x0 = 10;
     int y0 = 240 - 5 - 160;
@@ -2060,8 +2098,8 @@ void handleGATELENDrag(int setIdx, int mapX, int mapY){
         return;
     }
 
-    // X-Lock: beim ersten Touch gewählter Balken bleibt für den gesamten Drag gesperrt.
-    int idx = (dragLockIdx >= 0 && dragLockIdx < len)
+    // Betriebsart: X-Lock (Einzelschritt) oder freies Gleiten (Malen)
+    int idx = (!barPaintMode && dragLockIdx >= 0 && dragLockIdx < len)
             ? dragLockIdx
             : clampVal(((mapX - x0) * len + len - 1) / totalW, 0, len - 1);
     int writeIdx = RotateGateLen[setIdx] ? layerRotatedSrc(setIdx, idx) : layerBaseSrc(setIdx, idx);
