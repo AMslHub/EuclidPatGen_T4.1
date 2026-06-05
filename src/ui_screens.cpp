@@ -260,8 +260,15 @@ static void drawPitchPresetBox() {
     tft.setFont(Arial_12);
     tft.setTextColor(pitchPresetBrowseActive ? ILI9341_CYAN : ILI9341_LIGHTGREY);
     const char *name = getPitchPresetName(pitchPresetBrowseIdx);
-    int nameW = (int)strlen(name) * 7;
-    tft.setCursor(PITCH_PRESET_BX + (PITCH_PRESET_BW - nameW) / 2, PITCH_PRESET_BY + 6);
+    // Exakte Breite messen; wenn zu breit → kleinere Schrift
+    int nameW = (int)tft.measureTextWidth((const uint8_t*)name, strlen(name));
+    if (nameW > PITCH_PRESET_BW - 6) {
+        tft.setFont(Arial_10);
+        nameW = (int)tft.measureTextWidth((const uint8_t*)name, strlen(name));
+        tft.setCursor(PITCH_PRESET_BX + (PITCH_PRESET_BW - nameW) / 2, PITCH_PRESET_BY + 7);
+    } else {
+        tft.setCursor(PITCH_PRESET_BX + (PITCH_PRESET_BW - nameW) / 2, PITCH_PRESET_BY + 6);
+    }
     tft.print(name);
 }
 
@@ -2846,11 +2853,12 @@ void drawPitchDisplayModeCheckbox() {
 
 void drawPitchControls() {
     static const int SC_X = 0,   SC_W = 100;
-    static const int RT_X = 102, RT_W = 42;
-    static const int SP_X = 146, SP_W = 52;
-    static const int IV_X = 200, IV_W = 30;
-    static const int AI_X = 232, AI_W = 30;
-    static const int SH_X = 264, SH_W = 56;
+    static const int RT_X = 102, RT_W = 38;
+    static const int SP_X = 142, SP_W = 36;
+    static const int IV_X = 180, IV_W = 28;
+    static const int AI_X = 210, AI_W = 28;
+    static const int SH_X = 240, SH_W = 38;
+    static const int TP_X = 280, TP_W = 40;
     static const char *const ROOT_NAMES[12] = {
         "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
 
@@ -2861,6 +2869,7 @@ void drawPitchControls() {
     uint16_t spBorder = (boxCursor == 2) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
     uint16_t ivBorder = (boxCursor == 3) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
     uint16_t aiBorder = (boxCursor == 4) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
+    uint16_t tpBorder = (boxCursor == 5) ? (boxEdit ? ILI9341_YELLOW : ILI9341_RED) : ILI9341_DARKGREY;
 
     tft.drawRect(SC_X, PITCH_CTRL_Y, SC_W, PITCH_CTRL_H, scBorder);
     tft.fillRect(SC_X+1, PITCH_CTRL_Y+1, SC_W-2, PITCH_CTRL_H-2,
@@ -2873,29 +2882,35 @@ void drawPitchControls() {
 
     tft.drawRect(RT_X, PITCH_CTRL_Y, RT_W, PITCH_CTRL_H, rtBorder);
     tft.fillRect(RT_X+1, PITCH_CTRL_Y+1, RT_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
+    tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setCursor(RT_X+3, PITCH_CTRL_Y+5);
     tft.print(ROOT_NAMES[pitchRoot % 12]);
 
     tft.drawRect(SP_X, PITCH_CTRL_Y, SP_W, PITCH_CTRL_H, spBorder);
     tft.fillRect(SP_X+1, PITCH_CTRL_Y+1, SP_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
     tft.setCursor(SP_X+3, PITCH_CTRL_Y+5);
-    tft.printf("Spr:%d", pitchSpread);
+    tft.printf("Sp%d", pitchSpread);
 
     tft.drawRect(IV_X, PITCH_CTRL_Y, IV_W, PITCH_CTRL_H, ivBorder);
     tft.fillRect(IV_X+1, PITCH_CTRL_Y+1, IV_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
-    tft.setCursor(IV_X+5, PITCH_CTRL_Y+5);
+    tft.setCursor(IV_X+4, PITCH_CTRL_Y+5);
     tft.print("IV");
 
     tft.drawRect(AI_X, PITCH_CTRL_Y, AI_W, PITCH_CTRL_H, aiBorder);
     tft.fillRect(AI_X+1, PITCH_CTRL_Y+1, AI_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
-    tft.setCursor(AI_X+5, PITCH_CTRL_Y+5);
+    tft.setCursor(AI_X+4, PITCH_CTRL_Y+5);
     tft.print("AI");
 
     tft.drawRect(SH_X, PITCH_CTRL_Y, SH_W, PITCH_CTRL_H, ILI9341_DARKGREY);
     tft.fillRect(SH_X+1, PITCH_CTRL_Y+1, SH_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
     tft.setCursor(SH_X+3, PITCH_CTRL_Y+5);
-    if (pitchShift > 0) tft.printf("Sft:+%d", (int)pitchShift);
-    else                tft.printf("Sft:%d",  (int)pitchShift);
+    if (pitchShift >= 0) tft.printf("Sf+%d", (int)pitchShift);
+    else                 tft.printf("Sf%d",  (int)pitchShift);
+
+    tft.drawRect(TP_X, PITCH_CTRL_Y, TP_W, PITCH_CTRL_H, tpBorder);
+    tft.fillRect(TP_X+1, PITCH_CTRL_Y+1, TP_W-2, PITCH_CTRL_H-2, ILI9341_BLACK);
+    tft.setCursor(TP_X+8, PITCH_CTRL_Y+5);
+    tft.print("Tp");
 
     for (int i = 0; i < 7; i++) {
         int bx    = PITCH_ITVL_X0 + i * (PITCH_ITVL_W + PITCH_ITVL_GAP);
@@ -3060,13 +3075,7 @@ void togglePitchStepChromatic() {
 bool getPitchChordMode() { return pitchChordMode; }
 
 void flashPitchBars() {
-    for (int i = 0; i < 2; i++) {
-        tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1, PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_ORANGE);
-        delay(25);
-        tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1, PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_BLACK);
-        delay(15);
-    }
-    discardPendingTicks();
+    // Flackern entfernt — kein visuelles Feedback mehr beim VLP-Umschalten
 }
 
 static int findBestChordMatch(uint8_t scaleIdx, uint8_t iMask) {
@@ -3198,6 +3207,23 @@ void aInvPitchSequence(int dir) {
             }
         }
         if (!changed) return;
+    }
+    scheduleSaveParams();
+    pendingPitchDraw = true;
+}
+
+// Transponiert alle Steps um delta Skalenstufen (erlaubte Töne gemäß Scale+IntervalMask).
+void transposePitchSequence(int delta) {
+    int len = clampVal(PatLen[0], 1, 32);
+    int noteList[60];
+    int noteCount = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+    if (noteCount < 2) return;
+    for (int i = 0; i < len; i++) {
+        int curIdx = ((int)PitchNote1[i] * noteCount) / 256;
+        if (curIdx >= noteCount) curIdx = noteCount - 1;
+        int newIdx = clampVal(curIdx + delta, 0, noteCount - 1);
+        // rawValue so wählen, dass er genau auf newIdx zeigt (Mitte des Intervalls)
+        PitchNote1[i] = (uint8_t)clampVal((newIdx * 256 + 128) / noteCount, 0, 255);
     }
     scheduleSaveParams();
     pendingPitchDraw = true;
@@ -3381,7 +3407,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     }
 
     // Root — tap cycles forward
-    if (hitBox(mapX, mapY, 102, PITCH_CTRL_Y, 42, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 102, PITCH_CTRL_Y, 38, PITCH_CTRL_H, 3)) {
         pitchRoot = (uint8_t)((pitchRoot + 1) % 12);
         scheduleSaveParams();
         pendingPitchDraw = true;
@@ -3389,7 +3415,7 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     }
 
     // Spread — cycles 1..5
-    if (hitBox(mapX, mapY, 146, PITCH_CTRL_Y, 52, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 142, PITCH_CTRL_Y, 36, PITCH_CTRL_H, 3)) {
         uint8_t oldSpread = pitchSpread;
         pitchSpread = (uint8_t)(pitchSpread >= 5 ? 1 : pitchSpread + 1);
         if (pitchSpread != oldSpread) {
@@ -3405,22 +3431,28 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
     }
 
     // IV — tap: wrap lowest note +1 oct
-    if (hitBox(mapX, mapY, 200, PITCH_CTRL_Y, 30, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 180, PITCH_CTRL_Y, 28, PITCH_CTRL_H, 3)) {
         invertPitchSequence(1);
         return;
     }
 
     // AI — tap: raise truly lowest MIDI note +1 oct
-    if (hitBox(mapX, mapY, 232, PITCH_CTRL_Y, 30, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 210, PITCH_CTRL_Y, 28, PITCH_CTRL_H, 3)) {
         aInvPitchSequence(1);
         return;
     }
 
     // Shift — cycles -3..+3
-    if (hitBox(mapX, mapY, 264, PITCH_CTRL_Y, 56, PITCH_CTRL_H, 3)) {
+    if (hitBox(mapX, mapY, 240, PITCH_CTRL_Y, 38, PITCH_CTRL_H, 3)) {
         pitchShift = (int8_t)(pitchShift >= 3 ? -3 : pitchShift + 1);
         scheduleSaveParams();
         pendingPitchDraw = true;
+        return;
+    }
+
+    // Tp — tap: transpose +1 Skalenstufe
+    if (hitBox(mapX, mapY, 280, PITCH_CTRL_Y, 40, PITCH_CTRL_H, 3)) {
+        transposePitchSequence(1);
         return;
     }
 
@@ -3694,23 +3726,28 @@ void drawGConfigScreen() {
     tft.print("Ratchet Decay:");
     drawGcDecaySlider();
 
-    // Autosave-Checkbox
+    // Autosave-Toggle (3 Modi: 0=Aus, 1=Ständig, 2=Bei Clock-Stop)
     {
         int cx = 15, cy = 105, cs = 20;
+        static const uint16_t modeColor[3] = { ILI9341_ORANGE, ILI9341_GREEN, ILI9341_CYAN };
+        static const char* modeLabel[3] = { "Aus (Live)", "Ein (Sound-Suche)", "Bei Clock-Stop" };
         tft.drawRect(cx, cy, cs, cs, ILI9341_DARKGREY);
         tft.fillRect(cx+1, cy+1, cs-2, cs-2, ILI9341_BLACK);
         tft.setFont(Arial_12);
         tft.setTextColor(ILI9341_LIGHTGREY);
         tft.setCursor(cx + cs + 6, cy + 5);
         tft.print("Autosave");
-        if (autosaveEnabled) {
+        if (autosaveMode == 1) {
             tft.drawLine(cx+3, cy+10, cx+8, cy+16, ILI9341_GREEN);
             tft.drawLine(cx+8, cy+16, cx+17, cy+4, ILI9341_GREEN);
+        } else if (autosaveMode == 2) {
+            tft.drawLine(cx+3, cy+4, cx+17, cy+16, ILI9341_CYAN);
+            tft.drawLine(cx+17, cy+4, cx+3, cy+16, ILI9341_CYAN);
         }
         tft.setFont(Arial_10);
-        tft.setTextColor(autosaveEnabled ? ILI9341_GREEN : ILI9341_ORANGE);
+        tft.setTextColor(modeColor[autosaveMode]);
         tft.setCursor(cx + cs + 70, cy + 6);
-        tft.print(autosaveEnabled ? "Ein (Sound-Suche)" : "Aus (Live)");
+        tft.print(modeLabel[autosaveMode]);
     }
 
     // Song Memory section
@@ -3732,12 +3769,10 @@ void handleGConfig(int mapX, int mapY, uint16_t tipPos) {
         requestNavigateTo(CV_CONFIG);
         return;
     }
-    // Autosave-Checkbox (x=15, y=105, w=140, h=24)
+    // Autosave-Toggle (x=15, y=105, w=230, h=24) — 3 Modi: 0→1→2→0
     if (hitBox(mapX, mapY, 15, 105, 230, 24, 4)) {
-        autosaveEnabled = !autosaveEnabled;
-        // Sofort speichern (unabhängig vom autosaveEnabled-Flag),
-        // damit die Einstellung den Neustart überlebt
-        saveParams();
+        autosaveMode = (autosaveMode + 1) % 3;
+        saveParams();  // Sofort speichern, damit Einstellung Neustart überlebt
         drawGConfigScreen();
         return;
     }

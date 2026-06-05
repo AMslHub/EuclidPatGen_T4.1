@@ -39,7 +39,8 @@ enum CvTarget : uint8_t {
 };
 
 extern uint8_t  cvTargetMap[3];  // CvTarget per CV-Eingang
-extern uint16_t cvSmooth[3];     // IIR-geglättete ADC-Werte (0–4095)
+extern uint16_t cvSmooth[3];     // IIR-geglättete ADC-Werte alpha=1/8 (0–4095)
+extern uint16_t cvSlow[3];       // IIR-geglättete ADC-Werte alpha=1/64, für Slot-Erkennung
 extern uint16_t cvRaw[3];        // Invertierte Rohwerte (0–4095 = 0V–3.3V)
 
 // Abgeleitete Werte – werden von applyCvTargets() aktualisiert

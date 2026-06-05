@@ -5,6 +5,7 @@
 
 uint16_t cvRaw[3]    = {0, 0, 0};
 uint16_t cvSmooth[3] = {0, 0, 0};
+uint16_t cvSlow[3]   = {0, 0, 0};  // alpha=1/64, für Slot-Erkennung
 
 uint8_t cvTargetMap[3]     = {CV_TARGET_NONE, CV_TARGET_NONE, CV_TARGET_NONE};
 uint8_t cvRatchetCount[3]  = {1, 1, 1};
@@ -48,8 +49,10 @@ void readCvInputs() {
         // Invertierung der Schaltung kompensieren: 0V am Eingang → 3.3V am ADC-Pin
         uint16_t raw = 4095u - (uint16_t)analogRead(CV_PINS[i]);
         cvRaw[i]    = raw;
-        // IIR-Glättung alpha=1/8 (träge genug für stabile Werte, schnell genug für Live-Modulation)
+        // IIR-Glättung alpha=1/8 für Live-Modulation (Ratchet, Swing, Pitch etc.)
         cvSmooth[i] = (uint16_t)((cvSmooth[i] * 7u + raw) / 8u);
+        // Stärkere Glättung alpha=1/64 für Slot-Erkennung (SLOT_KEY, SLOT_SEL)
+        cvSlow[i]   = (uint16_t)((cvSlow[i] * 63u + raw) / 64u);
     }
 }
 
@@ -117,15 +120,15 @@ void applyCvTargets() {
             }
             case CV_TARGET_SLOT_SEL: {
                 // 0-4095 → Slot 0-6, Schmitt-Trigger-Hysterese gegen Zittern
-                int rawSlot = (int)cv / CV_SLOT_ZONE;
+                int rawSlot = (int)cvSlow[ci] / CV_SLOT_ZONE;
                 if (rawSlot > 15) rawSlot = 15;
                 if (cvSlotSelHyst < 0) {
                     cvSlotSelHyst = (int8_t)rawSlot;
                 } else if (rawSlot > cvSlotSelHyst) {
-                    if ((int)cv >= (cvSlotSelHyst + 1) * CV_SLOT_ZONE + CV_SLOT_HYST)
+                    if ((int)cvSlow[ci] >= (cvSlotSelHyst + 1) * CV_SLOT_ZONE + CV_SLOT_HYST)
                         cvSlotSelHyst = (int8_t)rawSlot;
                 } else if (rawSlot < cvSlotSelHyst) {
-                    if ((int)cv < cvSlotSelHyst * CV_SLOT_ZONE - CV_SLOT_HYST)
+                    if ((int)cvSlow[ci] < cvSlotSelHyst * CV_SLOT_ZONE - CV_SLOT_HYST)
                         cvSlotSelHyst = (int8_t)rawSlot;
                 }
                 cvSlotSel = cvSlotSelHyst;
@@ -193,7 +196,7 @@ void applyCvTargets() {
                 // 16 White Keys C..D'' → Slot 0-15
                 // Semitöne:     0 2 4 5 7 9 11 12 14 16 17 19 21 23 24 26
                 static const int8_t WK[16] = {0,2,4,5,7,9,11,12,14,16,17,19,21,23,24,26};
-                int st = (int)((uint32_t)cv * 12u + 310u) / 621u;
+                int st = (int)((uint32_t)cvSlow[ci] * 12u + 310u) / 621u;
                 int best = 0, bestDist = abs(st - (int)WK[0]);
                 for (int k = 1; k < 16; k++) {
                     int d = abs(st - (int)WK[k]);

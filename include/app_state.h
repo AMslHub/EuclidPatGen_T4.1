@@ -166,7 +166,7 @@ extern bool SoloSeq[3];
 extern bool PendingSave;
 extern uint32_t PendingSaveAt;
 extern const uint32_t SAVE_DEBOUNCE_MS;
-extern bool autosaveEnabled;  // false = kein Auto-EEPROM-Save (Live-Modus)
+extern uint8_t autosaveMode;  // 0=Aus (Live), 1=Ständig, 2=Bei Clock-Stop
 extern int pendingSlotSaveSlot;  // >=0: Slot-Save aufgeschoben (Encoder setzt, Main-Loop schreibt)
 extern int     pendingSlotMoveFrom;   // >=0: P&P-Merge aufgeschoben (Quell-Slot)
 extern int     pendingSlotMoveTo;     // Ziel-Slot des aufgeschobenen Merge

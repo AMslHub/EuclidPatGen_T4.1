@@ -1,4 +1,6 @@
 #include <pitch.h>
+#include <string.h>
+#include <app_state.h>
 
 struct ScaleDef {
     const char *name;
@@ -76,6 +78,9 @@ static const PitchPreset PITCH_PRESETS[] = {
     { "Berlin 3",    {   // Dramatisch, breiter Sweep mit Klimax
         0,18,54,127,200,236,200,127, 54,18,0,36,108,200,236,218,
         163,127,72,36,0,54,127,200, 236,254,236,200,163,127,54,18 } },
+    { "Brwn Fast",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Brwn Mid",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Brwn Slow",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     // --- C ---
     { "Cascade",     {   // Absteigendes Wasserfall-Motiv
         236,218,200,181,163,145,127,108,90,72,54,36,18,0,36,72,
@@ -105,6 +110,7 @@ static const PitchPreset PITCH_PRESETS[] = {
     { "Drone",       {   // Grundton-Bordun mit Farbtupfern
         0,0,0,72,0,0,0,127,0,0,72,0,36,0,0,108,
         0,0,0,72,0,0,0,127,0,0,72,0,36,0,0,108 } },
+    { "Drunk Walk",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     // --- F ---
     { "Floating",    {   // Weite Intervalle, schwebend, ambient
         0,163,72,218, 36,200,127,181, 72,236,108,163, 0,218,90,127,
@@ -135,6 +141,9 @@ static const PitchPreset PITCH_PRESETS[] = {
     { "Minimal",     {   // 4-Step Techno-Minimal-Loop
         0,72,36,108,0,72,36,108,0,72,36,108,0,72,36,108,
         0,72,36,108,0,72,36,108,0,72,36,108,0,72,36,108 } },
+    { "Mk Harmon.",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Mk Stepwise", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Mk Struktur", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     // --- O ---
     { "Ominous",     {   // Dunkel, spannungsgeladen, im tiefen Register
         0,0,36,18, 0,0,18,36, 54,36,18,0, 0,18,36,72,
@@ -153,6 +162,9 @@ static const PitchPreset PITCH_PRESETS[] = {
     { "Rev. Saw",    {   // Lineare Abwaertsrampe
         255,210,180,160,144,128,112,96,80,64,48,32,24,16,8,0,
         255,210,180,160,144,128,112,96,80,64,48,32,24,16,8,0 } },
+    { "RndWlk Fast", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "RndWlk Mid",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "RndWlk Slow", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     // --- S ---
     { "S & H",       {   // Sample & Hold: grosse Sprünge, zufaellig wirkend
         0,200,36,218,72,163,18,236,127,54,181,36,200,0,145,90,
@@ -197,13 +209,161 @@ const char *getPitchPresetName(int idx) {
     return PITCH_PRESETS[((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT].name;
 }
 
+// Hilfsfunktion: Note-Index → rawValue (Mitte des Quantisierungs-Intervalls)
+static uint8_t noteIdxToRaw(int idx, int noteCount) {
+    if (noteCount <= 0) return 0;
+    idx = idx < 0 ? 0 : idx >= noteCount ? noteCount - 1 : idx;
+    return (uint8_t)clampVal((idx * 256 + 128) / noteCount, 0, 255);
+}
+
+// Wählt zufällig einen Grundton-Index (Root in beliebiger Oktave) aus der Notenliste.
+// Fallback: Index 0 wenn kein Root gefunden.
+static int randomRootIdx(const int *noteList, int N) {
+    int rootMidi = 36 + (int)(pitchRoot % 12);  // tiefster Root (C2 + offset)
+    int hits[5]; int nHits = 0;
+    for (int i = 0; i < N && nHits < 5; i++) {
+        if ((noteList[i] - rootMidi) % 12 == 0) hits[nHits++] = i;
+    }
+    if (nHits == 0) return 0;
+    return hits[(int)(random(nHits))];
+}
+
+// Brownian: immer Bewegung, Schrittgröße (Skalenstufen) variiert je Temperatur
+static void genBrownian(uint8_t *dest32, int stepRange) {
+    int noteList[60];
+    int N = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+    if (N < 2) { for (int i = 0; i < 32; i++) dest32[i] = 0; return; }
+    int cur = randomRootIdx(noteList, N);  // Start: Grundton (zufällige Oktave)
+    for (int i = 0; i < 32; i++) {
+        dest32[i] = noteIdxToRaw(cur, N);
+        int step = (int)(random(stepRange * 2 + 1)) - stepRange;
+        if (step == 0) step = (random(2) ? 1 : -1);
+        cur += step;
+        if (cur < 0)  cur = 1;      // Wand: abprallen
+        if (cur >= N) cur = N - 2;
+    }
+}
+
+// Random Walk: immer ±1 Skalenstufe, aber nur mit Wahrscheinlichkeit pct%
+static void genRndWlk(uint8_t *dest32, int pct) {
+    int noteList[60];
+    int N = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+    if (N < 2) { for (int i = 0; i < 32; i++) dest32[i] = 0; return; }
+    int cur = randomRootIdx(noteList, N);  // Start: Grundton (zufällige Oktave)
+    for (int i = 0; i < 32; i++) {
+        dest32[i] = noteIdxToRaw(cur, N);
+        if ((int)(random(100)) < pct) {
+            cur += (random(2) ? 1 : -1);
+            if (cur < 0)  cur = 1;
+            if (cur >= N) cur = N - 2;
+        }
+    }
+}
+
+// Drunk Walk: Brownian mit Anziehung zur Mitte (Grundton als Startpunkt)
+static void genDrunkWalk(uint8_t *dest32) {
+    int noteList[60];
+    int N = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+    if (N < 2) { for (int i = 0; i < 32; i++) dest32[i] = 0; return; }
+    int cur = randomRootIdx(noteList, N);  // Start: Grundton (zufällige Oktave)
+    int mid = N / 2;
+    for (int i = 0; i < 32; i++) {
+        dest32[i] = noteIdxToRaw(cur, N);
+        int step = (int)(random(7)) - 3;  // -3..+3 Stufen
+        int gravity = (mid - cur) / 4;    // Anziehung zur Mitte
+        cur += step + gravity;
+        if (cur < 0)  cur = 0;
+        if (cur >= N) cur = N - 1;
+    }
+}
+
+// Markov Stepwise: bevorzugt kleine Schritte, selten große Sprünge
+static void genMkStepwise(uint8_t *dest32) {
+    int noteList[60];
+    int N = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+    if (N < 2) { for (int i = 0; i < 32; i++) dest32[i] = 0; return; }
+    int cur = randomRootIdx(noteList, N);  // Start: Grundton (zufällige Oktave)
+    for (int i = 0; i < 32; i++) {
+        dest32[i] = noteIdxToRaw(cur, N);
+        int r = (int)(random(10));
+        int delta;
+        if (r < 6)      delta = ((int)(random(3)) - 1);      // 60%: ±0/1
+        else if (r < 9) delta = ((int)(random(3)) - 1) * 2;  // 30%: ±0/2
+        else            delta = ((int)(random(3)) - 1) * 4;  // 10%: ±0/4
+        cur += delta;
+        if (cur < 0)  cur = -cur;          // Wand abprallen
+        if (cur >= N) cur = 2 * N - cur - 2;
+        cur = cur < 0 ? 0 : cur >= N ? N - 1 : cur;
+    }
+}
+
+// Markov Harmonisch: Übergangsgewichte auf echten Skalenstufen-Indizes
+static void genMkHarmonisch(uint8_t *dest32) {
+    int noteList[60];
+    int N = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+    if (N < 2) { for (int i = 0; i < 32; i++) dest32[i] = 0; return; }
+    // Gewichte: Root→(3/5 stark), Mitte→(Root/Okt), Okt→Root
+    // Vereinfacht: 5 repräsentative Indizes aus der Notenliste
+    int step = N > 4 ? N / 4 : 1;
+    int deg[5] = { 0, step, step*2, step*3, N-1 };
+    static const uint8_t WEIGHTS[5][5] = {
+        { 1, 2, 4, 1, 3 },
+        { 2, 1, 3, 2, 2 },
+        { 3, 2, 1, 3, 4 },
+        { 2, 3, 3, 1, 2 },
+        { 4, 1, 2, 1, 1 },
+    };
+    int cur = 0;  // Start: deg[0] = Root (Markov-Zustand, nicht noteList-Index)
+    for (int i = 0; i < 32; i++) {
+        dest32[i] = noteIdxToRaw(deg[cur], N);
+        int total = 0;
+        for (int j = 0; j < 5; j++) total += WEIGHTS[cur][j];
+        int r = (int)(random(total)), acc = 0;
+        for (int j = 0; j < 5; j++) {
+            acc += WEIGHTS[cur][j];
+            if (r < acc) { cur = j; break; }
+        }
+    }
+}
+
+// Markov Struktur: Richtungs-Zustand auf Skalenstufen-Indizes
+static void genMkStruktur(uint8_t *dest32) {
+    int noteList[60];
+    int N = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+    if (N < 2) { for (int i = 0; i < 32; i++) dest32[i] = 0; return; }
+    int cur = randomRootIdx(noteList, N);  // Start: Grundton (zufällige Oktave)
+    int dir = +1;
+    for (int i = 0; i < 32; i++) {
+        dest32[i] = noteIdxToRaw(cur, N);
+        if (cur >= N - 1)    dir = -1;
+        else if (cur <= 0)   dir = +1;
+        else if ((int)(random(8)) == 0) dir = -dir;
+        int step = (int)(random(3) + 1);  // 1–3 Stufen
+        if ((int)(random(5)) == 0) step = 0;  // 20% Pause
+        cur += dir * step;
+        cur = cur < 0 ? 0 : cur >= N ? N - 1 : cur;
+    }
+}
+
 void getPitchPresetNotes(int idx, uint8_t *dest32) {
     if (idx == PITCH_PRESET_COUNT) {
         for (int i = 0; i < 32; i++) dest32[i] = (uint8_t)random(256);
         return;
     }
-    const uint8_t *src = PITCH_PRESETS[((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT].note;
-    for (int i = 0; i < 32; i++) dest32[i] = src[i];
+    int i = ((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT;
+    const char *name = PITCH_PRESETS[i].name;
+    if      (!strcmp(name, "Brwn Slow"))    { genBrownian(dest32, 1);   return; }
+    else if (!strcmp(name, "Brwn Mid"))    { genBrownian(dest32, 3);   return; }
+    else if (!strcmp(name, "Brwn Fast"))   { genBrownian(dest32, 5);   return; }
+    else if (!strcmp(name, "RndWlk Slow")) { genRndWlk(dest32, 25);    return; }
+    else if (!strcmp(name, "RndWlk Mid"))  { genRndWlk(dest32, 50);    return; }
+    else if (!strcmp(name, "RndWlk Fast")) { genRndWlk(dest32, 85);    return; }
+    else if (!strcmp(name, "Drunk Walk"))  { genDrunkWalk(dest32);     return; }
+    else if (!strcmp(name, "Mk Stepwise"))  { genMkStepwise(dest32);   return; }
+    else if (!strcmp(name, "Mk Harmon."))   { genMkHarmonisch(dest32); return; }
+    else if (!strcmp(name, "Mk Struktur"))  { genMkStruktur(dest32);   return; }
+    const uint8_t *src = PITCH_PRESETS[i].note;
+    for (int j = 0; j < 32; j++) dest32[j] = src[j];
 }
 
 // IntervalMask-Bit i -> Skalengrad

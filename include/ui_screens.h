@@ -77,6 +77,7 @@ void drawPitchScreen();
 void applyAllTransforms(); // Rotation+Fold aller Kanäle einfrieren (Enc1-Long-Press auf PITCH1)
 void invertPitchSequence(int dir); // IV: Wrap — find by raw PitchNote1, apply OctaveNote1 ±1
 void aInvPitchSequence(int dir);   // AI: A-Inv — find by actual MIDI pitch, raise/lower lowest/highest OctaveNote1
+void transposePitchSequence(int delta); // Tp: alle Steps um delta Skalenstufen verschieben
 bool getPitchChordMode();
 void flashPitchBars();             // VLP-Feedback: Balken schwarz→weiß→normal
 void togglePitchChordMode();       // Enc1 Very-Long-Press auf PITCH1

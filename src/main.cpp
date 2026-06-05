@@ -115,7 +115,7 @@ bool MuteSeq[3] = { false, false, false };
 bool SoloSeq[3] = { false, false, false };
 
 // Deferred save
-bool autosaveEnabled = true;  // false = kein Auto-EEPROM-Save (Live-Modus)
+uint8_t autosaveMode = 1;  // 0=Aus (Live), 1=Ständig, 2=Bei Clock-Stop
 bool PendingSave = false;
 uint32_t PendingSaveAt = 0;
 const uint32_t SAVE_DEBOUNCE_MS = 400;
@@ -183,11 +183,11 @@ static uint32_t swingGateDur[3]  = { 0, 0, 0 };
 // Performance UI refresh after load
 bool PendingPerfRefresh = false;
 
+
 // Deferred full-screen redraw nach Slot-Load (verhindert fillScreen() in der Tick-Schleife)
 bool PendingCircsRedraw = false;
 // Deferred Pitch-Controls+Bars Redraw (verhindert SPI-Block in Encoder-Handler und Tick-Schleife)
 bool pendingPitchDraw = false;
-static bool  pendingSlotKeyLoad    = false;  // CV-Keyboard Slot-Load am Kanal-1-Pattern-Ende
 static int8_t lastCvSlotKey        = -1;     // Change-Detection: nur bei neuer Note feuern
 static bool pendingSongUiUpdate  = false;
 static bool pendingSongSlotLoad  = false;
@@ -309,16 +309,20 @@ void clockISR() {
   bool isRestart = false;
   if (extClockReceived) {
     uint32_t expected = measuredPeriodUs;
-    // Pause laenger als 2× die letzte Periode → Neustart erkennen
+    // Pause laenger als 5× die letzte Periode → Neustart erkennen
     if (expected > 0) {
-      isRestart = (period > expected * 2u);
+      isRestart = (period > expected * 5u);
     } else {
       isRestart = (period > 2000000UL);  // Fallback: >2 s = echter Stopp (war 500 ms = 120 BPM-Grenze)
     }
     if (isRestart) {
       measuredPeriodUs = 0;  // Reset: Neukalibrierung ab nächstem Puls
     } else if (period > 500) {
-      measuredPeriodUs = period;
+      // Glitch-Schutz: neue Periode nur übernehmen wenn plausibel
+      // (nicht kleiner als 1/4 der letzten — filtert Doppelpulse/Spikes)
+      if (expected == 0 || period >= expected / 4u) {
+        measuredPeriodUs = period;
+      }
     }
   }
 
@@ -331,8 +335,13 @@ void clockISR() {
 }
 
 // Zweck: Setzt Reset-Flag bei externem Reset-Puls (active-low, FALLING-Flanke).
+// Glitch-Filter: ignoriert Pulse kürzer als 200 µs (Rauschen/Spike).
 // Assumptions: Nur vom Interrupt-Kontext aufgerufen (Pin RESET_IN_PIN).
 void resetISR() {
+  static uint32_t lastResetUs = 0;
+  uint32_t now = micros();
+  if ((uint32_t)(now - lastResetUs) < 5000u) return;  // <5ms → Glitch/Rauschen ignorieren
+  lastResetUs = now;
   pendingReset = true;
 }
 
@@ -498,7 +507,8 @@ void setup() {
   pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
   pinMode(RESET_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
+  // TEST: Reset-Interrupt deaktiviert — prüfen ob spontane Resets aufhören
+  // attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
 
   gateOffTimer.begin(gateOffISR, 1000);  // 1kHz: gates off ≤1ms late even during SPI draws
 
@@ -584,12 +594,13 @@ void loop() {
     if (p > 0) DurationOfOneStep = p;
   }
 
-  // Auto-Reset nach langer Pause (>2 s) im externen Clock-Modus.
+  // Auto-Reset nach langer Pause (>10 s) im externen Clock-Modus.
   // Stellt sicher, dass der Sequencer nach einem Stopp wieder bei Step 0 beginnt.
   if (extClockMode && extClockActive) {
-    if ((uint32_t)(micros() - lastExtClockUs) > 2000000UL) {
+    if ((uint32_t)(micros() - lastExtClockUs) > 10000000UL) {
       pendingReset   = true;
       extClockActive = false;  // Verhindert wiederholten Reset bis neuer Clock kommt
+      if (autosaveMode == 2) saveParams();  // Bei Clock-Stop speichern
     }
   }
 
@@ -826,10 +837,16 @@ void loop() {
         if (cntCh[ch] != 0 && (cntCh[ch] % (unsigned int)len) == 0) {
             cycleCount[ch]++;
             if (cycleCount[ch] == 0) cycleCount[ch] = 1;  // wrap-safe, never zero
-            // Kanal 1 Muster-Ende: CV-Keyboard Slot-Load nur bei neuer Note vormerken
+            // Kanal 1 Muster-Ende: CV-Keyboard Slot-Load sofort anfordern
+            // (applyPendingLoadIfReady folgt direkt danach mit cnt % PatLen == 0 → feuert sofort)
             if (ch == 0 && cvSlotKey >= 0 && cvSlotKey != lastCvSlotKey) {
-                pendingSlotKeyLoad = true;
-                lastCvSlotKey      = cvSlotKey;
+                lastCvSlotKey = cvSlotKey;
+                int slot = cvSlotKey;
+                if (getSlotsUsedMask() & (1u << slot)) {
+                    requestLoadSlot(slot);
+                    resetQuickSavePointer();
+                    PendingPerfRefresh = true;
+                }
             }
         }
     }
@@ -1202,18 +1219,23 @@ void loop() {
         if (len <= 0) continue;
         uint32_t nextCnt = cntCh[ch] + 1u;
         int nextIdx = (int)(nextCnt % (unsigned int)len);
-        int effRot  = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int effRot    = clampVal(PatRot[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
+        int effRotSel = clampVal(PatRot[ch] + PatRotSel[ch] + (int)cvPatRotOffset[ch], -(len - 1), len - 1);
         if (!EPatArr[ch][euclidRotatedSrc(nextIdx, len, effRot)]) continue;
         // Mute-Check: gemuteter Step wird nicht pre-armt
-        int nextMuteSrc = euclidRotatedSrc(nextIdx, len, effRot);
+        int nextMuteSrc = RotateMuteStep[ch] ? euclidRotatedSrc(nextIdx, len, effRotSel)
+                                              : euclidRotatedSrc(nextIdx, len, effRot);
         if (MuteStepArr[ch][nextMuteSrc]) continue;
-        bool nextSwing   = (cvSwingPct > 0) && ((nextCnt % 2u) == 0u);
-        bool noRatchet   = (cvRatchetCount[ch] <= 1u) && (RatchetArr[ch][nextIdx] <= 1u);
+        bool nextSwing = (cvSwingPct > 0) && ((nextCnt % 2u) == 0u);
+        int nextRatchSrc = RotateRatchet[ch] ? euclidRotatedSrc(nextIdx, len, effRotSel)
+                                              : euclidRotatedSrc(nextIdx, len, effRot);
+        bool noRatchet = (cvRatchetCount[ch] <= 1u) && (RatchetArr[ch][nextRatchSrc] <= 1u);
         if (nextSwing || !noRatchet) continue;
         nextGateArmed[ch]    = true;
         nextGateDuration[ch] = gateLenForStep(ch, nextCnt);
         // Hold-Flag für ISR setzen
-        int nextHoldSrc = euclidRotatedSrc(nextIdx, len, effRot);
+        int nextHoldSrc = RotateHoldStep[ch] ? euclidRotatedSrc(nextIdx, len, effRotSel)
+                                              : euclidRotatedSrc(nextIdx, len, effRot);
         nextGateIsHold[ch] = (bool)HoldStepArr[ch][nextHoldSrc];
     }
 
@@ -1301,16 +1323,6 @@ void loop() {
     drawPitchPlayhead(cntCh[0]);
   }
 
-  // CV-Keyboard Slot-Load: am Kanal-1-Pattern-Ende den per 1V/Oct-Key gewählten Slot laden.
-  if (pendingSlotKeyLoad && cvSlotKey >= 0) {
-    pendingSlotKeyLoad = false;
-    int slot = cvSlotKey;
-    if (getSlotsUsedMask() & (1u << slot)) {
-      requestLoadSlot(slot);
-      resetQuickSavePointer();
-      PendingPerfRefresh = true;
-    }
-  }
 
   // Song-Slot-Load: erst nach der Tick-Schleife, um SD-Kaskaden zu verhindern.
   // Egal wie viele Ticks akkumulieren, es wird immer nur ein requestLoadSlot pro
@@ -1571,6 +1583,6 @@ void loop() {
     PendingPerfRefresh = false;
   }
 
-  // USB-Stack bedienen + WDOG3 kicken (verhindert Watchdog-Reset bei langem loop())
+// USB-Stack bedienen + WDOG3 kicken (verhindert Watchdog-Reset bei langem loop())
   yield();
 }

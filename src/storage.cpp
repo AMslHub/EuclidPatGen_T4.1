@@ -8,7 +8,7 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB4D;  // bumped: +autosaveEnabled
+static const uint16_t EEPROM_MAGIC   = 0xEB4E;  // bumped: autosaveMode (3 Zustände)
 static const uint16_t SD_MAGIC_SLOTS = 0xEB65;  // bumped: +holdStep/muteStep in ParamBlock
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
@@ -86,7 +86,7 @@ struct CurrentParams {
     uint8_t    songSeq[64];
     uint8_t    songLen;
     uint8_t    activeSongNumVal;
-    uint8_t    autosaveEnabledVal;  // 0=aus (Live), 1=an (Normal)
+    uint8_t    autosaveModeVal;  // 0=Aus, 1=Ständig, 2=Bei Clock-Stop
 };
 
 struct SlotParams {
@@ -244,7 +244,7 @@ static void packCurrent(CurrentParams &p) {
     p.songLen            = songLen;
     memcpy(p.songSeq, songSeq, 64);
     p.activeSongNumVal   = (uint8_t)clampVal(activeSongNum, 0, 99);
-    p.autosaveEnabledVal = autosaveEnabled ? 1 : 0;
+    p.autosaveModeVal = autosaveMode;
 }
 
 static void unpackCurrent(const CurrentParams &p) {
@@ -268,7 +268,7 @@ static void unpackCurrent(const CurrentParams &p) {
     songLen       = (p.songLen <= 64) ? p.songLen : 0;
     memcpy(songSeq, p.songSeq, 64);
     activeSongNum    = clampVal((int)p.activeSongNumVal, 0, 99);
-    autosaveEnabled  = (p.autosaveEnabledVal != 0);
+    autosaveMode = (p.autosaveModeVal <= 2) ? p.autosaveModeVal : 1;
 }
 
 static void packSlot(SlotParams &p) {
@@ -408,7 +408,7 @@ void loadParams() {
 }
 
 void scheduleSaveParams() {
-    if (!autosaveEnabled) return;  // Live-Modus: kein Auto-Save
+    if (autosaveMode != 1) return;  // Nur im Modus "Ständig" Auto-Save
     PendingSave   = true;
     PendingSaveAt = millis() + SAVE_DEBOUNCE_MS;
 }
