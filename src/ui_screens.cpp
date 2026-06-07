@@ -3588,7 +3588,7 @@ void handleCvConfig(int mapX, int mapY, uint16_t tipPos) {
 // Aktualisiert nur die CV-Pegel-Balken (wird jeden Loop-Durchlauf aufgerufen).
 void tickCvConfigUi() {
     for (int i = 0; i < 3; i++) {
-        int barFill = (int)((uint32_t)cvSmooth[i] * CV_CFG_BAR_W / 4095u);
+        int barFill = (int)((uint32_t)cvSlow[i] * CV_CFG_BAR_W / 4095u);
         if (barFill == lastCvBarFill[i]) continue;
         lastCvBarFill[i] = barFill;
         int y = CV_CFG_ROW_Y[i];
@@ -4365,7 +4365,8 @@ static const char* condActionLabel(uint8_t a) {
         "R:2", "R:3", "R:4",
         "+1","+2","+3","+4","+5","+6","+7","+8","+9","+10","+11","+12",
         "-1","-2","-3","-4","-5","-6","-7","-8","-9","-10","-11","-12",
-        "+V2", "+V/2", "+V/3", "+V/4", "+2O", "-2O"
+        "+V2", "+V/2", "+V/3", "+V/4", "+2O", "-2O",
+        "+S1","+S2","+S3","+S4","-S1","-S2","-S3","-S4"
     };
     return (a < COND_ACT_COUNT) ? lbl[a] : "---";
 }
@@ -4381,6 +4382,8 @@ static uint16_t condActionDisplayColor(uint8_t a) {
     if (a >= COND_ACT_VAL_X2   && a <= COND_ACT_VAL_X1_25)  return ILI9341_WHITE;  // value mul
     if (a == COND_ACT_T_PLUS_24)  return ILI9341_GREEN;
     if (a == COND_ACT_T_MINUS_24) return 0xFD20;  // orange, matches -transpose
+    if (a >= COND_ACT_SC_PLUS_1  && a <= COND_ACT_SC_PLUS_4)  return 0x87E0;  // light green
+    if (a >= COND_ACT_SC_MINUS_1 && a <= COND_ACT_SC_MINUS_4) return 0xFBE0;  // light orange
     return ILI9341_LIGHTGREY;
 }
 

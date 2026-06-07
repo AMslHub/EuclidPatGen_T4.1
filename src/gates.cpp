@@ -292,6 +292,14 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                     }
                 }
 
+                // Scale-step shift: find current note in noteList, shift by ±N steps
+                if (condScaleStepAdd[0] != 0) {
+                    int noteList[60]; int nCount = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+                    int ni = 0;
+                    for (int k = 0; k < nCount; k++) if (noteList[k] == midi) { ni = k; break; }
+                    ni = clampVal(ni + (int)condScaleStepAdd[0], 0, nCount - 1);
+                    midi = noteList[ni];
+                }
                 midi = clampVal(midi + totalShift * 12 + (int)cvPitchTransposeST + cvPitchAdj * 12 + (int)condTransposeAdd[0], 36, 127);
                 lastPitchDac = midiToDac(midi);
                 pitchDac = lastPitchDac;

@@ -65,7 +65,11 @@ enum CondAction : uint8_t {
     COND_ACT_VAL_X1_25,   // value ×5/4, capped 255     (= 37)
     COND_ACT_T_PLUS_24,   // transpose +24 semitones    (= 38)
     COND_ACT_T_MINUS_24,  // transpose -24 semitones    (= 39)
-    COND_ACT_COUNT        // = 40
+    COND_ACT_SC_PLUS_1,   // +1 scale step              (= 40)
+    COND_ACT_SC_PLUS_4  = COND_ACT_SC_PLUS_1 + 3,
+    COND_ACT_SC_MINUS_1,  // -1 scale step              (= 44)
+    COND_ACT_SC_MINUS_4 = COND_ACT_SC_MINUS_1 + 3,
+    COND_ACT_COUNT        // = 48
 };
 enum {UL, UR, LL, LR, CP, P1U, P1L, P2U, P2L, P3U, P3L, P4U, P4L};
 
@@ -235,6 +239,7 @@ extern uint32_t cycleCount[3];    // 1-based cycle counter, resets on slot-load/
 extern bool    condMuteActive[3];
 extern bool    condAccentActive[3];
 extern int8_t  condTransposeAdd[3];
+extern int8_t  condScaleStepAdd[3]; // +/-1..4 scale steps (0=inactive)
 extern uint8_t condRatchetOvr[3];   // 0=no override, 2..4=ratchet count
 extern uint8_t condGateLenOvr[3];   // 0=no override, else gate-len value
 extern uint8_t condValueMul[3];     // 0=none, 1=×2, 2=×3/2, 3=×4/3, 4=×5/4

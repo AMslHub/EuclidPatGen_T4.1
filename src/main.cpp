@@ -74,6 +74,7 @@ uint32_t cycleCount[3]    = { 1, 1, 1 };
 bool     condMuteActive[3]   = { false, false, false };
 bool     condAccentActive[3] = { false, false, false };
 int8_t   condTransposeAdd[3] = { 0, 0, 0 };
+int8_t   condScaleStepAdd[3] = { 0, 0, 0 };
 uint8_t  condRatchetOvr[3]   = { 0, 0, 0 };
 uint8_t  condGateLenOvr[3]   = { 0, 0, 0 };
 uint8_t  condValueMul[3]     = { 0, 0, 0 };
@@ -507,8 +508,7 @@ void setup() {
   pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
   pinMode(RESET_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
-  // TEST: Reset-Interrupt deaktiviert — prüfen ob spontane Resets aufhören
-  // attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
+  attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
 
   gateOffTimer.begin(gateOffISR, 1000);  // 1kHz: gates off ≤1ms late even during SPI draws
 
@@ -594,10 +594,10 @@ void loop() {
     if (p > 0) DurationOfOneStep = p;
   }
 
-  // Auto-Reset nach langer Pause (>10 s) im externen Clock-Modus.
+  // Auto-Reset nach langer Pause (>2.5 s) im externen Clock-Modus.
   // Stellt sicher, dass der Sequencer nach einem Stopp wieder bei Step 0 beginnt.
   if (extClockMode && extClockActive) {
-    if ((uint32_t)(micros() - lastExtClockUs) > 10000000UL) {
+    if ((uint32_t)(micros() - lastExtClockUs) > 2500000UL) {
       pendingReset   = true;
       extClockActive = false;  // Verhindert wiederholten Reset bis neuer Clock kommt
       if (autosaveMode == 2) saveParams();  // Bei Clock-Stop speichern
@@ -1058,6 +1058,7 @@ void loop() {
         condMuteActive[ch]   = false;
         condAccentActive[ch] = false;
         condTransposeAdd[ch] = 0;
+        condScaleStepAdd[ch] = 0;
         condRatchetOvr[ch]   = 0;
         condGateLenOvr[ch]   = 0;
         condValueMul[ch]     = 0;
@@ -1103,6 +1104,10 @@ void loop() {
                     condTransposeAdd[ch] = (int8_t)(ca - COND_ACT_T_PLUS_1 + 1);
                 else if (ca >= COND_ACT_T_MINUS_1 && ca <= COND_ACT_T_MINUS_12)
                     condTransposeAdd[ch] = (int8_t)(-(ca - COND_ACT_T_MINUS_1 + 1));
+                else if (ca >= COND_ACT_SC_PLUS_1 && ca <= COND_ACT_SC_PLUS_4)
+                    condScaleStepAdd[ch] = (int8_t)(ca - COND_ACT_SC_PLUS_1 + 1);
+                else if (ca >= COND_ACT_SC_MINUS_1 && ca <= COND_ACT_SC_MINUS_4)
+                    condScaleStepAdd[ch] = (int8_t)(-(ca - COND_ACT_SC_MINUS_1 + 1));
                 break;
         }
     }
