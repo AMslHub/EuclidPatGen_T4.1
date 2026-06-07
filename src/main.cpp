@@ -76,6 +76,8 @@ bool     condAccentActive[3] = { false, false, false };
 int8_t   condTransposeAdd[3] = { 0, 0, 0 };
 int8_t   condScaleStepAdd[3] = { 0, 0, 0 };
 uint8_t  condRatchetOvr[3]   = { 0, 0, 0 };
+uint8_t       pin7Mode   = 0;     // 0=Reset-Puls, 1=Run/Stop-Pegel
+volatile bool extRunStop = true;  // true=läuft (nur in Mode 1 relevant)
 uint8_t  condGateLenOvr[3]   = { 0, 0, 0 };
 uint8_t  condValueMul[3]     = { 0, 0, 0 };
 bool GateHold1 = false;
@@ -474,6 +476,20 @@ static void refreshUiForPatternUpdate(int idx){
   }
 }
 
+void applyPin7Mode() {
+    detachInterrupt(digitalPinToInterrupt(RESET_IN_PIN));
+    if (pin7Mode == 0) {
+        attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
+        extRunStop = true;
+    } else {
+        extRunStop = (digitalRead(RESET_IN_PIN) == LOW);
+    }
+}
+
+void triggerManualReset() {
+    pendingReset = true;
+}
+
 // Zweck: Initialisiert Hardware, GUI-Status und startet den Takt-Timer.
 // Side Effects: konfiguriert Pins, TFT/Touch, EEPROM-Parameter, Timer und globale States.
 // Assumptions: Wird einmalig nach dem Start aufgerufen; Hardware ist korrekt verdrahtet.
@@ -508,7 +524,7 @@ void setup() {
   pinMode(CLOCK_IN_PIN, INPUT_PULLUP);
   pinMode(RESET_IN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(CLOCK_IN_PIN), clockISR, FALLING);
-  attachInterrupt(digitalPinToInterrupt(RESET_IN_PIN), resetISR, FALLING);
+  // Pin 7 Mode wird nach loadParams() via applyPin7Mode() gesetzt
 
   gateOffTimer.begin(gateOffISR, 1000);  // 1kHz: gates off ≤1ms late even during SPI draws
 
@@ -536,6 +552,7 @@ void setup() {
 
   // Lade persistent gespeicherte Parameter (falls vorhanden)
   loadParams();
+  applyPin7Mode();  // ISR für Reset/Run-Stop je nach gespeichertem pin7Mode
   applyBpm();
 
   // Zeichne Großkreis und Unterteilungspunkte (Euclid pattern 1)
@@ -583,6 +600,22 @@ void loop() {
 
   handleEncoders();
 
+  // ----------- P I N 7   R U N / S T O P   ( M O D E   1 ) ----------
+  if (pin7Mode == 1) {
+      bool nowRunning = (digitalRead(RESET_IN_PIN) == LOW);
+      if (nowRunning != extRunStop) {
+          extRunStop = nowRunning;
+          if (!nowRunning) {
+              noInterrupts(); pendingTicks = 0; extClockReceived = false;
+              measuredPeriodUs = 0; interrupts();
+              extClockActive = false;
+              if (autosaveMode == 2) saveParams();
+          } else {
+              pendingReset = true;  // Beim Start: Reset auf Step 0, dann normal weiter
+          }
+      }
+  }
+
   // ----------- E X T E R N E R   C L O C K  -----------------------
   // Im ext-Modus: kein automatischer Fallback auf internen Timer —
   // wenn der externe Clock stoppt, bleibt der Sequencer stehen.
@@ -594,9 +627,9 @@ void loop() {
     if (p > 0) DurationOfOneStep = p;
   }
 
-  // Auto-Reset nach langer Pause (>2.5 s) im externen Clock-Modus.
-  // Stellt sicher, dass der Sequencer nach einem Stopp wieder bei Step 0 beginnt.
-  if (extClockMode && extClockActive) {
+  // Auto-Reset nach langer Pause (>2.5 s) im externen Clock-Modus (nur Mode 0).
+  // In Mode 1 übernimmt der Run/Stop-Pegel die Steuerung sofort.
+  if (extClockMode && extClockActive && pin7Mode == 0) {
     if ((uint32_t)(micros() - lastExtClockUs) > 2500000UL) {
       pendingReset   = true;
       extClockActive = false;  // Verhindert wiederholten Reset bis neuer Clock kommt
@@ -800,11 +833,12 @@ void loop() {
   // GUI-Aktionen hängen vom GUI-Zustand ab
   // Deferred-Masken: schwere Kreis-Redraws werden nach der Tick-Schleife ausgefuehrt
   // Song HALT: akkumulierte Ticks verwerfen, Schleife nicht betreten
-  if (songHalted) { discardPendingTicks(); }
+  bool seqFrozen = songHalted || (pin7Mode == 1 && !extRunStop);
+  if (seqFrozen) { discardPendingTicks(); }
   uint8_t deferredRedrawMask = 0;
   uint8_t deferredProbMask   = 0;
   int     deferredOldLen[3]  = {};
-  while(!songHalted && consumePendingTick()){
+  while(!seqFrozen && consumePendingTick()){
     cnt++;
     lastGlobalTickUs = micros();
 

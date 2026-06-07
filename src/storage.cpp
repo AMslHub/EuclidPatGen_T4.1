@@ -8,7 +8,7 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB4E;  // bumped: autosaveMode (3 Zustände)
+static const uint16_t EEPROM_MAGIC   = 0xEB4F;  // bumped: pin7Mode hinzugefügt
 static const uint16_t SD_MAGIC_SLOTS = 0xEB65;  // bumped: +holdStep/muteStep in ParamBlock
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
@@ -87,6 +87,7 @@ struct CurrentParams {
     uint8_t    songLen;
     uint8_t    activeSongNumVal;
     uint8_t    autosaveModeVal;  // 0=Aus, 1=Ständig, 2=Bei Clock-Stop
+    uint8_t    pin7ModeVal;      // 0=Reset-Puls, 1=Run/Stop-Pegel
 };
 
 struct SlotParams {
@@ -245,6 +246,7 @@ static void packCurrent(CurrentParams &p) {
     memcpy(p.songSeq, songSeq, 64);
     p.activeSongNumVal   = (uint8_t)clampVal(activeSongNum, 0, 99);
     p.autosaveModeVal = autosaveMode;
+    p.pin7ModeVal     = pin7Mode;
 }
 
 static void unpackCurrent(const CurrentParams &p) {
@@ -269,6 +271,7 @@ static void unpackCurrent(const CurrentParams &p) {
     memcpy(songSeq, p.songSeq, 64);
     activeSongNum    = clampVal((int)p.activeSongNumVal, 0, 99);
     autosaveMode = (p.autosaveModeVal <= 2) ? p.autosaveModeVal : 1;
+    pin7Mode     = (p.pin7ModeVal     <= 1) ? p.pin7ModeVal     : 0;
 }
 
 static void packSlot(SlotParams &p) {
@@ -402,6 +405,7 @@ void loadParams() {
         PatRotSel[i]       = 0;
         cvTargetMap[i]     = CV_TARGET_NONE;
     }
+    pin7Mode      = 0;
     // Defer EEPROM write to main loop (avoids FlexNVM write during USB-enumeration window)
     PendingSave   = true;
     PendingSaveAt = 0;  // fires on first main-loop iteration (millis() already > 0)

@@ -249,6 +249,12 @@ extern volatile bool extClockMode;
 // Wechselt den Clock-Modus und startet/stoppt den internen Timer entsprechend.
 void setExtClockMode(bool v);
 
+// Pin 7 Funktion: 0=Reset-Puls (FALLING ISR), 1=Run/Stop-Pegel (HIGH=stopp, LOW=läuft)
+extern uint8_t       pin7Mode;
+extern volatile bool extRunStop;  // true=läuft; nur in Mode 1 aktiv
+void applyPin7Mode();             // ISR attach/detach je nach Mode; aus setup() und UI aufrufen
+void triggerManualReset();        // setzt pendingReset=true; für UI-Touch-Handler
+
 // Song-Sequencer: Playback sofort stoppen + alle Lookahead-Flags löschen.
 // Wird beim Navigieren zum Song-Screen aufgerufen.
 void resetSongPlayback();

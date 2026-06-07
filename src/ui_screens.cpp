@@ -3604,8 +3604,8 @@ static const int GC_DECAY_SLD_X  = 15;
 static const int GC_DECAY_SLD_Y  = 70;
 static const int GC_DECAY_SLD_W  = 250;
 static const int GC_DECAY_SLD_H  = 18;
-static const int GC_SONG_SEL_Y   = 155;
-static const int GC_SONG_BTN_Y   = 190;
+static const int GC_SONG_SEL_Y   = 180;
+static const int GC_SONG_BTN_Y   = 212;
 static const int GC_SONG_BTN_W   = 90;
 static const int GC_SONG_BTN_H   = 28;
 static int  gcSongNum        = 0;
@@ -3750,10 +3750,42 @@ void drawGConfigScreen() {
         tft.print(modeLabel[autosaveMode]);
     }
 
+    // Pin 7 Mode Toggle (0=Reset-Puls, 1=Run/Stop-Pegel) + manueller Reset-Button
+    {
+        int cx = 15, cy = 130, cs = 20;
+        static const uint16_t modeColor[2] = { ILI9341_ORANGE, ILI9341_CYAN };
+        static const char* modeLabel[2] = { "Reset-Puls", "Run/Stop" };
+        tft.drawRect(cx, cy, cs, cs, ILI9341_DARKGREY);
+        tft.fillRect(cx+1, cy+1, cs-2, cs-2, ILI9341_BLACK);
+        tft.setFont(Arial_12);
+        tft.setTextColor(ILI9341_LIGHTGREY);
+        tft.setCursor(cx + cs + 6, cy + 5);
+        tft.print("Pin 7:");
+        if (pin7Mode == 1) {
+            tft.drawLine(cx+3, cy+10, cx+8, cy+16, ILI9341_CYAN);
+            tft.drawLine(cx+8, cy+16, cx+17, cy+4, ILI9341_CYAN);
+        }
+        tft.setFont(Arial_10);
+        tft.setTextColor(modeColor[pin7Mode]);
+        tft.setCursor(cx + cs + 70, cy + 6);
+        tft.print(modeLabel[pin7Mode]);
+        // Manueller Reset-Button (nur in Mode 1 sichtbar)
+        if (pin7Mode == 1) {
+            tft.fillRect(248, cy, 62, cs, 0x4208);
+            tft.drawRect(247, cy - 1, 64, cs + 2, ILI9341_DARKGREY);
+            tft.setFont(Arial_10);
+            tft.setTextColor(ILI9341_WHITE);
+            tft.setCursor(252, cy + 5);
+            tft.print("RESET");
+        } else {
+            tft.fillRect(247, cy - 1, 65, cs + 2, ILI9341_BLACK);
+        }
+    }
+
     // Song Memory section
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_LIGHTGREY);
-    tft.setCursor(15, 130);
+    tft.setCursor(15, 155);
     tft.print("Song Memory:");
     drawGcSongSelector();
     drawGcSongButtons();
@@ -3774,6 +3806,19 @@ void handleGConfig(int mapX, int mapY, uint16_t tipPos) {
         autosaveMode = (autosaveMode + 1) % 3;
         saveParams();  // Sofort speichern, damit Einstellung Neustart überlebt
         drawGConfigScreen();
+        return;
+    }
+    // Pin 7 Mode Toggle (x=15, y=130, w=230, h=24) — 0=Reset-Puls, 1=Run/Stop
+    if (hitBox(mapX, mapY, 15, 130, 230, 24, 4)) {
+        pin7Mode = (pin7Mode == 0) ? 1 : 0;
+        applyPin7Mode();
+        saveParams();
+        drawGConfigScreen();
+        return;
+    }
+    // Manueller Reset-Button (nur in Mode 1 aktiv, x=247, y=129, w=65, h=22)
+    if (pin7Mode == 1 && hitBox(mapX, mapY, 247, 129, 65, 22, 4)) {
+        triggerManualReset();
         return;
     }
     // Decay slider (full width touch)
