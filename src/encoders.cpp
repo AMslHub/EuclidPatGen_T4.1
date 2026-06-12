@@ -240,12 +240,16 @@ static void handlePitchEncoder(int enc, int delta) {
                             movePitchChordIdx(delta);
                         } else {
                             pitchScale = (uint8_t)((pitchScale + delta + SCALE_COUNT) % SCALE_COUNT);
-                            scheduleSaveParams();
-                            pendingPitchDraw = true;
                         }
+                        pitchNotesFrozen = false;
+                        transposeOffset  = 0;
+                        scheduleSaveParams();
+                        pendingPitchDraw = true;
                         break;
                     case 1:
                         pitchRoot = (uint8_t)((pitchRoot + delta + 12) % 12);
+                        pitchNotesFrozen = false;
+                        transposeOffset  = 0;
                         scheduleSaveParams();
                         pendingPitchDraw = true;
                         break;
@@ -317,6 +321,8 @@ static void handlePitchButton(int enc) {
     uint8_t toggled = pitchIntervalMask ^ (uint8_t)(1u << pitchItvlCursor);
     if (toggled != 0) {  // mindestens ein Intervall aktiv halten
         pitchIntervalMask = toggled;
+        pitchNotesFrozen  = false;  // Freeze aufheben — neue Mask wirkt sofort
+        transposeOffset   = 0;
         scheduleSaveParams();
         pendingPitchDraw = true;
     }
