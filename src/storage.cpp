@@ -5,6 +5,7 @@
 
 #include <euclid.h>
 #include <cv_inputs.h>
+#include <pitch.h>
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
@@ -207,7 +208,29 @@ static void packPitch(PitchBlock &b) {
     b.hold         = pitchHold   ? 1 : 0;
     b.rotate       = pitchRotate ? 1 : 0;
     b.foldMode     = (uint8_t)clampVal((int)pitchFoldMode, 0, 12);
-    for (int i = 0; i < 32; i++) b.note[i]   = PitchNote1[i];
+    // Wenn Freeze aktiv: aktuell klingende Töne (frozenMidi) als Rohwerte kodieren.
+    // noteList mit spread=5 + 0x7F (identisch zu Transpose) damit alle Töne exakt gefunden werden.
+    if (pitchNotesFrozen) {
+        int noteList[60];
+        int nc = buildNoteList(5, pitchScale, pitchRoot, 0x7F, noteList);
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int i = 0; i < 32; i++) {
+            if (nc > 0 && i < len) {
+                int bestIdx = 0, bestDist = 127;
+                for (int k = 0; k < nc; k++) {
+                    int d = abs(noteList[k] - frozenMidi[i]);
+                    if (d < bestDist) { bestDist = d; bestIdx = k; }
+                }
+                b.note[i] = (uint8_t)clampVal((bestIdx * 256 + 128) / nc, 0, 255);
+            } else {
+                b.note[i] = PitchNote1[i];
+            }
+        }
+        b.spread      = 5;     // muss zur 0x7F-Liste passen
+        b.intervalMask = 0x7F; // muss zur 0x7F-Liste passen
+    } else {
+        for (int i = 0; i < 32; i++) b.note[i] = PitchNote1[i];
+    }
     for (int i = 0; i < 32; i++) b.octave[i] = (int8_t)clampVal((int)OctaveNote1[i], -3, 3);
     for (int i = 0; i < 32; i++) b.ivStep[i] = (uint8_t)clampVal((int)IvStep1[i], 0, 7);
     b.rotIvStep = RotateIvStep ? 1 : 0;
@@ -226,6 +249,8 @@ static void unpackPitch(const PitchBlock &b) {
     for (int i = 0; i < 32; i++) OctaveNote1[i] = (int8_t)clampVal((int)b.octave[i], -3, 3);
     for (int i = 0; i < 32; i++) IvStep1[i]     = (uint8_t)clampVal((int)b.ivStep[i], 0, 7);
     RotateIvStep = (b.rotIvStep != 0);
+    pitchNotesFrozen = false;  // Freeze beim Laden immer aufheben
+    transposeOffset  = 0;
 }
 
 static void packCurrent(CurrentParams &p) {

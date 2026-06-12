@@ -247,8 +247,10 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
             if (!pitchHold || hit) {
                 int octSrc = RotateOctave[0] ? euclidRotatedSrc(pidx, len0, effRotSel0) : euclidRotatedSrc(pidx, len0, effRot0);
                 int totalShift = (int)pitchShift + (int)cvPitchShiftOffset + (int)OctaveNote1[octSrc];
-                int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
-                                          pitchRoot, pitchIntervalMask);
+                int midi = pitchNotesFrozen
+                    ? frozenMidi[src]
+                    : quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
+                                     pitchRoot, pitchIntervalMask);
 
                 // Per-Step IV: IvStep1[step]>0 überschreibt CV-IV
                 int ivSrc = RotateIvStep ? euclidRotatedSrc(pidx, len0, effRotSel0) : euclidRotatedSrc(pidx, len0, effRot0);
@@ -257,13 +259,17 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                 // On-the-fly IV / AI: Basis-MIDI aller Hit-Steps scannen
                 int cvPitchAdj = 0;
                 if (effectiveCvIv > 0 || cvPitchAiUpOct > 0 || cvPitchAiDownOct > 0) {
-                    int rawMidi = quantizeToMidi(PitchNote1[pidx], pitchSpread, pitchScale,
-                                                 pitchRoot, pitchIntervalMask);
+                    int rawMidi = pitchNotesFrozen
+                        ? frozenMidi[pidx]
+                        : quantizeToMidi(PitchNote1[pidx], pitchSpread, pitchScale,
+                                         pitchRoot, pitchIntervalMask);
                     int bms[32]; int bmN = 0;
                     for (int si = 0; si < len0; si++) {
                         if (!EPatArr[0][euclidRotatedSrc(si, len0, effRot0)]) continue;
-                        bms[bmN++] = quantizeToMidi(PitchNote1[si], pitchSpread, pitchScale,
-                                                    pitchRoot, pitchIntervalMask);
+                        bms[bmN++] = pitchNotesFrozen
+                            ? frozenMidi[si]
+                            : quantizeToMidi(PitchNote1[si], pitchSpread, pitchScale,
+                                             pitchRoot, pitchIntervalMask);
                     }
                     if (bmN > 0) {
                         if (effectiveCvIv > 0) {

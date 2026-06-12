@@ -294,6 +294,8 @@ void loadPitchPreset(int idx) {
     getPitchPresetNotes(idx, PitchNote1);
     for (int i = 0; i < 32; i++) OctaveNote1[i] = 0;  // Oktavverschiebungen zurücksetzen
     ivInversionIdx = 0;                                 // Inversion auf Grundstellung
+    pitchNotesFrozen = false;                           // Freeze aufheben
+    transposeOffset  = 0;
     int N = PITCH_PRESET_COUNT + 1;
     pitchPresetBrowseIdx = ((idx % N) + N) % N;
     scheduleSaveParams();
@@ -2750,8 +2752,10 @@ static void drawPitchBar(int idx) {
             tft.fillRect(x, bottom - fillH, w, fillH, col);
         }
     } else {
-        int midi = quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
-                                   pitchRoot, pitchIntervalMask);
+        int midi = pitchNotesFrozen
+            ? frozenMidi[src]
+            : quantizeToMidi(PitchNote1[src], pitchSpread, pitchScale,
+                             pitchRoot, pitchIntervalMask);
         midi = clampVal(midi + ((int)pitchShift + (int)OctaveNote1[src]) * 12, 36, 96);
         bool isRoot = ((midi % 12) == (int)pitchRoot);
         int noteY  = pitchNoteToBarY(midi);
@@ -3212,18 +3216,51 @@ void aInvPitchSequence(int dir) {
     pendingPitchDraw = true;
 }
 
-// Transponiert alle Steps um delta Skalenstufen (erlaubte Töne gemäß Scale+IntervalMask).
+// Transponiert alle Steps um delta Skalenstufen (alle Töne der Scale, unabhängig von IntervalMask).
+// Arbeitet relativ zu frozenMidiBase[], damit Zurückdrehen das Original wiederherstellt.
 void transposePitchSequence(int delta) {
     int len = clampVal(PatLen[0], 1, 32);
-    int noteList[60];
-    int noteCount = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
-    if (noteCount < 2) return;
+    // Immer 5 Oktaven für Transpose-Bereich — unabhängig vom eingestellten Spread
+    int fullNoteList[60];
+    int fullCount = buildNoteList(5, pitchScale, pitchRoot, 0x7F, fullNoteList);
+    if (fullCount < 2) return;
+
+    // Beim ersten Transpose-Aufruf: Basis-Snapshot anlegen
+    if (!pitchNotesFrozen) {
+        for (int i = 0; i < len; i++) {
+            frozenMidiBase[i] = quantizeToMidi(PitchNote1[i], pitchSpread, pitchScale,
+                                               pitchRoot, pitchIntervalMask);
+        }
+        transposeOffset  = 0;
+        pitchNotesFrozen = true;
+    }
+
+    // Neuen Offset berechnen und prüfen ob er für alle Steps gültig ist
+    int newOffset = transposeOffset + delta;
+
+    // Für jeden Step: Basis-Position in fullNoteList finden, dann Offset anwenden
+    // Wenn auch nur ein Step aus der Liste fällt, Offset nicht übernehmen
     for (int i = 0; i < len; i++) {
-        int curIdx = ((int)PitchNote1[i] * noteCount) / 256;
-        if (curIdx >= noteCount) curIdx = noteCount - 1;
-        int newIdx = clampVal(curIdx + delta, 0, noteCount - 1);
-        // rawValue so wählen, dass er genau auf newIdx zeigt (Mitte des Intervalls)
-        PitchNote1[i] = (uint8_t)clampVal((newIdx * 256 + 128) / noteCount, 0, 255);
+        int baseIdx = 0;
+        int bestDist = 127;
+        for (int k = 0; k < fullCount; k++) {
+            int d = abs(fullNoteList[k] - frozenMidiBase[i]);
+            if (d < bestDist) { bestDist = d; baseIdx = k; }
+        }
+        int newIdx = baseIdx + newOffset;
+        if (newIdx < 0 || newIdx >= fullCount) return;  // Offset würde einen Step aus der Liste schieben
+    }
+
+    // Offset ist gültig — anwenden
+    transposeOffset = newOffset;
+    for (int i = 0; i < len; i++) {
+        int baseIdx = 0;
+        int bestDist = 127;
+        for (int k = 0; k < fullCount; k++) {
+            int d = abs(fullNoteList[k] - frozenMidiBase[i]);
+            if (d < bestDist) { bestDist = d; baseIdx = k; }
+        }
+        frozenMidi[i] = fullNoteList[baseIdx + transposeOffset];
     }
     scheduleSaveParams();
     pendingPitchDraw = true;
@@ -3251,7 +3288,8 @@ void drawPitchScreen() {
     tft.print(1);
 
     tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
-                 PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_DARKGREY);
+                 PITCH_BAR_W + 2, PITCH_BAR_H + 2,
+                 pitchNotesFrozen ? ILI9341_CYAN : ILI9341_DARKGREY);
 
     lastPitchPlayIdx = -1;
     drawPitchBars();
@@ -3308,15 +3346,19 @@ static void flattenChannelRotation(int ch) {
     pendingCircleRedraw[ch] = true;
 }
 
-// Enc1-Long-Press auf PITCH1: Rotation aller Kanäle + Pitch-Fold einfrieren.
-// Danach klingt alles identisch, aber PatRot[*]=0 und pitchFoldMode=0.
+// Enc1-Long-Press auf PITCH1:
+// 1. Rotation + Fold aller Kanäle einfrieren (PatRot=0, pitchFoldMode=0)
+// 2. Aktuell klingende Töne (frozenMidi falls aktiv, sonst quantisiert) in PitchNote1[] backen
+// 3. Freeze aufheben — Töne sind jetzt fest in PitchNote1[], kein Freeze-Modus nötig
+// 4. Grüner Rahmen als visuelles Feedback
 void applyAllTransforms() {
+    int len = clampVal(PatLen[0], 1, 32);
+
     for (int ch = 0; ch < 3; ch++)
         flattenChannelRotation(ch);
 
     uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
     if (effFold != 0) {
-        int len = clampVal(PatLen[0], 1, 32);
         uint8_t tmp[32];
         for (int i = 0; i < len; i++)
             tmp[i] = PitchNote1[foldPitchIdx(i, len, effFold)];
@@ -3325,9 +3367,36 @@ void applyAllTransforms() {
         pitchFoldMode = 0;
     }
 
+    // Aktuell klingende MIDI-Noten als neue PitchNote1-Rohwerte backen.
+    // Wichtig: noteList mit spread=5 + 0x7F bauen (identisch zu Transpose),
+    // damit Töne außerhalb des aktuellen Spreads exakt gefunden werden.
+    int bakeNoteList[60];
+    int bakeNc = buildNoteList(5, pitchScale, pitchRoot, 0x7F, bakeNoteList);
+    for (int i = 0; i < len; i++) {
+        int midi = pitchNotesFrozen
+            ? frozenMidi[i]
+            : quantizeToMidi(PitchNote1[i], pitchSpread, pitchScale,
+                             pitchRoot, pitchIntervalMask);
+        if (bakeNc > 0) {
+            int bestIdx = 0, bestDist = 127;
+            for (int k = 0; k < bakeNc; k++) {
+                int d = abs(bakeNoteList[k] - midi);
+                if (d < bestDist) { bestDist = d; bestIdx = k; }
+            }
+            PitchNote1[i] = (uint8_t)clampVal((bestIdx * 256 + 128) / bakeNc, 0, 255);
+        }
+        OctaveNote1[i] = 0;
+    }
+    // Nach dem Bake: spread=5 + 0x7F setzen damit Rohwerte korrekt interpretiert werden
+    pitchSpread       = 5;
+    pitchIntervalMask = 0x7F;
+    pitchNotesFrozen = false;
+    transposeOffset  = 0;
+
     scheduleSaveParams();
+    // Grüner Rahmen als Feedback, dann zurück zu normal
     tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
-                 PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_CYAN);
+                 PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_GREEN);
     delayMicroseconds(120000);
     tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
                  PITCH_BAR_W + 2, PITCH_BAR_H + 2, ILI9341_DARKGREY);
@@ -3419,11 +3488,8 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         uint8_t oldSpread = pitchSpread;
         pitchSpread = (uint8_t)(pitchSpread >= 5 ? 1 : pitchSpread + 1);
         if (pitchSpread != oldSpread) {
-            int len = clampVal(PatLen[0], 1, 32);
-            for (int i = 0; i < len; i++) {
-                int v = ((int)PitchNote1[i] * pitchSpread + oldSpread / 2) / oldSpread;
-                PitchNote1[i] = (uint8_t)clampVal(v, 0, 255);
-            }
+            pitchNotesFrozen = false;
+            transposeOffset  = 0;
         }
         scheduleSaveParams();
         pendingPitchDraw = true;
@@ -3470,6 +3536,8 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
         int effIdx = foldPitchIdx(idx, len, effFold);
         int src = pitchRotate ? layerRotatedSrc(0, effIdx) : effIdx;
+        pitchNotesFrozen = false;
+        transposeOffset  = 0;
         PitchNote1[src] = (uint8_t)v;
         scheduleSaveParams();
         drawPitchBar(idx);
@@ -3492,6 +3560,7 @@ void handlePITCHDrag(int mapX, int mapY) {
             uint8_t effFold = (cvPitchFold >= 0) ? (uint8_t)cvPitchFold : pitchFoldMode;
             int effIdx = foldPitchIdx(idx, len, effFold);
             int src = pitchRotate ? layerRotatedSrc(0, effIdx) : effIdx;
+            pitchNotesFrozen = false;
             PitchNote1[src] = (uint8_t)v;
             scheduleSaveParams();
             drawPitchBar(idx);

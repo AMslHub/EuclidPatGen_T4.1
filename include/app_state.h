@@ -215,6 +215,11 @@ extern int8_t  pitchShift;        // Oktavtransposition: -3..+3
 extern bool    pitchHold;         // true: Pitch-CV nur bei Hit aktualisieren
 extern bool    pitchRotate;       // true: Pitch-Pattern relativ zur Rotation
 extern uint8_t pitchFoldMode;    // 0=off, 1=Spiegel½, 2=Repeat½, 3=Spiegel¼, 4=Repeat¼
+// Pitch-Freeze: eingefrorene MIDI-Noten (nicht persistent, temporärer Live-Modus)
+extern bool    pitchNotesFrozen;  // true: frozenMidi[] statt dynamischer Berechnung
+extern int     frozenMidi[32];    // aktuell klingende MIDI-Noten (Basis + Transpose-Offset)
+extern int     frozenMidiBase[32]; // Snapshot beim Freeze — Transpose arbeitet relativ dazu
+extern int     transposeOffset;   // akkumulierter Transpose-Offset in Scale-Stufen
 
 // Song Sequencer
 extern uint8_t songSeq[64];      // Slot-Indices 0-15, max 64 Einträge

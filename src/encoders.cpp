@@ -253,11 +253,9 @@ static void handlePitchEncoder(int enc, int delta) {
                         uint8_t oldSpread = pitchSpread;
                         pitchSpread = (uint8_t)clampVal((int)pitchSpread + delta, 1, 5);
                         if (pitchSpread != oldSpread) {
-                            int len = clampVal(PatLen[0], 1, 32);
-                            for (int i = 0; i < len; i++) {
-                                int v = ((int)PitchNote1[i] * pitchSpread + oldSpread / 2) / oldSpread;
-                                PitchNote1[i] = (uint8_t)clampVal(v, 0, 255);
-                            }
+                            // Spread-Änderung setzt Transpose-Offset zurück
+                            pitchNotesFrozen = false;
+                            transposeOffset  = 0;
                         }
                         scheduleSaveParams();
                         pendingPitchDraw = true;
