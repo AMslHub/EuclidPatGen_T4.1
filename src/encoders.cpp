@@ -321,8 +321,39 @@ static void handlePitchButton(int enc) {
     uint8_t toggled = pitchIntervalMask ^ (uint8_t)(1u << pitchItvlCursor);
     if (toggled != 0) {  // mindestens ein Intervall aktiv halten
         pitchIntervalMask = toggled;
-        pitchNotesFrozen  = false;  // Freeze aufheben — neue Mask wirkt sofort
-        transposeOffset   = 0;
+        // Freeze bleibt aktiv: frozenMidiBase neu berechnen mit neuer Mask,
+        // dann frozenMidi[] mit bestehendem transposeOffset neu anwenden.
+        int len = clampVal(PatLen[0], 1, 32);
+        int fullNoteList[60];
+        int fullCount = buildNoteList(5, pitchScale, pitchRoot, 0x7F, fullNoteList);
+        if (pitchNotesFrozen && fullCount >= 2) {
+            // Basis neu quantisieren mit neuer Mask
+            for (int i = 0; i < len; i++) {
+                frozenMidiBase[i] = quantizeToMidi(PitchNote1[i], pitchSpread,
+                                                   pitchScale, pitchRoot, pitchIntervalMask);
+            }
+            // Offset validieren: falls er jetzt out-of-bounds wäre, auf 0 klemmen
+            bool valid = true;
+            for (int i = 0; i < len; i++) {
+                int baseIdx = 0, bestDist = 127;
+                for (int k = 0; k < fullCount; k++) {
+                    int d = abs(fullNoteList[k] - frozenMidiBase[i]);
+                    if (d < bestDist) { bestDist = d; baseIdx = k; }
+                }
+                int newIdx = baseIdx + transposeOffset;
+                if (newIdx < 0 || newIdx >= fullCount) { valid = false; break; }
+            }
+            if (!valid) transposeOffset = 0;
+            // frozenMidi[] neu berechnen
+            for (int i = 0; i < len; i++) {
+                int baseIdx = 0, bestDist = 127;
+                for (int k = 0; k < fullCount; k++) {
+                    int d = abs(fullNoteList[k] - frozenMidiBase[i]);
+                    if (d < bestDist) { bestDist = d; baseIdx = k; }
+                }
+                frozenMidi[i] = fullNoteList[baseIdx + transposeOffset];
+            }
+        }
         scheduleSaveParams();
         pendingPitchDraw = true;
     }

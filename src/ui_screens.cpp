@@ -28,6 +28,7 @@ void setBarPaintMode(bool v)  {
 }
 static int gateLenEditMode[3] = { 0, 0, 0 };  // 0=GateLen, 1=HoldStep, 2=MuteStep
 static void drawBarPaintModeIndicator();  // forward
+static void drawTransposeIndicator();     // forward
 static void drawGateLenModeButtons(int setIdx);  // forward
 static void drawRotateHoldStepCheckbox(int setIdx);  // forward
 static void drawRotateMuteStepCheckbox(int setIdx);  // forward
@@ -2785,6 +2786,7 @@ void drawPitchBars() {
         drawPitchBar(i);
     }
     drawStepGridLines(PITCH_BAR_Y, PITCH_BAR_H, len);
+    drawTransposeIndicator();
 }
 
 void drawPitchBarRange(int from, int to) {
@@ -3262,8 +3264,26 @@ void transposePitchSequence(int delta) {
         }
         frozenMidi[i] = fullNoteList[baseIdx + transposeOffset];
     }
+    if (GUIState == PITCH1) drawTransposeIndicator();
     scheduleSaveParams();
     pendingPitchDraw = true;
+}
+
+// Zeigt Transpose-Stufennummer oben links wenn Freeze aktiv, löscht sonst den Bereich.
+static void drawTransposeIndicator() {
+    // Oben links innerhalb der Bar-Area (überlagert leerern schwarzen Bereich über den Balken)
+    const int TX = PITCH_BAR_X + 4;
+    const int TY = PITCH_BAR_Y + 4;
+    tft.fillRect(TX, TY, 50, 20, ILI9341_BLACK);
+    if (!pitchNotesFrozen) return;
+    int fullNoteList[60];
+    int fullCount = buildNoteList(5, pitchScale, pitchRoot, 0x7F, fullNoteList);
+    if (fullCount < 1) return;
+    int step = ((transposeOffset % fullCount) + fullCount) % fullCount + 1;
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_YELLOW);
+    tft.setCursor(TX + 2, TY + 2);
+    tft.print(step);
 }
 
 void drawPitchScreen() {
@@ -3282,6 +3302,7 @@ void drawPitchScreen() {
     drawPitchRotateCheckbox();
     drawPitchDisplayModeCheckbox();
     if (stepEditActive) drawPitchStepNoteLabel();
+    drawTransposeIndicator();
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setCursor(287, 10);
