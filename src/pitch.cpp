@@ -201,12 +201,21 @@ static const PitchPreset PITCH_PRESETS[] = {
     { "Mk Struktur", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     // --- N ---
     { "Note Blur",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
-    { "Note Delay",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Delay+1", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Drunk",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Echo",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Freeze",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Inv",     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Oct+",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Oct-",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Retro",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Rotate",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Shadow",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Spread",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Stutter", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Thin",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Tonic",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Zip",     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     // --- O ---
     { "Ominous",     {   // Dunkel, spannungsgeladen, im tiefen Register
         0,0,36,18, 0,0,18,36, 54,36,18,0, 0,18,36,72,
@@ -444,56 +453,55 @@ void getPitchPresetNotes(int idx, uint8_t *dest32) {
     else if (!strcmp(name, "Mk Harmon."))   { genMkHarmonisch(dest32); return; }
     else if (!strcmp(name, "Mk Struktur"))  { genMkStruktur(dest32);   return; }
     else if (!strcmp(name, "Note Echo")) {
-        for (int j = 0; j < 32; j++) {
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++) {
             if (j % 2 == 0) dest32[j] = lastNonEchoPitchNotes[j];
-            else             dest32[j] = lastNonEchoPitchNotes[(j - 3 + 32) % 32];
+            else             dest32[j] = lastNonEchoPitchNotes[(j - 3 + len) % len];
         }
         return;
     }
-    else if (!strcmp(name, "Note Delay")) {
-        // Alle Steps um 4 verzögert (erstes Viertel = letztes Viertel des Originals)
-        for (int j = 0; j < 32; j++)
-            dest32[j] = lastNonEchoPitchNotes[(j - 4 + 32) % 32];
+    else if (!strcmp(name, "Note Delay+1")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++)
+            dest32[j] = lastNonEchoPitchNotes[(j - 1 + len) % len];
         return;
     }
     else if (!strcmp(name, "Note Blur")) {
-        for (int j = 0; j < 32; j++)
-            dest32[j] = (uint8_t)(((int)lastNonEchoPitchNotes[(j - 1 + 32) % 32]
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++)
+            dest32[j] = (uint8_t)(((int)lastNonEchoPitchNotes[(j - 1 + len) % len]
                                  + (int)lastNonEchoPitchNotes[j]
-                                 + (int)lastNonEchoPitchNotes[(j + 1) % 32]) / 3);
+                                 + (int)lastNonEchoPitchNotes[(j + 1) % len]) / 3);
         return;
     }
     else if (!strcmp(name, "Note Stutter")) {
-        // Jede Note direkt wiederholt: [A,A, B,B, C,C, ...]
-        for (int j = 0; j < 32; j++)
-            dest32[j] = lastNonEchoPitchNotes[(j / 2) * 2];
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++)
+            dest32[j] = lastNonEchoPitchNotes[(j / 2) * 2 % len];
         return;
     }
     else if (!strcmp(name, "Note Retro")) {
-        // Ungerade Steps vorwärts, gerade Steps rückwärts gespiegelt
-        for (int j = 0; j < 32; j++) {
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++) {
             if (j % 2 == 0) dest32[j] = lastNonEchoPitchNotes[j];
-            else             dest32[j] = lastNonEchoPitchNotes[31 - j];
+            else             dest32[j] = lastNonEchoPitchNotes[(len - 1 - j + len) % len];
         }
         return;
     }
     else if (!strcmp(name, "Note Shadow")) {
-        // Gerade Steps: original; ungerade Steps: nächsthöherer aktiver Skalenton
+        int len = clampVal(PatLen[0], 1, 32);
         int noteList[60];
         int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
-        for (int j = 0; j < 32; j++) {
+        for (int j = 0; j < len; j++) {
             if (j % 2 == 0) {
                 dest32[j] = lastNonEchoPitchNotes[j];
             } else {
-                // MIDI des vorherigen (geraden) Steps bestimmen
-                int srcMidi = quantizeToMidi(lastNonEchoPitchNotes[(j - 1 + 32) % 32],
+                int srcMidi = quantizeToMidi(lastNonEchoPitchNotes[(j - 1 + len) % len],
                                              pitchSpread, pitchScale, pitchRoot, pitchIntervalMask);
-                // Nächsthöheren Ton in der Notenliste suchen
                 int shadowMidi = srcMidi;
                 for (int k = 0; k < nc; k++) {
                     if (noteList[k] > srcMidi) { shadowMidi = noteList[k]; break; }
                 }
-                // Shadow-MIDI: Index in Notenliste suchen, dann Raw-Wert
                 int bestK = 0;
                 for (int k = 0; k < nc; k++)
                     if (noteList[k] == shadowMidi) { bestK = k; break; }
@@ -503,9 +511,130 @@ void getPitchPresetNotes(int idx, uint8_t *dest32) {
         return;
     }
     else if (!strcmp(name, "Note Thin")) {
-        // Nur jeden zweiten Original-Step behalten, Lücken = 0 (Root)
-        for (int j = 0; j < 32; j++)
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++)
             dest32[j] = (j % 2 == 0) ? lastNonEchoPitchNotes[j] : 0;
+        return;
+    }
+    else if (!strcmp(name, "Note Inv")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++)
+            dest32[j] = 255 - lastNonEchoPitchNotes[j];
+        return;
+    }
+    else if (!strcmp(name, "Note Rotate")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int half = len / 2;
+        for (int j = 0; j < len; j++)
+            dest32[j] = lastNonEchoPitchNotes[(j + half) % len];
+        return;
+    }
+    else if (!strcmp(name, "Note Zip")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int half = len / 2;
+        for (int j = 0; j < len; j++) {
+            int src = (j % 2 == 0) ? (j / 2) : (half + j / 2);
+            dest32[j] = lastNonEchoPitchNotes[src % len];
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Spread")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int half = len / 2;
+        for (int j = 0; j < len; j++)
+            dest32[j] = lastNonEchoPitchNotes[(j / 2) % len];
+        // zweite Hälfte: rückwärts für Symmetrie
+        for (int j = half; j < len; j++)
+            dest32[j] = lastNonEchoPitchNotes[((len - 1 - j) + half) % len];
+        return;
+    }
+    else if (!strcmp(name, "Note Oct+")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int noteList[60];
+        int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+        for (int j = 0; j < len; j++) {
+            if (j % 2 == 0) {
+                dest32[j] = lastNonEchoPitchNotes[j];
+            } else {
+                // Eine Oktave höher: +12 Halbtöne im MIDI-Raum
+                int srcMidi = quantizeToMidi(lastNonEchoPitchNotes[j],
+                                             pitchSpread, pitchScale, pitchRoot, pitchIntervalMask);
+                int octMidi = srcMidi + 12;
+                // Nächsten verfügbaren Ton in der Liste suchen
+                int bestK = nc - 1;
+                for (int k = 0; k < nc; k++)
+                    if (noteList[k] >= octMidi) { bestK = k; break; }
+                dest32[j] = noteIdxToRaw(bestK, nc > 0 ? nc : 1);
+            }
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Oct-")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int noteList[60];
+        int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+        for (int j = 0; j < len; j++) {
+            if (j % 2 == 0) {
+                dest32[j] = lastNonEchoPitchNotes[j];
+            } else {
+                int srcMidi = quantizeToMidi(lastNonEchoPitchNotes[j],
+                                             pitchSpread, pitchScale, pitchRoot, pitchIntervalMask);
+                int octMidi = srcMidi - 12;
+                int bestK = 0;
+                for (int k = nc - 1; k >= 0; k--)
+                    if (noteList[k] <= octMidi) { bestK = k; break; }
+                dest32[j] = noteIdxToRaw(bestK, nc > 0 ? nc : 1);
+            }
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Tonic")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int noteList[60];
+        int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+        // Root-Töne in der Notenliste finden (alle Oktaven)
+        int rootMidi = 36 + (int)(pitchRoot % 12);
+        for (int j = 0; j < len; j++) {
+            if (j % 2 == 0) {
+                dest32[j] = lastNonEchoPitchNotes[j];
+            } else {
+                // Nächsten Root-Ton (mod 12) zum aktuellen Step suchen
+                int srcMidi = quantizeToMidi(lastNonEchoPitchNotes[j],
+                                             pitchSpread, pitchScale, pitchRoot, pitchIntervalMask);
+                int bestK = 0, bestDist = 127;
+                for (int k = 0; k < nc; k++) {
+                    if ((noteList[k] - rootMidi) % 12 == 0) {
+                        int d = abs(noteList[k] - srcMidi);
+                        if (d < bestDist) { bestDist = d; bestK = k; }
+                    }
+                }
+                dest32[j] = noteIdxToRaw(bestK, nc > 0 ? nc : 1);
+            }
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Drunk")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int noteList[60];
+        int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+        if (nc < 2) { memcpy(dest32, lastNonEchoPitchNotes, len); return; }
+        for (int j = 0; j < len; j++) {
+            int curIdx = (lastNonEchoPitchNotes[j] * nc) / 256;
+            curIdx = curIdx < 0 ? 0 : curIdx >= nc ? nc - 1 : curIdx;
+            int delta = (int)(random(3)) - 1;  // -1, 0, +1
+            curIdx += delta;
+            curIdx = curIdx < 0 ? 0 : curIdx >= nc ? nc - 1 : curIdx;
+            dest32[j] = noteIdxToRaw(curIdx, nc);
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Freeze")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        int freezeStep = (int)(random(len));
+        uint8_t freezeVal = lastNonEchoPitchNotes[freezeStep];
+        int half = len / 2;
+        for (int j = 0; j < len; j++)
+            dest32[j] = (j < half) ? lastNonEchoPitchNotes[j] : freezeVal;
         return;
     }
     const uint8_t *src = PITCH_PRESETS[i].note;

@@ -259,15 +259,12 @@ static void drawPitchPresetBox() {
                  PITCH_PRESET_BW - 2, PITCH_PRESET_BH - 2, ILI9341_BLACK);
     tft.drawRect(PITCH_PRESET_BX, PITCH_PRESET_BY, PITCH_PRESET_BW, PITCH_PRESET_BH, border);
     tft.setFont(Arial_12);
+    uint8_t cat = getPitchPresetCategory(pitchPresetBrowseIdx);
     uint16_t nameColor;
-    if (pitchPresetBrowseActive) {
-        nameColor = ILI9341_CYAN;
-    } else {
-        uint8_t cat = getPitchPresetCategory(pitchPresetBrowseIdx);
-        if      (cat == 2) nameColor = ILI9341_GREEN;   // Note-Effekte
-        else if (cat == 1) nameColor = ILI9341_YELLOW;  // Algorithmisch
-        else               nameColor = ILI9341_LIGHTGREY;
-    }
+    if      (cat == 2) nameColor = ILI9341_GREEN;
+    else if (cat == 1) nameColor = ILI9341_YELLOW;
+    else if (pitchPresetBrowseActive) nameColor = ILI9341_CYAN;
+    else               nameColor = ILI9341_LIGHTGREY;
     tft.setTextColor(nameColor);
     const char *name = getPitchPresetName(pitchPresetBrowseIdx);
     // Exakte Breite messen; wenn zu breit → kleinere Schrift
