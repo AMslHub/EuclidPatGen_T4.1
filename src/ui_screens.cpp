@@ -259,7 +259,16 @@ static void drawPitchPresetBox() {
                  PITCH_PRESET_BW - 2, PITCH_PRESET_BH - 2, ILI9341_BLACK);
     tft.drawRect(PITCH_PRESET_BX, PITCH_PRESET_BY, PITCH_PRESET_BW, PITCH_PRESET_BH, border);
     tft.setFont(Arial_12);
-    tft.setTextColor(pitchPresetBrowseActive ? ILI9341_CYAN : ILI9341_LIGHTGREY);
+    uint16_t nameColor;
+    if (pitchPresetBrowseActive) {
+        nameColor = ILI9341_CYAN;
+    } else {
+        uint8_t cat = getPitchPresetCategory(pitchPresetBrowseIdx);
+        if      (cat == 2) nameColor = ILI9341_GREEN;   // Note-Effekte
+        else if (cat == 1) nameColor = ILI9341_YELLOW;  // Algorithmisch
+        else               nameColor = ILI9341_LIGHTGREY;
+    }
+    tft.setTextColor(nameColor);
     const char *name = getPitchPresetName(pitchPresetBrowseIdx);
     // Exakte Breite messen; wenn zu breit → kleinere Schrift
     int nameW = (int)tft.measureTextWidth((const uint8_t*)name, strlen(name));
@@ -292,10 +301,30 @@ void resetPitchPresetBrowseState() {
 }
 
 void loadPitchPreset(int idx) {
-    getPitchPresetNotes(idx, PitchNote1);
-    for (int i = 0; i < 32; i++) OctaveNote1[i] = 0;  // Oktavverschiebungen zurücksetzen
-    ivInversionIdx = 0;                                 // Inversion auf Grundstellung
-    pitchNotesFrozen = false;                           // Freeze aufheben
+    if (getPitchPresetCategory(idx) == 2) {
+        // Note-Effekt: Undo möglich wenn gleicher Effekt nochmal gewählt
+        if (idx == lastNoteEffectIdx) {
+            // Undo: Zustand vor dem letzten Effekt wiederherstellen
+            memcpy(PitchNote1, undoPitchNotes, 32);
+            memcpy(lastNonEchoPitchNotes, undoPitchNotes, 32);
+            lastNoteEffectIdx = -1;
+        } else {
+            // Neuer Effekt: Undo-Buffer füllen, Effekt anwenden, sofort backen
+            memcpy(undoPitchNotes, PitchNote1, 32);
+            memcpy(lastNonEchoPitchNotes, PitchNote1, 32);
+            getPitchPresetNotes(idx, PitchNote1);
+            memcpy(lastNonEchoPitchNotes, PitchNote1, 32);
+            lastNoteEffectIdx = idx;
+        }
+    } else {
+        // Normales Preset: direkt laden, Undo-Kette zurücksetzen
+        getPitchPresetNotes(idx, PitchNote1);
+        memcpy(lastNonEchoPitchNotes, PitchNote1, 32);
+        lastNoteEffectIdx = -1;
+    }
+    for (int i = 0; i < 32; i++) OctaveNote1[i] = 0;
+    ivInversionIdx = 0;
+    pitchNotesFrozen = false;
     transposeOffset  = 0;
     int N = PITCH_PRESET_COUNT + 1;
     pitchPresetBrowseIdx = ((idx % N) + N) % N;
@@ -3411,8 +3440,11 @@ void applyAllTransforms() {
     // Nach dem Bake: spread=5 + 0x7F setzen damit Rohwerte korrekt interpretiert werden
     pitchSpread       = 5;
     pitchIntervalMask = 0x7F;
-    pitchNotesFrozen = false;
-    transposeOffset  = 0;
+    pitchNotesFrozen  = false;
+    transposeOffset   = 0;
+    memcpy(lastNonEchoPitchNotes, PitchNote1, 32);
+    memcpy(undoPitchNotes, PitchNote1, 32);
+    lastNoteEffectIdx = -1;
 
     scheduleSaveParams();
     // Grüner Rahmen als Feedback, dann zurück zu normal

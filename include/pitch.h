@@ -10,6 +10,12 @@ extern const int PITCH_PRESET_COUNT;
 // Name des Presets idx
 const char *getPitchPresetName(int idx);
 
+// Index des "Note Echo"-Presets (oder -1 wenn nicht gefunden)
+int getNoteEchoPresetIdx();
+
+// Kategorie: 0=normal, 1=algorithmisch, 2=Note-Effekt
+uint8_t getPitchPresetCategory(int idx);
+
 // Kopiert 32 Raw-Werte (0-255) des Presets idx nach dest32
 void getPitchPresetNotes(int idx, uint8_t *dest32);
 

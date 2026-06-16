@@ -9,36 +9,91 @@ struct ScaleDef {
 };
 
 static const ScaleDef SCALES[] = {
-    // --- Westliche Modi ---
-    { "Major",      { 0, 2, 4, 5, 7, 9,11,255,255,255,255,255 }, 7  },
-    { "Minor",      { 0, 2, 3, 5, 7, 8,10,255,255,255,255,255 }, 7  },
-    { "Dorian",     { 0, 2, 3, 5, 7, 9,10,255,255,255,255,255 }, 7  },
-    { "Phrygian",   { 0, 1, 3, 5, 7, 8,10,255,255,255,255,255 }, 7  },
-    { "Lydian",     { 0, 2, 4, 6, 7, 9,11,255,255,255,255,255 }, 7  },
-    { "Mixolydian", { 0, 2, 4, 5, 7, 9,10,255,255,255,255,255 }, 7  },
-    { "Locrian",    { 0, 1, 3, 5, 6, 8,10,255,255,255,255,255 }, 7  },
-    { "Harm. Min",  { 0, 2, 3, 5, 7, 8,11,255,255,255,255,255 }, 7  },
-    { "Lydian Dom", { 0, 2, 4, 6, 7, 9,10,255,255,255,255,255 }, 7  },
-    { "Altered",    { 0, 1, 3, 4, 6, 8,10,255,255,255,255,255 }, 7  },
-    // --- Pentatonik & Sonderformen ---
-    { "Penta Maj",  { 0, 2, 4, 7, 9,255,255,255,255,255,255,255 }, 5 },
-    { "Penta Min",  { 0, 3, 5, 7,10,255,255,255,255,255,255,255 }, 5 },
-    { "Blues",      { 0, 3, 5, 6, 7,10,255,255,255,255,255,255 }, 6  },
-    { "Whole Tone", { 0, 2, 4, 6, 8,10,255,255,255,255,255,255 }, 6  },
-    { "Chromatic",  { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11 }, 12 },
-    // --- Gypsy / Naher Osten ---
-    { "Hungarian",  { 0, 2, 3, 6, 7, 8,11,255,255,255,255,255 }, 7  },  // Gypsy-Moll
-    { "Gypsy Maj",  { 0, 1, 4, 5, 7, 8,10,255,255,255,255,255 }, 7  },  // Phryg. Dominant
-    { "Dbl Harm",   { 0, 1, 4, 5, 7, 8,11,255,255,255,255,255 }, 7  },  // Byzantinisch
-    { "Persian",    { 0, 1, 4, 5, 6, 8,11,255,255,255,255,255 }, 7  },
-    // --- Indische Ragas ---
-    { "Raga Todi",  { 0, 1, 3, 6, 7, 8,11,255,255,255,255,255 }, 7  },  // komal Re+Ga, tivra Ma
-    { "Raga Purvi", { 0, 1, 4, 6, 7, 8,11,255,255,255,255,255 }, 7  },  // shuddha Ga, tivra Ma
-    { "Raga Marwa", { 0, 1, 4, 6, 9,11,255,255,255,255,255,255 }, 6  },  // kein Pancham (P5)
-    // --- Japanisch ---
-    { "Hirajoshi",  { 0, 2, 3, 7, 8,255,255,255,255,255,255,255 }, 5  },  // Koto-Skala
-    { "Insen",      { 0, 1, 5, 7,10,255,255,255,255,255,255,255 }, 5  },
-    { "Yo",         { 0, 2, 5, 7, 9,255,255,255,255,255,255,255 }, 5  },
+    // A
+    { "8-Tone Span", { 0, 1, 2, 3, 5, 6, 8,10,255,255,255,255 }, 8  },  // 8-Tone Spanish
+    { "Acoustic",    { 0, 2, 4, 6, 7, 9,10,255,255,255,255,255 }, 7  },  // =Lydian Dominant
+    { "Adonai Mal.", { 0, 2, 4, 5, 7, 8, 9,10,255,255,255,255 }, 8  },  // Adonai Malakh (8-Ton)
+    { "Aeolian",     { 0, 2, 3, 5, 7, 8,10,255,255,255,255,255 }, 7  },  // =Natural Minor
+    { "Algerian",    { 0, 2, 3, 6, 7, 8,11,255,255,255,255,255 }, 7  },  // =Hungarian Minor variant
+    { "Altered",     { 0, 1, 3, 4, 6, 8,10,255,255,255,255,255 }, 7  },
+    { "Augmented",   { 0, 3, 4, 7, 8,11,255,255,255,255,255,255 }, 6  },  // sym. Augmented
+    // B
+    { "Bebop Dom",   { 0, 2, 4, 5, 7, 9,10,11,255,255,255,255 }, 8  },  // Bebop Dominant
+    { "Bhairav",     { 0, 1, 4, 5, 7, 8,11,255,255,255,255,255 }, 7  },  // =Dbl Harmonic / Byzantine
+    { "Blues",       { 0, 3, 5, 6, 7,10,255,255,255,255,255,255 }, 6  },
+    // C
+    { "Chromatic",   { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11 }, 12 },
+    // D
+    { "Dbl Harm",    { 0, 1, 4, 5, 7, 8,11,255,255,255,255,255 }, 7  },  // Double Harmonic / Byzantine
+    { "Dorian",      { 0, 2, 3, 5, 7, 9,10,255,255,255,255,255 }, 7  },
+    { "Dorian #4",   { 0, 2, 3, 6, 7, 9,10,255,255,255,255,255 }, 7  },  // Dorian #4 / Ukr. Dorian
+    // E
+    { "Enigmatic",   { 0, 1, 4, 6, 8,10,11,255,255,255,255,255 }, 7  },
+    // F
+    { "Flamenco",    { 0, 1, 3, 4, 5, 7, 8,10,255,255,255,255 }, 8  },  // Flamenco Mode (8-Ton)
+    { "Freygish",    { 0, 1, 4, 5, 7, 8,10,255,255,255,255,255 }, 7  },  // =Phryg. Dom. / Ahava Raba
+    // G
+    { "Gypsy Maj",   { 0, 1, 4, 5, 7, 8,10,255,255,255,255,255 }, 7  },  // Phrygian Dominant
+    // H
+    { "Half-Whole",  { 0, 1, 3, 4, 6, 7, 9,10,255,255,255,255 }, 8  },  // Half-Whole Diminished
+    { "Harm. Maj",   { 0, 2, 4, 5, 7, 8,11,255,255,255,255,255 }, 7  },  // Harmonic Major
+    { "Harm. Min",   { 0, 2, 3, 5, 7, 8,11,255,255,255,255,255 }, 7  },  // Harmonic Minor
+    { "Hirajoshi",   { 0, 2, 3, 7, 8,255,255,255,255,255,255,255 }, 5  },
+    { "Hungarian",   { 0, 2, 3, 6, 7, 8,11,255,255,255,255,255 }, 7  },  // Hungarian / Gypsy Minor
+    // I
+    { "In",          { 0, 1, 5, 7, 8,255,255,255,255,255,255,255 }, 5  },  // In Scale (Japan.)
+    { "Insen",       { 0, 1, 5, 7,10,255,255,255,255,255,255,255 }, 5  },
+    { "Istrian",     { 0, 1, 3, 4, 6, 7,255,255,255,255,255,255 }, 6  },  // Istrian Scale
+    { "Iwato",       { 0, 1, 5, 6,10,255,255,255,255,255,255,255 }, 5  },  // Japan. Pentatonik
+    // K
+    { "Kumoi",       { 0, 2, 3, 7, 9,255,255,255,255,255,255,255 }, 5  },  // Japan. Pentatonik
+    // L
+    { "Locrian",     { 0, 1, 3, 5, 6, 8,10,255,255,255,255,255 }, 7  },
+    { "Locrian Sup", { 0, 1, 3, 4, 6, 8,10,255,255,255,255,255 }, 7  },  // Locrian Super / Altered
+    { "Lydian",      { 0, 2, 4, 6, 7, 9,11,255,255,255,255,255 }, 7  },
+    { "Lydian Aug",  { 0, 2, 4, 6, 8, 9,11,255,255,255,255,255 }, 7  },  // Lydian Augmented
+    { "Lydian Dom",  { 0, 2, 4, 6, 7, 9,10,255,255,255,255,255 }, 7  },  // Lydian Dominant
+    // M
+    { "Maj Locrn",   { 0, 2, 4, 5, 6, 8,10,255,255,255,255,255 }, 7  },  // Major Locrian
+    { "Major",       { 0, 2, 4, 5, 7, 9,11,255,255,255,255,255 }, 7  },
+    { "Mel. Min D",  { 0, 2, 3, 5, 7, 8,10,255,255,255,255,255 }, 7  },  // Melodic Minor Descending (=Aeolian)
+    { "Mel. Min U",  { 0, 2, 3, 5, 7, 9,11,255,255,255,255,255 }, 7  },  // Melodic Minor Ascending
+    { "Messiaen 3",  { 0, 2, 3, 4, 6, 7, 8,10,11,255,255,255 }, 9  },  // Mode of Ltd Transposition 3
+    { "Messiaen 4",  { 0, 1, 2, 5, 6, 7, 8,11,255,255,255,255 }, 8  },  // Mode of Ltd Transposition 4
+    { "Messiaen 5",  { 0, 1, 5, 6, 7,11,255,255,255,255,255,255 }, 6  },  // Mode of Ltd Transposition 5
+    { "Messiaen 6",  { 0, 2, 4, 5, 6, 8,10,11,255,255,255,255 }, 8  },  // Mode of Ltd Transposition 6
+    { "Messiaen 7",  { 0, 1, 2, 3, 5, 6, 7, 8, 9,11,255,255 }, 10 },  // Mode of Ltd Transposition 7
+    { "Mi Sheberach",{ 0, 2, 3, 6, 7, 9,10,255,255,255,255,255 }, 7  },  // Mi Sheberach / Dorian #4
+    { "Minor",       { 0, 2, 3, 5, 7, 8,10,255,255,255,255,255 }, 7  },
+    { "Minor Blues", { 0, 3, 5, 6, 7,10,255,255,255,255,255,255 }, 6  },  // =Blues
+    { "Mixolydian",  { 0, 2, 4, 5, 7, 9,10,255,255,255,255,255 }, 7  },
+    // N
+    { "Neapol. Maj", { 0, 1, 3, 5, 7, 9,11,255,255,255,255,255 }, 7  },  // Neapolitan Major
+    { "Neapol. Min", { 0, 1, 3, 5, 7, 8,11,255,255,255,255,255 }, 7  },  // Neapolitan Minor
+    // P
+    { "Pelog Sel.",  { 0, 1, 3, 7, 8,255,255,255,255,255,255,255 }, 5  },  // Pelog Selisir
+    { "Pelog Tem.",  { 0, 1, 3, 6, 8,255,255,255,255,255,255,255 }, 5  },  // Pelog Tembung
+    { "Penta Maj",   { 0, 2, 4, 7, 9,255,255,255,255,255,255,255 }, 5  },
+    { "Penta Min",   { 0, 3, 5, 7,10,255,255,255,255,255,255,255 }, 5  },
+    { "Persian",     { 0, 1, 4, 5, 6, 8,11,255,255,255,255,255 }, 7  },
+    { "Phrygian",    { 0, 1, 3, 5, 7, 8,10,255,255,255,255,255 }, 7  },
+    { "Phrygian Dom",{ 0, 1, 4, 5, 7, 8,10,255,255,255,255,255 }, 7  },  // =Freygish / Gypsy Maj
+    { "Prometheus",  { 0, 2, 4, 6, 9,10,255,255,255,255,255,255 }, 6  },  // Prometheus / Scriabin
+    // R
+    { "Raga Marwa",  { 0, 1, 4, 6, 9,11,255,255,255,255,255,255 }, 6  },
+    { "Raga Purvi",  { 0, 1, 4, 6, 7, 8,11,255,255,255,255,255 }, 7  },
+    { "Raga Todi",   { 0, 1, 3, 6, 7, 8,11,255,255,255,255,255 }, 7  },
+    // S
+    { "Slendro",     { 0, 2, 5, 7, 9,255,255,255,255,255,255,255 }, 5  },  // Javanisch Pentatonik
+    // T
+    { "Tritone",     { 0, 1, 4, 6, 7,10,255,255,255,255,255,255 }, 6  },  // Tritone Scale
+    // U
+    { "Ukr. Dorian", { 0, 2, 3, 6, 7, 9,10,255,255,255,255,255 }, 7  },  // Ukrainian Dorian
+    // W
+    { "Whole-Half",  { 0, 2, 3, 5, 6, 8, 9,11,255,255,255,255 }, 8  },  // Whole-Half Diminished
+    { "Whole Tone",  { 0, 2, 4, 6, 8,10,255,255,255,255,255,255 }, 6  },
+    // Y
+    { "Yo",          { 0, 2, 5, 7, 9,255,255,255,255,255,255,255 }, 5  },
 };
 const int SCALE_COUNT = (int)(sizeof(SCALES) / sizeof(SCALES[0]));
 
@@ -144,6 +199,14 @@ static const PitchPreset PITCH_PRESETS[] = {
     { "Mk Harmon.",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Mk Stepwise", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Mk Struktur", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    // --- N ---
+    { "Note Blur",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Delay",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Echo",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Retro",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Shadow",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Stutter", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Thin",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     // --- O ---
     { "Ominous",     {   // Dunkel, spannungsgeladen, im tiefen Register
         0,0,36,18, 0,0,18,36, 54,36,18,0, 0,18,36,72,
@@ -207,6 +270,24 @@ const int PITCH_PRESET_COUNT = (int)(sizeof(PITCH_PRESETS) / sizeof(PITCH_PRESET
 const char *getPitchPresetName(int idx) {
     if (idx == PITCH_PRESET_COUNT) return "Random";
     return PITCH_PRESETS[((idx % PITCH_PRESET_COUNT) + PITCH_PRESET_COUNT) % PITCH_PRESET_COUNT].name;
+}
+
+int getNoteEchoPresetIdx() {
+    for (int i = 0; i < PITCH_PRESET_COUNT; i++)
+        if (!strcmp(PITCH_PRESETS[i].name, "Note Echo")) return i;
+    return -1;
+}
+
+// 0 = normal, 1 = algorithmisch (Brownian/RndWlk/Drunk/Markov), 2 = Note-Effekt
+uint8_t getPitchPresetCategory(int idx) {
+    if (idx < 0 || idx >= PITCH_PRESET_COUNT) return 0;
+    const char *n = PITCH_PRESETS[idx].name;
+    if (!strncmp(n, "Note ", 5))   return 2;
+    if (!strncmp(n, "Brwn ", 5))   return 1;
+    if (!strncmp(n, "RndWlk", 6))  return 1;
+    if (!strncmp(n, "Drunk", 5))   return 1;
+    if (!strncmp(n, "Mk ", 3))     return 1;
+    return 0;
 }
 
 // Hilfsfunktion: Note-Index → rawValue (Mitte des Quantisierungs-Intervalls)
@@ -362,6 +443,71 @@ void getPitchPresetNotes(int idx, uint8_t *dest32) {
     else if (!strcmp(name, "Mk Stepwise"))  { genMkStepwise(dest32);   return; }
     else if (!strcmp(name, "Mk Harmon."))   { genMkHarmonisch(dest32); return; }
     else if (!strcmp(name, "Mk Struktur"))  { genMkStruktur(dest32);   return; }
+    else if (!strcmp(name, "Note Echo")) {
+        for (int j = 0; j < 32; j++) {
+            if (j % 2 == 0) dest32[j] = lastNonEchoPitchNotes[j];
+            else             dest32[j] = lastNonEchoPitchNotes[(j - 3 + 32) % 32];
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Delay")) {
+        // Alle Steps um 4 verzögert (erstes Viertel = letztes Viertel des Originals)
+        for (int j = 0; j < 32; j++)
+            dest32[j] = lastNonEchoPitchNotes[(j - 4 + 32) % 32];
+        return;
+    }
+    else if (!strcmp(name, "Note Blur")) {
+        for (int j = 0; j < 32; j++)
+            dest32[j] = (uint8_t)(((int)lastNonEchoPitchNotes[(j - 1 + 32) % 32]
+                                 + (int)lastNonEchoPitchNotes[j]
+                                 + (int)lastNonEchoPitchNotes[(j + 1) % 32]) / 3);
+        return;
+    }
+    else if (!strcmp(name, "Note Stutter")) {
+        // Jede Note direkt wiederholt: [A,A, B,B, C,C, ...]
+        for (int j = 0; j < 32; j++)
+            dest32[j] = lastNonEchoPitchNotes[(j / 2) * 2];
+        return;
+    }
+    else if (!strcmp(name, "Note Retro")) {
+        // Ungerade Steps vorwärts, gerade Steps rückwärts gespiegelt
+        for (int j = 0; j < 32; j++) {
+            if (j % 2 == 0) dest32[j] = lastNonEchoPitchNotes[j];
+            else             dest32[j] = lastNonEchoPitchNotes[31 - j];
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Shadow")) {
+        // Gerade Steps: original; ungerade Steps: nächsthöherer aktiver Skalenton
+        int noteList[60];
+        int nc = buildNoteList(pitchSpread, pitchScale, pitchRoot, pitchIntervalMask, noteList);
+        for (int j = 0; j < 32; j++) {
+            if (j % 2 == 0) {
+                dest32[j] = lastNonEchoPitchNotes[j];
+            } else {
+                // MIDI des vorherigen (geraden) Steps bestimmen
+                int srcMidi = quantizeToMidi(lastNonEchoPitchNotes[(j - 1 + 32) % 32],
+                                             pitchSpread, pitchScale, pitchRoot, pitchIntervalMask);
+                // Nächsthöheren Ton in der Notenliste suchen
+                int shadowMidi = srcMidi;
+                for (int k = 0; k < nc; k++) {
+                    if (noteList[k] > srcMidi) { shadowMidi = noteList[k]; break; }
+                }
+                // Shadow-MIDI: Index in Notenliste suchen, dann Raw-Wert
+                int bestK = 0;
+                for (int k = 0; k < nc; k++)
+                    if (noteList[k] == shadowMidi) { bestK = k; break; }
+                dest32[j] = noteIdxToRaw(bestK, nc > 0 ? nc : 1);
+            }
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Thin")) {
+        // Nur jeden zweiten Original-Step behalten, Lücken = 0 (Root)
+        for (int j = 0; j < 32; j++)
+            dest32[j] = (j % 2 == 0) ? lastNonEchoPitchNotes[j] : 0;
+        return;
+    }
     const uint8_t *src = PITCH_PRESETS[i].note;
     for (int j = 0; j < 32; j++) dest32[j] = src[j];
 }
@@ -517,36 +663,36 @@ struct ChordPreset {
 
 static const ChordPreset CHORD_PRESETS[] = {
     // --- Basic Triads ---
-    { "Major",     0,   7 },   // Major:      1+3+5
-    { "Minor",     1,   7 },   // Minor:      1+b3+5
-    { "Dim",       6,   7 },   // Locrian:    1+b3+b5
-    { "Aug",      13,   7 },   // Whole Tone: 1+3+#5
-    { "Sus2",      0,  21 },   // Major:      1+2+5  (bits 0+4+2)
-    { "Sus4",      0,  37 },   // Major:      1+4+5  (bits 0+5+2)
+    { "Major",     34,   7 },   // Major:      1+3+5
+    { "Minor",     43,   7 },   // Minor:      1+b3+5
+    { "Dim",       28,   7 },   // Locrian:    1+b3+b5
+    { "Aug",       63,   7 },   // Whole Tone: 1+3+#5
+    { "Sus2",      34,  21 },   // Major:      1+2+5  (bits 0+4+2)
+    { "Sus4",      34,  37 },   // Major:      1+4+5  (bits 0+5+2)
     // --- Seventh Chords ---
-    { "Maj7",      0,  15 },   // Major:      1+3+5+7
-    { "Min7",      2,  15 },   // Dorian:     1+b3+5+b7
-    { "Dom7",      5,  15 },   // Mixolydian: 1+3+5+b7
-    { "mMaj7",     7,  15 },   // Harm.Min:   1+b3+5+maj7
-    { "m7b5",      6,  15 },   // Locrian:    1+b3+b5+b7
+    { "Maj7",      34,  15 },   // Major:      1+3+5+7
+    { "Min7",      12,  15 },   // Dorian:     1+b3+5+b7
+    { "Dom7",      45,  15 },   // Mixolydian: 1+3+5+b7
+    { "mMaj7",     20,  15 },   // Harm.Min:   1+b3+5+maj7
+    { "m7b5",      28,  15 },   // Locrian:    1+b3+b5+b7
     // --- Jazz Extended ---
-    { "Maj9",      0,  31 },   // Major:      1+3+5+7+9
-    { "Min9",      2,  31 },   // Dorian:     1+b3+5+b7+9
-    { "Dom9",      5,  31 },   // Mixolydian: 1+3+5+b7+9
-    { "Maj7#11",   4,  47 },   // Lydian:     1+3+5+7+#11 (bits 0+1+2+3+5)
-    { "7#11",      8,  47 },   // Lydian Dom: 1+3+5+b7+#11
-    { "7b9",      16,  31 },   // Phryg.Dom:  1+3+5+b7+b9
-    { "7#9",       9,  31 },   // Altered:    1+3+5+b7+#9
-    { "Maj13",     0, 127 },   // Major:      all 7 degrees
-    { "Min13",     2, 127 },   // Dorian:     all 7 degrees
+    { "Maj9",      34,  31 },   // Major:      1+3+5+7+9
+    { "Min9",      12,  31 },   // Dorian:     1+b3+5+b7+9
+    { "Dom9",      45,  31 },   // Mixolydian: 1+3+5+b7+9
+    { "Maj7#11",   30,  47 },   // Lydian:     1+3+5+7+#11 (bits 0+1+2+3+5)
+    { "7#11",      32,  47 },   // Lydian Dom: 1+3+5+b7+#11
+    { "7b9",       54,  31 },   // Phryg.Dom:  1+3+5+b7+b9
+    { "7#9",        5,  31 },   // Altered:    1+3+5+b7+#9
+    { "Maj13",     34, 127 },   // Major:      all 7 degrees
+    { "Min13",     12, 127 },   // Dorian:     all 7 degrees
     // --- Quartal / Modern ---
-    { "Quartal",   5,  41 },   // Mixolydian: 1+4+b7 (bits 0+5+3)
+    { "Quartal",   45,  41 },   // Mixolydian: 1+4+b7 (bits 0+5+3)
     // --- World Music ---
-    { "Hijaz",    16,  23 },   // Phryg.Dom:  1+b2+3+5 (bits 0+4+1+2)
-    { "Byzantin", 17,  23 },   // Dbl Harm:   1+b2+3+5
-    { "Persian",  18,  23 },   // Persian:    1+b2+3+b5
-    { "Hirajoshi",22,  55 },   // Hirajoshi:  all 5 available (bits 0+1+2+4+5)
-    { "Yo",       24,  55 },   // Yo:         all 5 available
+    { "Hijaz",     54,  23 },   // Phryg.Dom:  1+b2+3+5 (bits 0+4+1+2)
+    { "Byzantin",  11,  23 },   // Dbl Harm:   1+b2+3+5
+    { "Persian",   52,  23 },   // Persian:    1+b2+3+b5
+    { "Hirajoshi", 21,  55 },   // Hirajoshi:  all 5 available (bits 0+1+2+4+5)
+    { "Yo",        64,  55 },   // Yo:         all 5 available
 };
 const int CHORD_COUNT = (int)(sizeof(CHORD_PRESETS) / sizeof(CHORD_PRESETS[0]));
 

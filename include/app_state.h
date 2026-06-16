@@ -216,6 +216,9 @@ extern bool    pitchHold;         // true: Pitch-CV nur bei Hit aktualisieren
 extern bool    pitchRotate;       // true: Pitch-Pattern relativ zur Rotation
 extern uint8_t pitchFoldMode;    // 0=off, 1=Spiegel½, 2=Repeat½, 3=Spiegel¼, 4=Repeat¼
 // Pitch-Freeze: eingefrorene MIDI-Noten (nicht persistent, temporärer Live-Modus)
+extern uint8_t lastNonEchoPitchNotes[32]; // Quelle für alle Note-Effekte
+extern uint8_t undoPitchNotes[32];        // Undo-Buffer: Zustand vor letztem Note-Effekt
+extern int     lastNoteEffectIdx;         // Preset-Index des zuletzt angewendeten Note-Effekts (-1=keiner)
 extern bool    pitchNotesFrozen;  // true: frozenMidi[] statt dynamischer Berechnung
 extern int     frozenMidi[32];    // aktuell klingende MIDI-Noten (Basis + Transpose-Offset)
 extern int     frozenMidiBase[32]; // Snapshot beim Freeze — Transpose arbeitet relativ dazu
