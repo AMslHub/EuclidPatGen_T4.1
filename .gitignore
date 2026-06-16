@@ -5,6 +5,7 @@
 .vscode/ipch
 ~$*
 *.tmp
+*.pdf
 Hardwareerweiterung_obsolet.docx
 .claude/settings.json
 .claude/settings.local.json
