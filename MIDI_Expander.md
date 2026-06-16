@@ -1,25 +1,44 @@
 # MIDI Expander — Ideen & Planung
 
 Eurorack-Erweiterungsmodul für den EuclidPatGen T4.1.  
-Ermöglicht Pattern-Wechsel, Transpose und Parameter-Steuerung über MIDI.
+Ermöglicht Pattern-Wechsel, Transpose, Parameter-Steuerung über MIDI-IN  
+**und** Akkord-Ausgabe an externe Rompler/Synthesizer über MIDI-OUT.
+
+---
+
+## Musikalisches Gesamtkonzept
+
+Mit dem Expander hat der EuclidPatGen **4 musikalische Kanäle:**
+
+| Kanal | Ausgang | Inhalt |
+| ----- | ------- | ------ |
+| Ch1 | CV/Gate (1V/Oct) | Solo-Melodie, pitch-quantisiert |
+| Ch2 | Gate | Rhythmus / Jump |
+| Ch3 | Gate | Rhythmus / Jump |
+| Ch4 | MIDI-OUT DIN | Akkorde → externer Pad-Synth (z.B. JV-1080) |
+
+Der Akkord-Kanal folgt automatisch `pitchRoot` und dem aktiven Chord-Preset —
+Root und Voicing bleiben immer zur eingestellten Scale passend.
 
 ---
 
 ## Konzept
 
 Ein eigenständiges Eurorack-Modul das intern per 4-poliges Kabel mit dem
-EuclidPatGen verbunden wird. Auf der Frontplatte: USB-A Buchse + MIDI-DIN Buchse.
-Innen: Raspberry Pi Pico als MIDI-Host und Konverter.
+EuclidPatGen verbunden wird. Pico übernimmt das komplette MIDI-Routing:
+empfängt MIDI-IN (USB + DIN), leitet MIDI-OUT durch, merged alle Streams
+über einen einzigen UART-Kanal zum Teensy.
 
 ```
-[USB-A Buchse]     [MIDI-DIN 5pol]
-      ↓                   ↓
-      └────── Pico ───────┘
-                  ↓
-            4 Leitungen
-                  ↓
-           Teensy 4.1
-        (EuclidPatGen)
+[USB-A Buchse]  [MIDI-DIN IN]  [MIDI-DIN OUT]
+      ↓                ↓              ↑
+      └──────── Pico (RP2040) ────────┘
+                      ↕
+               4 Leitungen
+               (GND, 5V, TX, RX)
+                      ↕
+                Teensy 4.1
+             (EuclidPatGen)
 ```
 
 ---
@@ -44,6 +63,14 @@ Innen: Raspberry Pi Pico als MIDI-Host und Konverter.
 - Klassische Optokoppler-Schaltung: 6N138 oder PC900
 - 220Ω + 220Ω auf der Eingangsseite
 - Schaltung im offiziellen MIDI Specification Document (midi.org)
+
+### MIDI-DIN 5-pol Ausgang (MIDI-OUT)
+- Für externe Rompler/Synthesizer (z.B. Roland JV-1080, Pad-Synths)
+- Einfache Transistorschaltung (3 Bauteile: 1× BC547, 2× 220Ω)
+- Teensy sendet Akkordtöne (Note-On/Off) über UART → Pico → MIDI-DIN OUT
+- Chord-Preset, Root und Voicing folgen der aktuellen EuclidPatGen-Einstellung
+- Trigger: Gate Ch1 (oder eigenes Euklid-Pattern für Akkord-Rhythmus)
+- Note-Off nach einstellbarer Gate-Length oder beim nächsten Hit
 
 ### DIP-Switch (4-polig)
 - Switch 1: MIDI-Kanal filtern (nur Kanal 1, oder alle)
@@ -110,8 +137,21 @@ Offizielle Extension "Raspberry Pi Pico" von raspberry-pi, mehr Kontrolle aber m
 
 ## Nächste Schritte (wenn bereit)
 
-- [ ] KiCad-Schaltplan anlegen
-- [ ] PCB-Layout (Modulgröße: ca. 4-6HP)
-- [ ] Pico-Firmware schreiben (USB-Host + DIN-Parser + UART-Out)
-- [ ] Teensy-Firmware: Serial7 MIDI-Parser + Pattern-Wechsel implementieren
-- [ ] Gehäuse/Frontplatte designen
+**Hardware:**
+- [ ] KiCad-Schaltplan anlegen (Pico + USB-A + MIDI-DIN IN/OUT + DIP-Switch)
+- [ ] PCB-Layout (Modulgröße: ca. 6-8HP für alle Buchsen)
+- [ ] Frontplatte designen (USB-A, MIDI-DIN IN, MIDI-DIN OUT, DIP-Switch)
+- [ ] Verbindungskabel EuclidPatGen ↔ Expander (4-polig JST)
+
+**Pico-Firmware:**
+- [ ] USB-MIDI-Host (Launchpad X empfangen)
+- [ ] MIDI-DIN IN Parser (Optokoppler → UART)
+- [ ] Stream-Merger (USB + DIN → ein UART zum Teensy)
+- [ ] MIDI-DIN OUT Durchleitung (UART vom Teensy → DIN OUT)
+
+**Teensy-Firmware (EuclidPatGen):**
+- [ ] Serial7 MIDI-Parser implementieren
+- [ ] Pattern-Wechsel via Note-On / Program Change
+- [ ] Transpose via CC / Pitch Bend
+- [ ] Akkord-Ausgabe via MIDI-OUT (Chord-Preset → Note-On alle Töne)
+- [ ] Gate-Length für Akkord-Noten (Note-Off Timing)
