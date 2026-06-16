@@ -20,6 +20,19 @@ Mit dem Expander hat der EuclidPatGen **4 musikalische Kanäle:**
 Der Akkord-Kanal folgt automatisch `pitchRoot` und dem aktiven Chord-Preset —
 Root und Voicing bleiben immer zur eingestellten Scale passend.
 
+### Melodie + Pad: zwei JV-1080-Kanäle
+
+**Ch1 (Melodie)** läuft parallel auf zwei Wegen:
+- Analog: CV/Gate wie bisher (1V/Oct → VCO, Eurorack-Pegel)
+- MIDI CH1: dieselbe quantisierte Note als Note-On → JV-1080 Solo-Part
+
+**Ch4 (Pad)** ist eine untergeordnete Seite des Pitch1-Screens (Long Press oder eigener Nav-Punkt):
+- MIDI CH2: Akkord dauerhaft gehalten (kein rhythmischer Trigger)
+- Akkord folgt automatisch `pitchRoot` + aktivem Chord-Preset
+- Parametrierbar: Oktave, Inversion, Akkordtöne (1 / 1+3 / 1+3+5 / 1+3+5+7 / 1+3+5+7+9), MIDI-Kanal
+- Akkord wird neu gesendet wenn Root oder Chord-Preset wechselt (Note-Off + Note-On)
+- Kein rhythmischer Gate nötig — Pad bleibt einfach klingen
+
 ---
 
 ## Konzept
