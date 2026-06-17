@@ -2733,7 +2733,7 @@ static const int PITCH_DP_BY   = 42;
 static const int PITCH_DP_BS   = 24;
 // V1- und CORD-Button: CORD rechtsbündig mit DW-Box (endet x=254), V1 direkt links davon.
 // CORD: x=210..253, V1: x=162..205 (4px Lücke zwischen beiden)
-static const int PITCH_V1_BX   = 162;
+static const int PITCH_V1_BX   = 148;
 static const int PITCH_V1_BY   = 10;
 static const int PITCH_V1_BW   = 44;
 static const int PITCH_V1_BH   = 24;
@@ -2894,7 +2894,7 @@ void drawPitchDisplayModeCheckbox() {
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 24, y + 6);  // 4px weiter links als zuvor
+    tft.setCursor(x - 28, y + 6);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("DW");
     if (pitchDisplayMode) {
