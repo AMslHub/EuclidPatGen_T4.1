@@ -2713,13 +2713,13 @@ static const int PITCH_ITVL_GAP = 1;
 static const uint16_t PITCH_GRID_COL = 0x2945;  // dim blue-grey for octave lines
 
 // Pitch Hold / Rotate / Display-Mode Checkboxen — rechtsbündig bei X 295
-static const int PITCH_HOLD_BX = 295;
+static const int PITCH_HOLD_BX = 286;   // rechte Kante X=310, bündig mit Pitch-Bar
 static const int PITCH_HOLD_BY = 10;
 static const int PITCH_HOLD_BS = 24;
-static const int PITCH_ROT_BX  = 295;
+static const int PITCH_ROT_BX  = 286;
 static const int PITCH_ROT_BY  = 42;
 static const int PITCH_ROT_BS  = 24;
-static const int PITCH_DP_BX   = 295;
+static const int PITCH_DP_BX   = 286;
 static const int PITCH_DP_BY   = 42;
 static const int PITCH_DP_BS   = 24;
 // V1- und CORD-Button (nebeneinander, Y 10–33)
@@ -2850,11 +2850,11 @@ void drawPitchPlayhead(unsigned int step) {
 
 void drawPitchHoldCheckbox() {
     int x = PITCH_HOLD_BX, y = PITCH_HOLD_BY, s = PITCH_HOLD_BS;
-    tft.fillRect(x - 28, y, 27, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 26, y, 25, s, ILI9341_BLACK);  // Label-Bereich leeren
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 22, y + 6);
+    tft.setCursor(x - 20, y + 6);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("HP");
     if (pitchHold) {
@@ -2865,11 +2865,11 @@ void drawPitchHoldCheckbox() {
 
 void drawPitchRotateCheckbox() {
     int x = PITCH_ROT_BX, y = PITCH_ROT_BY, s = PITCH_ROT_BS;
-    tft.fillRect(x - 28, y, 27, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 26, y, 25, s, ILI9341_BLACK);  // Label-Bereich leeren
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 22, y + 6);
+    tft.setCursor(x - 20, y + 6);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("PR");
     if (pitchRotate) {
@@ -2880,11 +2880,11 @@ void drawPitchRotateCheckbox() {
 
 void drawPitchDisplayModeCheckbox() {
     int x = PITCH_DP_BX, y = PITCH_DP_BY, s = PITCH_DP_BS;
-    tft.fillRect(x - 28, y, 27, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 26, y, 25, s, ILI9341_BLACK);  // Label-Bereich leeren
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 22, y + 6);
+    tft.setCursor(x - 20, y + 6);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("DW");
     if (pitchDisplayMode) {
@@ -3646,8 +3646,8 @@ static void drawPitchV1CordButtons() {
     tft.fillRect(PITCH_CORD_BX+1, PITCH_CORD_BY+1, PITCH_CORD_BW-2, PITCH_CORD_BH-2, 0x0008);
     tft.drawRect(PITCH_CORD_BX,   PITCH_CORD_BY,   PITCH_CORD_BW,   PITCH_CORD_BH,   ILI9341_DARKGREY);
     tft.setTextColor(ILI9341_CYAN);
-    tft.setCursor(PITCH_CORD_BX + 8, PITCH_CORD_BY + 6);
-    tft.print("CORD");
+    tft.setCursor(PITCH_CORD_BX + 11, PITCH_CORD_BY + 6);
+    tft.print("Crd");
 }
 
 // ---------------------------------------------------------------------------
