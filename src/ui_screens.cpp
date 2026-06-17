@@ -5395,7 +5395,7 @@ static const int CD_TONE_Y     = 179;
 static const int CD_TONE_H     = 38;
 static const char *CD_TONE_LBL[7] = { "1","3","5","7","9","11","13" };
 
-static void drawChordDefSaveButton() {
+void drawChordDefSaveButton() {
     bool saved = chordDefs[chordDefCursor].saved;
     uint16_t fill   = saved ? 0x0320 : 0x0841;
     uint16_t border = saved ? ILI9341_GREEN : 0xC618;
