@@ -4,6 +4,7 @@
 #include <euclid.h>
 #include <gates.h>
 #include <hardware_map.h>
+#include <midi_out.h>
 #include <pitch.h>
 #include <storage.h>
 #include <ui_screens.h>
@@ -416,6 +417,7 @@ void applyBpm(){
     myTimer.end();
     DurationOfOneStep = 0;
     chordPlayPos = -1;
+    midiOutAllNotesOff();
     noInterrupts();
     pendingTicks = 0;
     interrupts();
@@ -528,6 +530,7 @@ void setup() {
       chordDefs[i] = { 1, 0, 0, 0x07, false };  // Slot 1–7: leer
 
   Serial.begin(115200);
+  midiOutSetup();   // Serial7 @ 31250 Baud → Pico → MIDI-DIN OUT
   if (CrashReport) {
     uint32_t t = millis();
     while (!Serial && (millis() - t) < 2000) yield();  // kick watchdog while waiting
@@ -873,7 +876,7 @@ void loop() {
   // Deferred-Masken: schwere Kreis-Redraws werden nach der Tick-Schleife ausgefuehrt
   // Song HALT: akkumulierte Ticks verwerfen, Schleife nicht betreten
   bool seqFrozen = songHalted || (pin7Mode == 1 && !extRunStop);
-  if (seqFrozen) { discardPendingTicks(); chordPlayPos = -1; }
+  if (seqFrozen) { discardPendingTicks(); chordPlayPos = -1; midiOutAllNotesOff(); }
   uint8_t deferredRedrawMask = 0;
   uint8_t deferredProbMask   = 0;
   int     deferredOldLen[3]  = {};
@@ -1348,6 +1351,8 @@ void loop() {
         for (int ch = 0; ch < 3; ch++) cntChHold[ch] = cntCh[ch];
     }
   }
+
+  midiOutTick();   // Chord-MIDI senden wenn chordPlayPos sich geändert hat
 
   // Zwei-Phasen-Draw: Phase 1 = fillScreen, Phase 2 = Inhalte.
   // Jede Phase blockiert nur ~15-30ms statt ~40-50ms am Stück.
