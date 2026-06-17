@@ -2835,25 +2835,19 @@ void drawPitchBarRange(int from, int to) {
     }
 }
 
-// Kleines Highlight-Feld direkt über dem Balkenrahmen (y=73..78, 6px hoch).
-// Letzter Schritt: schwarz löschen. Aktueller Schritt: cyan füllen.
-static void drawPitchStepHighlight(int idx, int len, uint16_t col) {
-    if (idx < 0 || idx >= len) return;
-    int x  = PITCH_BAR_X + (idx       * PITCH_BAR_W) / len;
-    int xN = PITCH_BAR_X + ((idx + 1) * PITCH_BAR_W) / len;
-    int w  = xN - x - 1;
-    if (w < 1) w = 1;
-    tft.fillRect(x, PITCH_BAR_Y - 7, w, 5, col);
-}
-
 void drawPitchPlayhead(unsigned int step) {
     int len  = clampVal(PatLen[0], 1, 32);
     int idx  = (int)(step % (unsigned int)len);
     int last = lastPitchPlayIdx;
+    int y    = PITCH_BAR_Y - 5;
+    int r    = 3;
 
-    if (last >= 0 && last != idx)
-        drawPitchStepHighlight(last, len, ILI9341_BLACK);
-    drawPitchStepHighlight(idx, len, ILI9341_CYAN);
+    if (last >= 0 && last < len) {
+        int lx = PITCH_BAR_X + (last * PITCH_BAR_W) / len + (PITCH_BAR_W / len) / 2;
+        tft.fillCircle(lx, y, r, ILI9341_BLACK);
+    }
+    int x = PITCH_BAR_X + (idx * PITCH_BAR_W) / len + (PITCH_BAR_W / len) / 2;
+    tft.fillCircle(x, y, r, ILI9341_WHITE);
     lastPitchPlayIdx = idx;
 }
 
@@ -5300,12 +5294,16 @@ void drawChordSeqCell(int page, int col) {
 
     tft.fillRect(x, CS_ROW0_Y, CS_CELL_W, 240 - CS_ROW0_Y, ILI9341_BLACK);
 
-    // Row 0: Slot-Nummer
+    // Row 0: Slot-Nummer — cyan wenn gerade spielend
     {
-        uint16_t bg = isCursor ? 0x2945 : 0x1082;
+        bool playing = (chordPlayPos >= 0 && slotIdx == chordPlayPos);
+        uint16_t bg  = playing  ? 0x0410 :   // dunkles Cyan-Grün
+                       isCursor ? 0x2945 : 0x1082;
+        uint16_t fg  = playing  ? ILI9341_CYAN :
+                       active   ? ILI9341_WHITE : ILI9341_DARKGREY;
         tft.fillRect(x, CS_ROW0_Y, CS_CELL_W, CS_ROW0_H, bg);
         tft.setFont(Arial_10);
-        tft.setTextColor(active ? ILI9341_WHITE : ILI9341_DARKGREY);
+        tft.setTextColor(fg);
         char buf[4]; snprintf(buf, sizeof(buf), "%d", slotIdx + 1);
         int xOff = (int)strlen(buf) == 1 ? 14 : 10;
         tft.setCursor(x + xOff, CS_ROW0_Y + 7);
