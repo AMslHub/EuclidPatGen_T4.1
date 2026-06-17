@@ -5192,12 +5192,24 @@ void flashValBars(int ch) {
 // ---------------------------------------------------------------------------
 void drawChordSeqScreen() {
     tft.fillScreen(ILI9341_BLACK);
+    // Rücksprungpfeil oben links (wie alle anderen Screens)
+    tft.setTextColor(ILI9341_LIGHTGREY);
+    tft.setFont(AwesomeF100_24);
+    tft.setCursor(20, 4);
+    tft.print((char)18);
     tft.setFont(Arial_16);
     tft.setTextColor(ILI9341_CYAN);
-    tft.setCursor(8, 10);
+    tft.setCursor(60, 10);
     tft.print("Chord Seq");
     tft.setFont(Arial_12);
     tft.setTextColor(ILI9341_DARKGREY);
     tft.setCursor(8, 40);
     tft.print("(coming soon)");
+}
+
+void handleChordSeq(int mapX, int mapY, uint16_t tipPos) {
+    if (tipPos == UL) {
+        requestNavigateTo(PITCH1);
+        return;
+    }
 }

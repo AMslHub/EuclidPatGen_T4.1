@@ -787,6 +787,9 @@ void loop() {
                 handleCond(setIdx, mapX, mapY, tipPos);
                 break;
             }
+            case CHORD_SEQ:
+                handleChordSeq(mapX, mapY, tipPos);
+                break;
             default:
                 break;
           }
