@@ -586,7 +586,8 @@ void handleEncoders() {
                       GUIState == PITCH1      || GUIState == NAV         || GUIState == SONG      ||
                       GUIState == COND1       || GUIState == COND2       || GUIState == COND3     ||
                       GUIState == VALUES1     || GUIState == VALUES2     || GUIState == VALUES3   ||
-                      GUIState == GATELEN1    || GUIState == GATELEN2    || GUIState == GATELEN3);
+                      GUIState == GATELEN1    || GUIState == GATELEN2    || GUIState == GATELEN3  ||
+                      GUIState == CHORD_SEQ);
     if (!encActive) return;
 
     for (int i = 0; i < 3; i++) {

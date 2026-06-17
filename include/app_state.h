@@ -29,7 +29,8 @@ enum {
   NAV,
   COND1,
   COND2,
-  COND3
+  COND3,
+  CHORD_SEQ
 };
 
 enum CondType : uint8_t {

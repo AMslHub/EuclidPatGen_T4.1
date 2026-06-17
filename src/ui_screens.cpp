@@ -2711,16 +2711,25 @@ static const int PITCH_ITVL_W   = 44;
 static const int PITCH_ITVL_GAP = 1;
 static const uint16_t PITCH_GRID_COL = 0x2945;  // dim blue-grey for octave lines
 
-// Pitch Hold / Rotate / Display-Mode Checkboxen
-static const int PITCH_HOLD_BX = 260;
+// Pitch Hold / Rotate / Display-Mode Checkboxen — rechtsbündig bei X 295
+static const int PITCH_HOLD_BX = 295;
 static const int PITCH_HOLD_BY = 10;
 static const int PITCH_HOLD_BS = 24;
-static const int PITCH_ROT_BX  = 260;
+static const int PITCH_ROT_BX  = 295;
 static const int PITCH_ROT_BY  = 42;
 static const int PITCH_ROT_BS  = 24;
-static const int PITCH_DP_BX   = 185;  // rechte Kante bündig mit V1 (x=209)
+static const int PITCH_DP_BX   = 295;
 static const int PITCH_DP_BY   = 42;
 static const int PITCH_DP_BS   = 24;
+// V1- und CORD-Button (nebeneinander, Y 10–33)
+static const int PITCH_V1_BX   = 150;
+static const int PITCH_V1_BY   = 10;
+static const int PITCH_V1_BW   = 50;
+static const int PITCH_V1_BH   = 24;
+static const int PITCH_CORD_BX = 204;
+static const int PITCH_CORD_BY = 10;
+static const int PITCH_CORD_BW = 50;
+static const int PITCH_CORD_BH = 24;
 // Faltungs-Box (rechtsbündig mit Preset-Box, darüber)
 static const int PITCH_FOLD_BX = 70;
 static const int PITCH_FOLD_BY = 14;
@@ -2840,11 +2849,11 @@ void drawPitchPlayhead(unsigned int step) {
 
 void drawPitchHoldCheckbox() {
     int x = PITCH_HOLD_BX, y = PITCH_HOLD_BY, s = PITCH_HOLD_BS;
-    tft.fillRect(x - 30, y, 29, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 28, y, 27, s, ILI9341_BLACK);  // Label-Bereich leeren
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 23, y + 6);  // +3px nach links verschoben
+    tft.setCursor(x - 22, y + 6);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("HP");
     if (pitchHold) {
@@ -2855,11 +2864,11 @@ void drawPitchHoldCheckbox() {
 
 void drawPitchRotateCheckbox() {
     int x = PITCH_ROT_BX, y = PITCH_ROT_BY, s = PITCH_ROT_BS;
-    tft.fillRect(x - 30, y, 29, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 28, y, 27, s, ILI9341_BLACK);  // Label-Bereich leeren
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 23, y + 6);  // +3px nach links verschoben
+    tft.setCursor(x - 22, y + 6);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("PR");
     if (pitchRotate) {
@@ -2874,7 +2883,7 @@ void drawPitchDisplayModeCheckbox() {
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 32, y + 6);  // +8px nach links verschoben
+    tft.setCursor(x - 22, y + 6);
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("DW");
     if (pitchDisplayMode) {
@@ -3468,9 +3477,14 @@ void handlePITCH(int mapX, int mapY, uint16_t tipPos) {
         return;
     }
 
-    // V1-Button (identische Position wie GateLen auf dem Values-Screen)
-    if (hitBox(mapX, mapY, 159, 10, 50, 24, 6)) {
+    // V1-Button
+    if (hitBox(mapX, mapY, PITCH_V1_BX, PITCH_V1_BY, PITCH_V1_BW, PITCH_V1_BH, 6)) {
         requestNavigateTo(VALUES1);
+        return;
+    }
+    // CORD-Button → Akkord-Sequencer
+    if (hitBox(mapX, mapY, PITCH_CORD_BX, PITCH_CORD_BY, PITCH_CORD_BW, PITCH_CORD_BH, 6)) {
+        requestNavigateTo(CHORD_SEQ);
         return;
     }
 
@@ -3620,11 +3634,18 @@ void handlePITCHDrag(int mapX, int mapY) {
 
 static void drawPitchButton() {
     tft.setFont(Arial_12);
-    tft.fillRect(261, 11, 48, 26, 0x4208);
-    tft.drawRect(260, 10, 50, 28, ILI9341_DARKGREY);
+    // V1-Button
+    tft.fillRect(PITCH_V1_BX+1, PITCH_V1_BY+1, PITCH_V1_BW-2, PITCH_V1_BH-2, 0x4208);
+    tft.drawRect(PITCH_V1_BX,   PITCH_V1_BY,   PITCH_V1_BW,   PITCH_V1_BH,   ILI9341_DARKGREY);
     tft.setTextColor(ILI9341_WHITE);
-    tft.setCursor(272, 18);
-    tft.print("Pt");
+    tft.setCursor(PITCH_V1_BX + 16, PITCH_V1_BY + 6);
+    tft.print("V1");
+    // CORD-Button
+    tft.fillRect(PITCH_CORD_BX+1, PITCH_CORD_BY+1, PITCH_CORD_BW-2, PITCH_CORD_BH-2, 0x0008);
+    tft.drawRect(PITCH_CORD_BX,   PITCH_CORD_BY,   PITCH_CORD_BW,   PITCH_CORD_BH,   ILI9341_DARKGREY);
+    tft.setTextColor(ILI9341_CYAN);
+    tft.setCursor(PITCH_CORD_BX + 8, PITCH_CORD_BY + 6);
+    tft.print("CORD");
 }
 
 // ---------------------------------------------------------------------------
@@ -4367,6 +4388,7 @@ void navigateToScreen(uint16_t target) {
         case COND1:        drawCondScreen(0); break;
         case COND2:        drawCondScreen(1); break;
         case COND3:        drawCondScreen(2); break;
+        case CHORD_SEQ:    drawChordSeqScreen(); break;
         default: break;
     }
   }
@@ -5161,4 +5183,19 @@ void flashValBars(int ch) {
         delay(15);
     }
     discardPendingTicks();
+}
+
+// ---------------------------------------------------------------------------
+// Chord-Sequencer Screen (Stub — wird schrittweise aufgebaut)
+// ---------------------------------------------------------------------------
+void drawChordSeqScreen() {
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setFont(Arial_16);
+    tft.setTextColor(ILI9341_CYAN);
+    tft.setCursor(8, 10);
+    tft.print("Chord Seq");
+    tft.setFont(Arial_12);
+    tft.setTextColor(ILI9341_DARKGREY);
+    tft.setCursor(8, 40);
+    tft.print("(coming soon)");
 }

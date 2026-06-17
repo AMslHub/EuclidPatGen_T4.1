@@ -135,6 +135,7 @@ void requestNavigateTo(uint16_t target); // deferred: setzt pendingNavTarget, Ma
 void markPreFilled();                    // Phase 2: nächsten fillScreen in draw-Funktion überspringen
 void setNavOpenedFrom(uint16_t state);   // setzt navFromState vor deferred NAV-Draw
 void drawCondScreen(int setIdx);
+void drawChordSeqScreen();
 void drawCondCell(int setIdx, int page, int col);   // einzelne Spalte (alle 4 Zeilen)
 void drawCondTitle(int setIdx);                     // Titelzeile neu zeichnen
 void drawCondButton(int setIdx);                    // kleiner COND-Button auf dem GateLen-Screen
