@@ -5516,6 +5516,7 @@ void drawChordDefScreen() {
     tft.setFont(AwesomeF100_24);
     tft.setCursor(4, 4);
     tft.print((char)18);
+    tft.fillRect(0, 32, 40, 8, ILI9341_BLACK);  // Font-Überlauf unter dem Pfeil löschen
     drawChordDefSaveButton();
     drawChordDefTabs();
     drawChordDefParams();
