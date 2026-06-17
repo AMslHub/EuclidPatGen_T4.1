@@ -5523,7 +5523,9 @@ void drawChordDefScreen() {
     tft.setFont(AwesomeF100_24);
     tft.setCursor(4, 4);
     tft.print((char)18);
-    tft.setFont(Arial_12);  // Font zurücksetzen nach Pfeil
+    tft.setFont(Arial_12);
+    tft.setCursor(0, 0);                        // Cursor wegräumen
+    tft.fillRect(0, 32, 44, 10, ILI9341_BLACK); // Artefakt-Zone unter Pfeil löschen
     drawChordDefSaveButton();
     drawChordDefTabs();
     drawChordDefParams();
