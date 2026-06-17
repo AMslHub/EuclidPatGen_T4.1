@@ -2716,17 +2716,23 @@ static const int PITCH_ITVL_W   = 44;
 static const int PITCH_ITVL_GAP = 1;
 static const uint16_t PITCH_GRID_COL = 0x2945;  // dim blue-grey for octave lines
 
-// Pitch Hold / Rotate / Display-Mode Checkboxen — wie auf main
-static const int PITCH_HOLD_BX = 260;
+// Pitch Hold / Rotate / Display-Mode Checkboxen
+// Balken-Feld endet bei x=310 (PITCH_BAR_X+PITCH_BAR_W=10+300).
+// Box-rechte-Kante bündig mit Balken: BX=286, Box x=286..309.
+// Label (2 Zeichen Arial_12 ≈ 14px) bei x=BX-20=266, endet bei ~280 — 6px vor Box.
+static const int PITCH_HOLD_BX = 286;   // Box x=286..309, Label "HP" x=266..279
 static const int PITCH_HOLD_BY = 10;
 static const int PITCH_HOLD_BS = 24;
-static const int PITCH_ROT_BX  = 260;
+static const int PITCH_ROT_BX  = 286;   // Box x=286..309, Label "PR" x=266..279
 static const int PITCH_ROT_BY  = 42;
 static const int PITCH_ROT_BS  = 24;
-static const int PITCH_DP_BX   = 185;  // eigene X-Position (nicht überlagert mit Rotate)
+// DW: y=42, muss links von PR-Label (x=266). Box-rechts ≤ 262 → BX=238.
+// Label "DW" bei x=218..231, Box x=238..261. Kein Konflikt mit V1/CORD (y=10).
+static const int PITCH_DP_BX   = 230;  // Box x=230..253, Label "DW" x=210..223, 12px vor PR-Label
 static const int PITCH_DP_BY   = 42;
 static const int PITCH_DP_BS   = 24;
-// V1- und CORD-Button (nebeneinander, Y 10–33) — etwas weiter links als zuvor
+// V1- und CORD-Button: y=10..33, zwischen Pfeil (x≈38) und HP-Label (x=266).
+// V1: x=100..143, CORD: x=148..191 — beide klar frei.
 static const int PITCH_V1_BX   = 100;
 static const int PITCH_V1_BY   = 10;
 static const int PITCH_V1_BW   = 44;
@@ -2854,7 +2860,7 @@ void drawPitchPlayhead(unsigned int step) {
 
 void drawPitchHoldCheckbox() {
     int x = PITCH_HOLD_BX, y = PITCH_HOLD_BY, s = PITCH_HOLD_BS;
-    tft.fillRect(x - 26, y, 25, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 22, y, 21, s, ILI9341_BLACK);  // Label-Bereich leeren (21px vor Box)
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
@@ -2869,7 +2875,7 @@ void drawPitchHoldCheckbox() {
 
 void drawPitchRotateCheckbox() {
     int x = PITCH_ROT_BX, y = PITCH_ROT_BY, s = PITCH_ROT_BS;
-    tft.fillRect(x - 26, y, 25, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 22, y, 21, s, ILI9341_BLACK);  // Label-Bereich leeren (21px vor Box)
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
@@ -2884,7 +2890,7 @@ void drawPitchRotateCheckbox() {
 
 void drawPitchDisplayModeCheckbox() {
     int x = PITCH_DP_BX, y = PITCH_DP_BY, s = PITCH_DP_BS;
-    tft.fillRect(x - 26, y, 25, s, ILI9341_BLACK);  // Label-Bereich leeren
+    tft.fillRect(x - 22, y, 21, s, ILI9341_BLACK);  // Label-Bereich leeren (21px vor Box)
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
