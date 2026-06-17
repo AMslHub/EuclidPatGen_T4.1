@@ -164,11 +164,15 @@ bool    pitchNotesFrozen   = false;
 
 // Chord-Sequencer
 ChordSlot chordSlots[CHORD_SLOT_COUNT];
+ChordDef  chordDefs[CHORD_DEF_COUNT];
 uint8_t   chordDiv         = 4;
 uint8_t   chordLen         = 8;
 bool      chordLive        = false;
+int       chordPlayPos     = -1;
 int       chordStepCursor  = 0;
 int       chordFieldCursor = 0;
+int       chordDefCursor   = 0;
+int       chordDefField    = 0;
 int     frozenMidi[32]     = { 0 };
 int     frozenMidiBase[32] = { 0 };
 int     transposeOffset    = 0;
@@ -517,6 +521,9 @@ void setup() {
   chordSlots[0].akkNr = 0;
   chordSlots[0].val   = 50;
   chordSlots[0].leg   = 0;
+  // ChordDefs: alle mit sinnvollem Default
+  for (int i = 0; i < CHORD_DEF_COUNT; i++)
+      chordDefs[i] = { 1, 0, 0, 0x07 };  // Spread 1, Inv 0, Oct 0, Töne 1+3+5
 
   Serial.begin(115200);
   if (CrashReport) {
@@ -806,6 +813,9 @@ void loop() {
             }
             case CHORD_SEQ:
                 handleChordSeq(mapX, mapY, tipPos);
+                break;
+            case CHORD_DEF:
+                handleChordDef(mapX, mapY, tipPos);
                 break;
             default:
                 break;

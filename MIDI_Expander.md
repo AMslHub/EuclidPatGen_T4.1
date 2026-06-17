@@ -35,6 +35,82 @@ Root und Voicing bleiben immer zur eingestellten Scale passend.
 
 ---
 
+## Akkord-Sequencer Page (UI-Konzept)
+
+Eigenständiger Screen im EuclidPatGen — erreichbar über Long-Press auf der Pitch1-Seite
+oder als eigener NAV-Eintrag. Steuert den MIDI-OUT Akkord-Kanal (JV-1080 CH2/Pad).
+
+### Globale Parameter (Titelzeile)
+
+```
+Chord   Div:[4]   Len:[8]   [LIVE]
+```
+
+- **Div** (Divisor): 1, 2, 4, 8, 16, 32 — alle n Steps wechselt der Akkord-Pointer
+- **ChordLen**: 1–32 — wie viele Slots aktiv sind, dann Rücksprung auf 0
+- **LIVE**: wenn aktiv, klingt der aktuell eingestellte Akkord dauerhaft (kein Listenabspiel)
+
+### Slot-Liste (8 Slots pro Seite, bis 32 Slots gesamt)
+
+```
+Y   0– 39  Titel: "Chord  Div:[4]  Len:[8]  [LIVE]"
+Y  40– 69  Fill-Buttons: [Leg=1]  [Val=50]  [CLR]
+Y  70– 93  Row 0: Slot-Nummer (1–32)
+Y  94–117  Row 1: Mute   — Einzel-Event, Override über alles (auch Legato)
+Y 118–141  Row 2: Legato — Carry-Forward; gemeinsame Töne klingen durch
+Y 142–165  Row 3: Val    — 10–100% in 10er-Schritten, Carry-Forward
+Y 166–189  Row 4: Akk-Nr — 0–7 (welcher der 8 definierten Akkorde), Carry-Forward
+Y 190–239  Reserve / Cursor-Rahmen
+```
+
+X: Label-Spalte 24px, 8 Spalten à 37px (36px Inhalt + 1px Gap) = 320px
+
+### Carry-Forward Regelwerk
+
+| Feld   | Leer =          | Mute-Verhalten                        |
+|--------|-----------------|---------------------------------------|
+| Akk-Nr | letzter Wert    | Akkord schweigt (kein Note-On)        |
+| Val    | letzter Wert    | schweigt                              |
+| Leg    | letzter Wert    | Mute unterbricht Legato (Note-Off)    |
+| Mute   | Einzel-Event    | Override über Leg und Val             |
+
+### Encoder-Belegung
+
+| Encoder | Drehen | Short Press | Long Press |
+|---------|--------|-------------|------------|
+| Enc1 | Step-Cursor bewegen (+ Seitenwechsel) | Feld-Cursor: Akk-Nr→Mute→Leg→Val→Div→Len→… | Aktuellen Slot löschen |
+| Enc2 | Wert am aktiven Feld ändern | LIVE-Button toggle | Quick Save |
+| Enc3 | Seite direkt wechseln (0–3) | NAV öffnen | NAV öffnen |
+
+### Akkord-Definition (8 Slots, pro Slot editierbar)
+
+Jeder der 8 Akkord-Slots hat:
+- **Akk-Nr**: Referenz auf einen der 8 gespeicherten Akkorde
+- **Spread**: wie weit der Akkord über Oktaven gespreizt wird
+- **Inv**: Akkord-Inversion (0=Grundstellung, 1=erste Umkehrung, …)
+- **Oct**: Oktave verschieben (±3)
+- **Töne**: Auswahl 1 / 1+3 / 1+3+5 / 1+3+5+7 / 1+3+5+7+9
+- **MIDI-Kanal**: pro Slot frei wählbar (1–16), default CH2
+
+### Synchronisation
+
+- Akkord-Pointer startet bei Reset / Pattern-Start auf Slot 0
+- Divisor zählt Steps (nicht Hits) — unabhängig vom Euklid-Gate-Pattern
+- Gesamtzyklus in Steps: `Divisor × ChordLen`
+  - Beispiel Div=4, Len=6 → alle 24 Steps ein voller Akkord-Durchlauf
+  - Melodie (PatLen=16) und Akkord (24 Steps) kommen nach kgV(16,24)=48 Steps zusammen
+
+### MIDI-Kanal-Zuordnung (konfigurierbar auf Config-Page)
+
+| Signal | Default MIDI-Kanal | Inhalt |
+|--------|--------------------|--------|
+| Melodie CH1 | 1 | Monophone Note-On/Off (quantisiert) |
+| Akkord/Pad | 2 | Polyphone Akkord-Töne (Legato-fähig) |
+| Rhythmus CH2 | 9 | Gate → Note-On/Off auf festem Key |
+| Rhythmus CH3 | 10 | Gate → Note-On/Off auf festem Key |
+
+---
+
 ## Konzept
 
 Ein eigenständiges Eurorack-Modul das intern per 4-poliges Kabel mit dem

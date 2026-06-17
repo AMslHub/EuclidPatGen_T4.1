@@ -549,6 +549,44 @@ static void handleChordSeqButton(int enc) {
 }
 
 // ---------------------------------------------------------------------------
+// CHORD_DEF-Screen: Encoder-Drehung
+//   Enc1: Akkord-Tab wechseln (0-7)
+//   Enc2: Parameter-Zeile wechseln (Spread/Inv/Oct/Tone)
+//   Enc3: Wert der aktuellen Zeile ändern
+// ---------------------------------------------------------------------------
+static void handleChordDefEncoder(int enc, int delta) {
+    ChordDef &d = chordDefs[chordDefCursor];
+    if (enc == 0) {
+        chordDefCursor = clampVal(chordDefCursor + delta, 0, CHORD_DEF_COUNT - 1);
+        drawChordDefScreen();
+    } else if (enc == 1) {
+        chordDefField = clampVal(chordDefField + delta, 0, 3);
+        drawChordDefScreen();
+    } else if (enc == 2) {
+        switch (chordDefField) {
+            case 0: // Spread 1-5
+                d.spread = (uint8_t)clampVal((int)d.spread + delta, 1, 5);
+                break;
+            case 1: // Inv 0-3
+                d.inv = (uint8_t)clampVal((int)d.inv + delta, 0, 3);
+                break;
+            case 2: // Oct -2..+2
+                d.oct = (int8_t)clampVal((int)d.oct + delta, -2, 2);
+                break;
+            case 3: { // ToneMask: delta bewegt einen Cursor durch Bits 0-4 und togglet
+                static int toneCursor = 0;
+                toneCursor = clampVal(toneCursor + delta, 0, 4);
+                uint8_t toggled = d.toneMask ^ (uint8_t)(1u << toneCursor);
+                if (toggled != 0) d.toneMask = toggled;
+                break;
+            }
+        }
+        scheduleSaveParams();
+        drawChordDefScreen();
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 void setupEncoders() {
     for (int i = 0; i < 3; i++) {
@@ -599,7 +637,9 @@ void handleEncoders() {
                     } else if (GUIState == PITCH1) {
                         handlePitchButton(1);
                     } else if (GUIState == CHORD_SEQ) {
-                        handleChordSeqButton(1);  // LIVE toggle
+                        handleChordSeqButton(1);  // LIVE toggle + navigiert zu CHORD_DEF
+                    } else if (GUIState == CHORD_DEF) {
+                        requestNavigateTo(CHORD_SEQ);  // zurück
                     } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||
                                GUIState == EUCLPARAM2 || GUIState == EUCLPARAM3) {
                         handleNormalButton(1);
@@ -679,7 +719,8 @@ void handleEncoders() {
                       GUIState == COND1       || GUIState == COND2       || GUIState == COND3     ||
                       GUIState == VALUES1     || GUIState == VALUES2     || GUIState == VALUES3   ||
                       GUIState == GATELEN1    || GUIState == GATELEN2    || GUIState == GATELEN3  ||
-                      GUIState == CHORD_SEQ);
+                      GUIState == CHORD_SEQ   ||
+                      GUIState == CHORD_DEF);
     if (!encActive) return;
 
     for (int i = 0; i < 3; i++) {
@@ -719,6 +760,8 @@ void handleEncoders() {
                 }
             } else if (GUIState == CHORD_SEQ) {
                 handleChordSeqEncoder(i, delta);
+            } else if (GUIState == CHORD_DEF) {
+                handleChordDefEncoder(i, delta);
             } else if (GUIState != PERFORMANCE) {
                 handleNormalEncoder(i, delta);
             }

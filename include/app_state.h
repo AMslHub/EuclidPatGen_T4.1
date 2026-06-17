@@ -30,7 +30,8 @@ enum {
   COND1,
   COND2,
   COND3,
-  CHORD_SEQ
+  CHORD_SEQ,
+  CHORD_DEF
 };
 
 enum CondType : uint8_t {
@@ -266,14 +267,28 @@ struct ChordSlot {
     uint8_t val;     // 10–100 (in 10er-Schritten); CHORD_SLOT_EMPTY = carry-forward
 };
 
+#define CHORD_DEF_COUNT 8
+struct ChordDef {
+    uint8_t spread;    // 1–5 Oktaven
+    uint8_t inv;       // 0–3 Inversion
+    int8_t  oct;       // -2..+2 Oktav-Offset
+    uint8_t toneMask;  // Bitfeld: bit0=1, bit1=3, bit2=5, bit3=7, bit4=9
+};
+
 extern ChordSlot chordSlots[CHORD_SLOT_COUNT];
-extern uint8_t   chordDiv;    // Divisor: 1,2,4,8,16,32
-extern uint8_t   chordLen;    // Aktive Slot-Anzahl: 1–32
-extern bool      chordLive;   // true: aktuell eingestellter Slot klingt permanent
+extern ChordDef  chordDefs[CHORD_DEF_COUNT];
+extern uint8_t   chordDiv;      // Divisor: 1,2,4,8,16,32
+extern uint8_t   chordLen;      // Aktive Slot-Anzahl: 1–32
+extern bool      chordLive;     // true: Akkord-Definitions-Seite aktiv / Direktmonitoring
+extern int       chordPlayPos;  // aktuell spielender Slot (-1 = kein)
 
 // Cursor-State für den CHORD_SEQ-Screen (nicht persistent)
-extern int  chordStepCursor;  // 0..chordLen-1
-extern int  chordFieldCursor; // 0=AkkNr, 1=Mute, 2=Leg, 3=Val, 4=Div, 5=Len
+extern int  chordStepCursor;   // 0..chordLen-1
+extern int  chordFieldCursor;  // 0=AkkNr, 1=Mute, 2=Leg, 3=Val, 4=Div, 5=Len
+
+// Cursor-State für den CHORD_DEF-Screen (nicht persistent)
+extern int  chordDefCursor;    // 0–7: welcher der 8 Akkorde editiert wird
+extern int  chordDefField;     // 0=Spread, 1=Inv, 2=Oct, 3=ToneMask
 
 // ---------------------------------------------------------------------------
 // Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)
