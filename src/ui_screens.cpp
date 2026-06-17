@@ -1076,6 +1076,9 @@ void drawParamButtons(int PatLen, int PatNum, int PatRot, uint8_t PatProb){
 
 static void drawPitchButton();          // forward decl (defined in pitch section below)
 static void drawPitchV1CordButtons();   // forward decl (defined in pitch section below)
+// Chord-Seq forward decls
+void drawChordSeqTitleBar();
+void drawChordSeqCell(int page, int col);
 
 // Redraw helper for parameter menus (zeigt Kreis mit R1)
 // Zweck: Zeichnet das Parameter-Menue fuer das gewaehlte Pattern neu.
@@ -5188,28 +5191,226 @@ void flashValBars(int ch) {
 }
 
 // ---------------------------------------------------------------------------
-// Chord-Sequencer Screen (Stub — wird schrittweise aufgebaut)
+// Chord-Sequencer Screen
 // ---------------------------------------------------------------------------
-void drawChordSeqScreen() {
-    tft.fillScreen(ILI9341_BLACK);
-    // Rücksprungpfeil oben links (wie alle anderen Screens)
+static const int CS_LBL_W  = 24;   // linke Label-Spalte
+static const int CS_COL_W  = 37;   // Breite pro Slot-Spalte (incl. 1px Gap)
+static const int CS_CELL_W = 36;   // nutzbare Zellbreite
+
+static const int CS_ROW0_Y = 70;   // Slot-Nummer
+static const int CS_ROW0_H = 24;
+static const int CS_ROW1_Y = 94;   // Mute
+static const int CS_ROW1_H = 24;
+static const int CS_ROW2_Y = 118;  // Legato
+static const int CS_ROW2_H = 24;
+static const int CS_ROW3_Y = 142;  // Val
+static const int CS_ROW3_H = 24;
+static const int CS_ROW4_Y = 166;  // AkkNr
+static const int CS_ROW4_H = 24;
+
+// Carry-Forward-Auflösung: gibt den effektiv gültigen Wert an Step i zurück
+uint8_t csResolveAkkNr(int i) {
+    for (int j = i; j >= 0; j--)
+        if (chordSlots[j].akkNr != CHORD_SLOT_EMPTY) return chordSlots[j].akkNr;
+    return 0;
+}
+static uint8_t csResolveLeg(int i) {
+    for (int j = i; j >= 0; j--)
+        if (chordSlots[j].leg != CHORD_SLOT_EMPTY) return chordSlots[j].leg;
+    return 0;
+}
+uint8_t csResolveValNr(int i) {
+    for (int j = i; j >= 0; j--)
+        if (chordSlots[j].val != CHORD_SLOT_EMPTY) return chordSlots[j].val;
+    return 50;
+}
+
+void drawChordSeqTitleBar() {
+    tft.fillRect(0, 0, 320, 40, ILI9341_BLACK);
+    // Rücksprungpfeil
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setFont(AwesomeF100_24);
     tft.setCursor(20, 4);
     tft.print((char)18);
-    tft.setFont(Arial_16);
-    tft.setTextColor(ILI9341_CYAN);
-    tft.setCursor(60, 10);
-    tft.print("Chord Seq");
+    // "Crd" Label
     tft.setFont(Arial_12);
+    tft.setTextColor(ILI9341_CYAN);
+    tft.setCursor(48, 4);
+    tft.print("Crd");
+    // Div
+    bool divSel = (chordFieldCursor == 4);
+    tft.setTextColor(divSel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
+    tft.setCursor(90, 4);
+    tft.printf("Div:%d", (int)chordDiv);
+    // Len
+    bool lenSel = (chordFieldCursor == 5);
+    tft.setTextColor(lenSel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
+    tft.setCursor(155, 4);
+    tft.printf("Len:%d", (int)chordLen);
+    // LIVE-Button
+    uint16_t liveFill   = chordLive ? 0x0600 : 0x0841;
+    uint16_t liveText   = chordLive ? ILI9341_GREEN : ILI9341_DARKGREY;
+    tft.fillRect(261, 5, 54, 22, liveFill);
+    tft.drawRect(260, 4, 56, 24, chordLive ? ILI9341_GREEN : ILI9341_DARKGREY);
+    tft.setTextColor(liveText);
+    tft.setCursor(270, 10);
+    tft.print("LIVE");
+}
+
+static void drawChordSeqFillButtons() {
+    tft.fillRect(0, 40, 320, 30, ILI9341_BLACK);
+    struct { int x; int w; const char *lbl; } btns[] = {
+        { 0,   80, "Leg=1"  },
+        { 84,  80, "Val=50" },
+        { 168, 80, "CLR"    },
+    };
+    for (auto &b : btns) {
+        tft.drawRect(b.x, 42, b.w, 22, ILI9341_DARKGREY);
+        tft.fillRect(b.x+1, 43, b.w-2, 20, 0x0841);
+        tft.setFont(Arial_12);
+        tft.setTextColor(ILI9341_LIGHTGREY);
+        int tw = (int)strlen(b.lbl) * 7;
+        tft.setCursor(b.x + (b.w - tw) / 2, 48);
+        tft.print(b.lbl);
+    }
+}
+
+static void drawChordSeqLabels() {
+    tft.setFont(Arial_10);
     tft.setTextColor(ILI9341_DARKGREY);
-    tft.setCursor(8, 40);
-    tft.print("(coming soon)");
+    tft.setCursor(2, CS_ROW0_Y + 7);  tft.print("#");
+    tft.setCursor(0, CS_ROW1_Y + 7);  tft.print("M");
+    tft.setCursor(0, CS_ROW2_Y + 7);  tft.print("L");
+    tft.setCursor(0, CS_ROW3_Y + 7);  tft.print("V");
+    tft.setCursor(0, CS_ROW4_Y + 7);  tft.print("A");
+}
+
+void drawChordSeqCell(int page, int col) {
+    int slotIdx   = page * 8 + col;
+    bool isCursor = (slotIdx == chordStepCursor);
+    bool active   = (slotIdx < (int)chordLen);
+    int x         = CS_LBL_W + col * CS_COL_W;
+
+    tft.fillRect(x, CS_ROW0_Y, CS_CELL_W, 240 - CS_ROW0_Y, ILI9341_BLACK);
+
+    // Row 0: Slot-Nummer
+    {
+        uint16_t bg = isCursor ? 0x2945 : 0x1082;
+        tft.fillRect(x, CS_ROW0_Y, CS_CELL_W, CS_ROW0_H, bg);
+        tft.setFont(Arial_10);
+        tft.setTextColor(active ? ILI9341_WHITE : ILI9341_DARKGREY);
+        char buf[4]; snprintf(buf, sizeof(buf), "%d", slotIdx + 1);
+        int xOff = (int)strlen(buf) == 1 ? 14 : 10;
+        tft.setCursor(x + xOff, CS_ROW0_Y + 7);
+        tft.print(buf);
+    }
+
+    if (!active) {
+        if (isCursor)
+            tft.drawRect(x, CS_ROW0_Y, CS_CELL_W, 240 - CS_ROW0_Y, ILI9341_YELLOW);
+        return;
+    }
+
+    // Row 1: Mute
+    {
+        bool m = chordSlots[slotIdx].mute;
+        uint16_t bg = m ? 0x6000 : ILI9341_BLACK;
+        tft.fillRect(x, CS_ROW1_Y, CS_CELL_W, CS_ROW1_H, bg);
+        tft.setFont(Arial_10);
+        tft.setTextColor(m ? ILI9341_RED : ILI9341_DARKGREY);
+        tft.setCursor(x + 13, CS_ROW1_Y + 7);
+        tft.print(m ? "M" : "-");
+    }
+
+    // Row 2: Legato (carry-forward: grau wenn geerbt)
+    {
+        bool own  = (chordSlots[slotIdx].leg != CHORD_SLOT_EMPTY);
+        uint8_t v = own ? chordSlots[slotIdx].leg : csResolveLeg(slotIdx);
+        uint16_t fg = own ? ILI9341_WHITE : ILI9341_DARKGREY;
+        tft.fillRect(x, CS_ROW2_Y, CS_CELL_W, CS_ROW2_H, ILI9341_BLACK);
+        tft.setFont(Arial_10);
+        tft.setTextColor(fg);
+        tft.setCursor(x + 13, CS_ROW2_Y + 7);
+        tft.print(v ? "1" : "0");
+    }
+
+    // Row 3: Val (carry-forward: grau wenn geerbt)
+    {
+        bool own  = (chordSlots[slotIdx].val != CHORD_SLOT_EMPTY);
+        uint8_t v = own ? chordSlots[slotIdx].val : csResolveValNr(slotIdx);
+        uint16_t fg = own ? ILI9341_WHITE : ILI9341_DARKGREY;
+        tft.fillRect(x, CS_ROW3_Y, CS_CELL_W, CS_ROW3_H, ILI9341_BLACK);
+        tft.setFont(Arial_10);
+        tft.setTextColor(fg);
+        char buf[5]; snprintf(buf, sizeof(buf), "%d", (int)v);
+        int xOff = (int)strlen(buf) == 2 ? 10 : 6;
+        tft.setCursor(x + xOff, CS_ROW3_Y + 7);
+        tft.print(buf);
+    }
+
+    // Row 4: AkkNr (carry-forward: grau wenn geerbt)
+    {
+        bool own  = (chordSlots[slotIdx].akkNr != CHORD_SLOT_EMPTY);
+        uint8_t v = own ? chordSlots[slotIdx].akkNr : csResolveAkkNr(slotIdx);
+        uint16_t bg = own ? 0x0841 : ILI9341_BLACK;
+        uint16_t fg = own ? ILI9341_CYAN : ILI9341_DARKGREY;
+        tft.fillRect(x, CS_ROW4_Y, CS_CELL_W, CS_ROW4_H, bg);
+        tft.setFont(Arial_10);
+        tft.setTextColor(fg);
+        tft.setCursor(x + 14, CS_ROW4_Y + 7);
+        tft.print((int)v);
+    }
+
+    // Cursor-Rahmen: umschließt alle Rows
+    if (isCursor) {
+        // Aktives Feld zusätzlich hervorheben (wenn fieldCursor 0–3)
+        if (chordFieldCursor >= 0 && chordFieldCursor <= 3) {
+            const int rowY[] = { CS_ROW0_Y, CS_ROW1_Y, CS_ROW2_Y, CS_ROW3_Y, CS_ROW4_Y };
+            tft.drawRect(x, rowY[chordFieldCursor], CS_CELL_W, CS_ROW0_H, ILI9341_YELLOW);
+        }
+        tft.drawRect(x, CS_ROW0_Y, CS_CELL_W, 240 - CS_ROW0_Y, ILI9341_YELLOW);
+    }
+}
+
+void drawChordSeqScreen() {
+    fillScreenIfNeeded();
+    drawChordSeqTitleBar();
+    drawChordSeqFillButtons();
+    drawChordSeqLabels();
+    int page = chordStepCursor / 8;
+    for (int c = 0; c < 8; c++) drawChordSeqCell(page, c);
 }
 
 void handleChordSeq(int mapX, int mapY, uint16_t tipPos) {
     if (tipPos == UL) {
         requestNavigateTo(PITCH1);
+        return;
+    }
+    // Fill-Buttons
+    if (mapY >= 42 && mapY < 64) {
+        int len = (int)chordLen;
+        if (mapX < 80) {
+            // Leg=1 für alle aktiven Slots
+            for (int i = 0; i < len; i++) chordSlots[i].leg = 1;
+        } else if (mapX < 164) {
+            // Val=50 für alle aktiven Slots
+            for (int i = 0; i < len; i++) chordSlots[i].val = 50;
+        } else if (mapX < 248) {
+            // CLR: alle Slots auf Empty zurück (außer Slot 0 AkkNr)
+            for (int i = 0; i < CHORD_SLOT_COUNT; i++)
+                chordSlots[i] = { CHORD_SLOT_EMPTY, false, CHORD_SLOT_EMPTY, CHORD_SLOT_EMPTY };
+            chordSlots[0].akkNr = 0;
+            chordSlots[0].val   = 50;
+            chordSlots[0].leg   = 0;
+        }
+        int page = chordStepCursor / 8;
+        for (int c = 0; c < 8; c++) drawChordSeqCell(page, c);
+        return;
+    }
+    // LIVE-Button
+    if (mapX >= 260 && mapY >= 4 && mapY < 28) {
+        chordLive = !chordLive;
+        drawChordSeqTitleBar();
         return;
     }
 }

@@ -459,6 +459,96 @@ static void performQuickSave() {
 }
 
 // ---------------------------------------------------------------------------
+// CHORD_SEQ-Screen: Encoder-Drehung
+//   Enc1: Step-Cursor bewegen
+//   Enc2: Wert am aktiven Feld ändern
+//   Enc3: Seite direkt wechseln
+// ---------------------------------------------------------------------------
+static void handleChordSeqEncoder(int enc, int delta) {
+    int len  = (int)chordLen;
+    int page = chordStepCursor / 8;
+
+    if (enc == 0) {
+        // Step-Cursor
+        int oldCursor = chordStepCursor;
+        chordStepCursor = ((chordStepCursor + delta) % len + len) % len;
+        int newPage = chordStepCursor / 8;
+        if (newPage != page) {
+            drawChordSeqTitleBar();
+            for (int c = 0; c < 8; c++) drawChordSeqCell(newPage, c);
+        } else {
+            drawChordSeqCell(page, oldCursor % 8);
+            drawChordSeqCell(page, chordStepCursor % 8);
+        }
+    } else if (enc == 1) {
+        // Wert am aktiven Feld
+        int s = chordStepCursor;
+        switch (chordFieldCursor) {
+            case 0: { // AkkNr
+                uint8_t cur = (chordSlots[s].akkNr == CHORD_SLOT_EMPTY) ? csResolveAkkNr(s) : chordSlots[s].akkNr;
+                int v = (int)cur + delta;
+                if (v < 0) { chordSlots[s].akkNr = CHORD_SLOT_EMPTY; }
+                else        { chordSlots[s].akkNr = (uint8_t)clampVal(v, 0, 7); }
+                break;
+            }
+            case 1: // Mute toggle
+                chordSlots[s].mute = !chordSlots[s].mute;
+                break;
+            case 2: { // Legato
+                uint8_t cur = (chordSlots[s].leg == CHORD_SLOT_EMPTY) ? 0 : chordSlots[s].leg;
+                int v = (int)cur + delta;
+                if (v < 0) { chordSlots[s].leg = CHORD_SLOT_EMPTY; }
+                else        { chordSlots[s].leg = (uint8_t)clampVal(v, 0, 1); }
+                break;
+            }
+            case 3: { // Val 10–100 in 10er-Schritten
+                uint8_t cur = (chordSlots[s].val == CHORD_SLOT_EMPTY) ? csResolveValNr(s) : chordSlots[s].val;
+                int v = (int)cur + delta * 10;
+                if (v < 10) { chordSlots[s].val = CHORD_SLOT_EMPTY; }
+                else         { chordSlots[s].val = (uint8_t)clampVal(v, 10, 100); }
+                break;
+            }
+            case 4: { // Div
+                static const uint8_t divVals[] = { 1, 2, 4, 8, 16, 32 };
+                int cur = 0;
+                for (int k = 0; k < 6; k++) if (divVals[k] == chordDiv) { cur = k; break; }
+                cur = clampVal(cur + delta, 0, 5);
+                chordDiv = divVals[cur];
+                drawChordSeqTitleBar();
+                return;
+            }
+            case 5: // Len
+                chordLen = (uint8_t)clampVal((int)chordLen + delta, 1, 32);
+                drawChordSeqTitleBar();
+                return;
+        }
+        drawChordSeqCell(page, s % 8);
+    } else if (enc == 2) {
+        // Seite direkt wechseln
+        int maxPage = ((int)chordLen - 1) / 8;
+        int newPage = clampVal(page + delta, 0, maxPage);
+        if (newPage != page) {
+            chordStepCursor = newPage * 8;
+            for (int c = 0; c < 8; c++) drawChordSeqCell(newPage, c);
+        }
+    }
+}
+
+static void handleChordSeqButton(int enc) {
+    if (enc == 0) {
+        // Feld-Cursor weiterschalten: AkkNr→Mute→Leg→Val→Div→Len→AkkNr
+        chordFieldCursor = (chordFieldCursor + 1) % 6;
+        int page = chordStepCursor / 8;
+        drawChordSeqTitleBar();
+        drawChordSeqCell(page, chordStepCursor % 8);
+    } else if (enc == 1) {
+        // LIVE toggle
+        chordLive = !chordLive;
+        drawChordSeqTitleBar();
+    }
+}
+
+// ---------------------------------------------------------------------------
 
 void setupEncoders() {
     for (int i = 0; i < 3; i++) {
@@ -508,6 +598,8 @@ void handleEncoders() {
                         condPresetModeToggle(ch);
                     } else if (GUIState == PITCH1) {
                         handlePitchButton(1);
+                    } else if (GUIState == CHORD_SEQ) {
+                        handleChordSeqButton(1);  // LIVE toggle
                     } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||
                                GUIState == EUCLPARAM2 || GUIState == EUCLPARAM3) {
                         handleNormalButton(1);
@@ -625,6 +717,8 @@ void handleEncoders() {
                         else if (i == 1) scaleValues(ch, (delta > 0) ? 1.05f : 0.95f);
                     }
                 }
+            } else if (GUIState == CHORD_SEQ) {
+                handleChordSeqEncoder(i, delta);
             } else if (GUIState != PERFORMANCE) {
                 handleNormalEncoder(i, delta);
             }
@@ -660,6 +754,15 @@ void handleEncoders() {
                         handleCondButtonPress(ch);
                     }
                     // Short press: no action
+                } else if (GUIState == CHORD_SEQ) {
+                    uint32_t held2 = now - enc1PressStartMs;
+                    if (held2 >= LONG_PRESS_MS) {
+                        // Long Press: Slot löschen
+                        chordSlots[chordStepCursor] = { CHORD_SLOT_EMPTY, false, CHORD_SLOT_EMPTY, CHORD_SLOT_EMPTY };
+                        drawChordSeqCell(chordStepCursor / 8, chordStepCursor % 8);
+                    } else {
+                        handleChordSeqButton(0);
+                    }
                 } else if (GUIState == VALUES1 || GUIState == VALUES2 || GUIState == VALUES3 ||
                            GUIState == GATELEN1 || GUIState == GATELEN2 || GUIState == GATELEN3) {
                     // Short/long press on Values/GateLen: no action (encoders control step-edit)

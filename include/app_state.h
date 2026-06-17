@@ -253,6 +253,29 @@ extern uint8_t condRatchetOvr[3];   // 0=no override, 2..4=ratchet count
 extern uint8_t condGateLenOvr[3];   // 0=no override, else gate-len value
 extern uint8_t condValueMul[3];     // 0=none, 1=×2, 2=×3/2, 3=×4/3, 4=×5/4
 
+// ---------------------------------------------------------------------------
+// Chord-Sequencer
+// ---------------------------------------------------------------------------
+#define CHORD_SLOT_COUNT 32
+#define CHORD_SLOT_EMPTY 0xFF   // Carry-Forward-Marker für AkkNr, Leg, Val
+
+struct ChordSlot {
+    uint8_t akkNr;   // 0–7 = Akkord; CHORD_SLOT_EMPTY = carry-forward
+    bool    mute;    // Einzel-Event: dieser Slot schweigt
+    uint8_t leg;     // 0=off, 1=on; CHORD_SLOT_EMPTY = carry-forward
+    uint8_t val;     // 10–100 (in 10er-Schritten); CHORD_SLOT_EMPTY = carry-forward
+};
+
+extern ChordSlot chordSlots[CHORD_SLOT_COUNT];
+extern uint8_t   chordDiv;    // Divisor: 1,2,4,8,16,32
+extern uint8_t   chordLen;    // Aktive Slot-Anzahl: 1–32
+extern bool      chordLive;   // true: aktuell eingestellter Slot klingt permanent
+
+// Cursor-State für den CHORD_SEQ-Screen (nicht persistent)
+extern int  chordStepCursor;  // 0..chordLen-1
+extern int  chordFieldCursor; // 0=AkkNr, 1=Mute, 2=Leg, 3=Val, 4=Div, 5=Len
+
+// ---------------------------------------------------------------------------
 // Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)
 extern volatile bool extClockMode;
 // Wechselt den Clock-Modus und startet/stoppt den internen Timer entsprechend.

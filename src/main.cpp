@@ -161,6 +161,14 @@ uint8_t lastNonEchoPitchNotes[32] = { 0 };
 uint8_t undoPitchNotes[32]        = { 0 };
 int     lastNoteEffectIdx         = -1;
 bool    pitchNotesFrozen   = false;
+
+// Chord-Sequencer
+ChordSlot chordSlots[CHORD_SLOT_COUNT];
+uint8_t   chordDiv         = 4;
+uint8_t   chordLen         = 8;
+bool      chordLive        = false;
+int       chordStepCursor  = 0;
+int       chordFieldCursor = 0;
 int     frozenMidi[32]     = { 0 };
 int     frozenMidiBase[32] = { 0 };
 int     transposeOffset    = 0;
@@ -501,6 +509,15 @@ void triggerManualReset() {
 // Side Effects: konfiguriert Pins, TFT/Touch, EEPROM-Parameter, Timer und globale States.
 // Assumptions: Wird einmalig nach dem Start aufgerufen; Hardware ist korrekt verdrahtet.
 void setup() {
+  // Chord-Slots initialisieren: alle Felder auf CHORD_SLOT_EMPTY / false
+  for (int i = 0; i < CHORD_SLOT_COUNT; i++) {
+      chordSlots[i] = { CHORD_SLOT_EMPTY, false, CHORD_SLOT_EMPTY, CHORD_SLOT_EMPTY };
+  }
+  // Slot 0: sinnvoller Default — Akkord 0, Val 50, kein Legato
+  chordSlots[0].akkNr = 0;
+  chordSlots[0].val   = 50;
+  chordSlots[0].leg   = 0;
+
   Serial.begin(115200);
   if (CrashReport) {
     uint32_t t = millis();

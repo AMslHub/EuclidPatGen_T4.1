@@ -137,6 +137,10 @@ void setNavOpenedFrom(uint16_t state);   // setzt navFromState vor deferred NAV-
 void drawCondScreen(int setIdx);
 void drawChordSeqScreen();
 void handleChordSeq(int mapX, int mapY, uint16_t tipPos);
+void drawChordSeqTitleBar();
+void drawChordSeqCell(int page, int col);
+uint8_t csResolveAkkNr(int i);
+uint8_t csResolveValNr(int i);
 void drawCondCell(int setIdx, int page, int col);   // einzelne Spalte (alle 4 Zeilen)
 void drawCondTitle(int setIdx);                     // Titelzeile neu zeichnen
 void drawCondButton(int setIdx);                    // kleiner COND-Button auf dem GateLen-Screen
