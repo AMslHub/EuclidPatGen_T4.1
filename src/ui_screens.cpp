@@ -2728,16 +2728,16 @@ static const int PITCH_ROT_BY  = 42;
 static const int PITCH_ROT_BS  = 24;
 // DW: y=42, muss links von PR-Label (x=266). Box-rechts ≤ 262 → BX=238.
 // Label "DW" bei x=218..231, Box x=238..261. Kein Konflikt mit V1/CORD (y=10).
-static const int PITCH_DP_BX   = 230;  // Box x=230..253, Label "DW" x=210..223, 12px vor PR-Label
+static const int PITCH_DP_BX   = 230;  // Box x=230..253, rechtsbündig mit CORD-Button
 static const int PITCH_DP_BY   = 42;
 static const int PITCH_DP_BS   = 24;
-// V1- und CORD-Button: y=10..33, zwischen Pfeil (x≈38) und HP-Label (x=266).
-// V1: x=100..143, CORD: x=148..191 — beide klar frei.
-static const int PITCH_V1_BX   = 100;
+// V1- und CORD-Button: CORD rechtsbündig mit DW-Box (endet x=254), V1 direkt links davon.
+// CORD: x=210..253, V1: x=162..205 (4px Lücke zwischen beiden)
+static const int PITCH_V1_BX   = 162;
 static const int PITCH_V1_BY   = 10;
 static const int PITCH_V1_BW   = 44;
 static const int PITCH_V1_BH   = 24;
-static const int PITCH_CORD_BX = 148;
+static const int PITCH_CORD_BX = 210;
 static const int PITCH_CORD_BY = 10;
 static const int PITCH_CORD_BW = 44;
 static const int PITCH_CORD_BH = 24;
@@ -2890,11 +2890,11 @@ void drawPitchRotateCheckbox() {
 
 void drawPitchDisplayModeCheckbox() {
     int x = PITCH_DP_BX, y = PITCH_DP_BY, s = PITCH_DP_BS;
-    tft.fillRect(x - 22, y, 21, s, ILI9341_BLACK);  // Label-Bereich leeren (21px vor Box)
+    tft.fillRect(x - 26, y, 25, s, ILI9341_BLACK);  // Label-Bereich leeren
     tft.drawRect(x, y, s, s, ILI9341_DARKGREY);
     tft.fillRect(x+1, y+1, s-2, s-2, ILI9341_BLACK);
     tft.setFont(Arial_12);
-    tft.setCursor(x - 20, y + 6);
+    tft.setCursor(x - 24, y + 6);  // 4px weiter links als zuvor
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.print("DW");
     if (pitchDisplayMode) {
