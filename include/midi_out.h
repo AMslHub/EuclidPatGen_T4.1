@@ -3,6 +3,7 @@
 
 void midiOutSetup();                            // Serial7.begin(31250) — aus setup() aufrufen
 void midiOutTick();                             // Chord-MIDI bei chordPlayPos-Wechsel
+void midiOutLiveChord();                        // Live-Modus: chordDefCursor sofort spielen
 void midiOutAllNotesOff();                      // Panic — alle laufenden Noten beenden
 
 // Melodie CH1: Note-On bei Gate-Hit (mit fertig berechnetem MIDI-Ton aus gates.cpp)

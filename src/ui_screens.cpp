@@ -9,6 +9,7 @@
 #include <pitch.h>
 #include <encoders.h>
 #include <cv_inputs.h>
+#include <midi_out.h>
 
 // Zwei-Phasen-Draw: Phase 1 hat fillScreen bereits ausgeführt → überspringen.
 static bool s_skipNextFill_top = false;
@@ -5544,6 +5545,7 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
                                  (i > 0 && chordDefs[i-1].saved);
                 if (canSelect) {
                     chordDefCursor = i;
+                    if (chordLive) midiOutLiveChord();
                     drawChordDefTabs();
                     drawChordDefParams();
                     drawChordDefSaveButton();
@@ -5559,6 +5561,7 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
             if (mapX >= bx && mapX < bx + 46) {
                 chordDefs[chordDefCursor].spread = v;
                 chordDefField = 0;
+                if (chordLive) midiOutLiveChord();
                 drawChordDefParams();
                 return;
             }
@@ -5571,6 +5574,7 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
             if (mapX >= bx && mapX < bx + 58) {
                 chordDefs[chordDefCursor].inv = v;
                 chordDefField = 1;
+                if (chordLive) midiOutLiveChord();
                 drawChordDefParams();
                 return;
             }
@@ -5583,6 +5587,7 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
             if (mapX >= bx && mapX < bx + 46) {
                 chordDefs[chordDefCursor].oct = (int8_t)(v - 2);
                 chordDefField = 2;
+                if (chordLive) midiOutLiveChord();
                 drawChordDefParams();
                 return;
             }
@@ -5596,6 +5601,7 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
                 uint8_t toggled = chordDefs[chordDefCursor].toneMask ^ (uint8_t)(1u << b);
                 if (toggled != 0) chordDefs[chordDefCursor].toneMask = toggled;
                 chordDefField = 3;
+                if (chordLive) midiOutLiveChord();
                 drawChordDefParams();
                 return;
             }

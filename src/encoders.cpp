@@ -6,6 +6,7 @@
 #include <storage.h>
 #include <ui_screens.h>
 #include <cv_inputs.h>
+#include <midi_out.h>
 #include <Encoder.h>
 
 static Encoder enc1(ENC1_CLK_PIN, ENC1_DT_PIN);
@@ -550,8 +551,10 @@ static void handleChordSeqButton(int enc) {
         // LIVE toggle — bei Einschalten zu CHORD_DEF navigieren (wie Touch-Handler)
         chordLive = !chordLive;
         if (chordLive) {
+            midiOutLiveChord();         // sofort aktuellen Tab spielen
             requestNavigateTo(CHORD_DEF);
         } else {
+            midiOutAllNotesOff();       // Live-Akkord stoppen, Sequencer übernimmt
             drawChordSeqTitleBar();
         }
     }
@@ -572,30 +575,32 @@ static void handleChordDefEncoder(int enc, int delta) {
                          (next > 0 && chordDefs[next-1].saved);
         if (canSelect) {
             chordDefCursor = next;
-            chordToneCursor = 0;  // Cursor zurücksetzen beim Tab-Wechsel
+            chordToneCursor = 0;
+            if (chordLive) midiOutLiveChord();  // Tab-Wechsel → sofort neuen Akkord spielen
         }
         drawChordDefScreen();
     } else if (enc == 1) {
         chordDefField = clampVal(chordDefField + delta, 0, 3);
-        // Nur Parameter-Bereich neu zeichnen — kein fillScreen
         drawChordDefParams();
     } else if (enc == 2) {
         switch (chordDefField) {
-            case 0: // Spread 1-5
+            case 0:
                 d.spread = (uint8_t)clampVal((int)d.spread + delta, 1, 5);
                 break;
-            case 1: // Inv 0-3
+            case 1:
                 d.inv = (uint8_t)clampVal((int)d.inv + delta, 0, 3);
                 break;
-            case 2: // Oct -2..+2
+            case 2:
                 d.oct = (int8_t)clampVal((int)d.oct + delta, -2, 2);
                 break;
             case 3: // Tone-Cursor bewegen — kein Toggle, nur Cursor verschieben
                 chordToneCursor = clampVal(chordToneCursor + delta, 0, 6);
                 break;
         }
-        if (chordDefField != 3) scheduleSaveParams();  // case 3: kein Wert geändert
-        // Nur Parameter-Bereich neu zeichnen — kein fillScreen
+        if (chordDefField != 3) {
+            scheduleSaveParams();
+            if (chordLive) midiOutLiveChord();  // Parameteränderung → sofort aktualisieren
+        }
         drawChordDefParams();
     }
 }
@@ -707,6 +712,7 @@ void handleEncoders() {
                             uint8_t toggled = d.toneMask ^ (uint8_t)(1u << chordToneCursor);
                             if (toggled != 0) d.toneMask = toggled;
                             scheduleSaveParams();
+                            if (chordLive) midiOutLiveChord();
                             drawChordDefParams();
                         }
                     } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||

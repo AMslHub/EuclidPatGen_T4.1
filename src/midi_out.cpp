@@ -140,7 +140,34 @@ void midiOutAllNotesOff() {
     Serial7.write(0xB0 | (MIDI_CH_MELODY - 1)); Serial7.write(123); Serial7.write(0);
 }
 
+void midiOutLiveChord() {
+    // Live-Modus: chordDefCursor direkt spielen, ignoriert Slot-Liste
+    if (!chordDefs[chordDefCursor].saved) {
+        stopActiveNotes();
+        return;
+    }
+    uint8_t newNotes[7];
+    int newCount = buildChordNotes(chordDefs[chordDefCursor], newNotes);
+    if (newCount == 0) { stopActiveNotes(); return; }
+
+    // Note-On neue Töne, Note-Off nur Töne die nicht mehr im neuen Akkord sind
+    for (int i = 0; i < newCount; i++)
+        midiNoteOn(MIDI_CH_CHORD, newNotes[i], 100);
+    for (int i = 0; i < s_activeCount; i++) {
+        bool keep = false;
+        for (int j = 0; j < newCount; j++)
+            if (s_activeNotes[j] == s_activeNotes[i]) { keep = true; break; }
+        if (!keep) midiNoteOff(MIDI_CH_CHORD, s_activeNotes[i]);
+    }
+    s_activeCount = newCount;
+    for (int i = 0; i < newCount; i++) s_activeNotes[i] = newNotes[i];
+    s_lastPlayPos = -2;  // Sequencer-Pos ungültig machen → nächster Tick spielt neu
+}
+
 void midiOutTick() {
+    // Im Live-Modus: Sequencer-Logik überspringen
+    if (chordLive) return;
+
     // Nur wenn Chord-Sequencer aktiv (Sequencer läuft)
     if (chordPlayPos < 0 || chordLen == 0) {
         if (s_activeCount > 0) stopActiveNotes();
