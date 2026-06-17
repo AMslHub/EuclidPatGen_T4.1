@@ -5364,10 +5364,11 @@ void drawChordSeqCell(int page, int col) {
 
     // Cursor-Rahmen: umschließt alle Rows
     if (isCursor) {
-        // Aktives Feld zusätzlich hervorheben (wenn fieldCursor 0–3)
-        if (chordFieldCursor >= 0 && chordFieldCursor <= 3) {
-            const int rowY[] = { CS_ROW0_Y, CS_ROW1_Y, CS_ROW2_Y, CS_ROW3_Y, CS_ROW4_Y };
-            tft.drawRect(x, rowY[chordFieldCursor], CS_CELL_W, CS_ROW0_H, ILI9341_YELLOW);
+        // Aktives Feld hervorheben: Field→Row-Mapping (Field 4/5 = Div/Len → nur Titelzeile, kein Row-Highlight)
+        // Field: 0=AkkNr(Row4), 1=Mute(Row1), 2=Leg(Row2), 3=Val(Row3)
+        static const int fieldToRowY[] = { CS_ROW4_Y, CS_ROW1_Y, CS_ROW2_Y, CS_ROW3_Y };
+        if (chordFieldCursor < 4) {
+            tft.drawRect(x, fieldToRowY[chordFieldCursor], CS_CELL_W, CS_ROW0_H, ILI9341_YELLOW);
         }
         tft.drawRect(x, CS_ROW0_Y, CS_CELL_W, 240 - CS_ROW0_Y, ILI9341_YELLOW);
     }
@@ -5378,12 +5379,12 @@ void drawChordSeqCell(int page, int col) {
 // ---------------------------------------------------------------------------
 static const int CD_TAB_Y  = 4;
 static const int CD_TAB_H  = 28;
-static const int CD_TAB_W  = 34;
-static const int CD_TAB_X0 = 48;   // nach Rückpfeil
+static const int CD_TAB_W  = 28;
+static const int CD_TAB_X0 = 44;   // nach Rückpfeil; 44 + 8*28 = 268, LIVE ab 272
 
 static void drawChordDefTabs() {
     for (int i = 0; i < CHORD_DEF_COUNT; i++) {
-        int x = CD_TAB_X0 + i * (CD_TAB_W + 2);
+        int x = CD_TAB_X0 + i * CD_TAB_W;
         bool sel  = (i == chordDefCursor);
         bool play = (chordPlayPos >= 0 && csResolveAkkNr(chordPlayPos) == (uint8_t)i);
         uint16_t border = sel  ? ILI9341_YELLOW :
@@ -5395,7 +5396,7 @@ static void drawChordDefTabs() {
         tft.drawRect(x,   CD_TAB_Y,   CD_TAB_W,   CD_TAB_H,   border);
         tft.setFont(Arial_12);
         tft.setTextColor(fg);
-        tft.setCursor(x + 10, CD_TAB_Y + 8);
+        tft.setCursor(x + 9, CD_TAB_Y + 8);
         tft.print(i);
     }
 }
@@ -5488,13 +5489,25 @@ static void drawChordDefParams() {
     }
 }
 
+static void drawChordDefLiveIndicator() {
+    // LIVE-Indikator rechts oben (Touch → toggle)
+    uint16_t col = chordLive ? ILI9341_GREEN : ILI9341_DARKGREY;
+    tft.fillRect(269, 5, 50, 22, chordLive ? 0x0600 : ILI9341_BLACK);
+    tft.drawRect(268, 4, 52, 24, col);
+    tft.setFont(Arial_12);
+    tft.setTextColor(col);
+    tft.setCursor(277, 10);
+    tft.print("LIVE");
+}
+
 void drawChordDefScreen() {
     fillScreenIfNeeded();
     // Rückpfeil
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setFont(AwesomeF100_24);
-    tft.setCursor(20, 4);
+    tft.setCursor(4, 4);
     tft.print((char)18);
+    drawChordDefLiveIndicator();
     drawChordDefTabs();
     drawChordDefParams();
 }
@@ -5504,10 +5517,16 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
         requestNavigateTo(CHORD_SEQ);
         return;
     }
+    // LIVE-Button oben rechts
+    if (mapX >= 268 && mapY >= 4 && mapY < 28) {
+        chordLive = !chordLive;
+        drawChordDefLiveIndicator();
+        return;
+    }
     // Tab antippen → Akkord wechseln
     if (mapY >= CD_TAB_Y && mapY < CD_TAB_Y + CD_TAB_H) {
         for (int i = 0; i < CHORD_DEF_COUNT; i++) {
-            int x = CD_TAB_X0 + i * (CD_TAB_W + 2);
+            int x = CD_TAB_X0 + i * CD_TAB_W;
             if (mapX >= x && mapX < x + CD_TAB_W) {
                 chordDefCursor = i;
                 drawChordDefTabs();
@@ -5603,10 +5622,14 @@ void handleChordSeq(int mapX, int mapY, uint16_t tipPos) {
         for (int c = 0; c < 8; c++) drawChordSeqCell(page, c);
         return;
     }
-    // LIVE-Button: toggle + Chord-Def-Seite öffnen
+    // LIVE-Button: toggle; Einschalten öffnet Chord-Def, Ausschalten bleibt auf dieser Seite
     if (mapX >= 260 && mapY >= 4 && mapY < 28) {
         chordLive = !chordLive;
-        requestNavigateTo(CHORD_DEF);
+        if (chordLive) {
+            requestNavigateTo(CHORD_DEF);
+        } else {
+            drawChordSeqTitleBar();
+        }
         return;
     }
 }
