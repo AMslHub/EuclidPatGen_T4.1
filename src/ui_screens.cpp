@@ -1074,7 +1074,8 @@ void drawParamButtons(int PatLen, int PatNum, int PatRot, uint8_t PatProb){
   }
 }
 
-static void drawPitchButton();   // forward decl (defined in pitch section below)
+static void drawPitchButton();          // forward decl (defined in pitch section below)
+static void drawPitchV1CordButtons();   // forward decl (defined in pitch section below)
 
 // Redraw helper for parameter menus (zeigt Kreis mit R1)
 // Zweck: Zeichnet das Parameter-Menue fuer das gewaehlte Pattern neu.
@@ -3324,13 +3325,7 @@ static void drawTransposeIndicator() {
 void drawPitchScreen() {
     fillScreenIfNeeded();
     setMenuItems4EUCLPARAM(ILI9341_LIGHTGREY);
-    // V1-Button wie GateLen-Button auf dem Values-Screen
-    tft.setFont(Arial_12);
-    tft.fillRect(160, 11, 48, 22, 0x4208);
-    tft.drawRect(159, 10, 50, 24, ILI9341_DARKGREY);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setCursor(176, 18);
-    tft.print("V1");
+    drawPitchV1CordButtons();
     drawPitchFoldBox();
     drawPitchPresetBox();
     drawPitchHoldCheckbox();
@@ -3338,10 +3333,6 @@ void drawPitchScreen() {
     drawPitchDisplayModeCheckbox();
     if (stepEditActive) drawPitchStepNoteLabel();
     drawTransposeIndicator();
-    tft.setFont(Arial_16);
-    tft.setTextColor(ILI9341_LIGHTGREY);
-    tft.setCursor(287, 10);
-    tft.print(1);
 
     tft.drawRect(PITCH_BAR_X - 1, PITCH_BAR_Y - 1,
                  PITCH_BAR_W + 2, PITCH_BAR_H + 2,
@@ -3632,7 +3623,18 @@ void handlePITCHDrag(int mapX, int mapY) {
     }
 }
 
+// "Pt"-Button auf EUCLPARAM1 (Kanal 0) — navigiert zu PITCH1
 static void drawPitchButton() {
+    tft.setFont(Arial_12);
+    tft.fillRect(261, 11, 48, 26, 0x4208);
+    tft.drawRect(260, 10, 50, 28, ILI9341_DARKGREY);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(272, 18);
+    tft.print("Pt");
+}
+
+// V1- und CORD-Button auf dem PITCH1-Screen
+static void drawPitchV1CordButtons() {
     tft.setFont(Arial_12);
     // V1-Button
     tft.fillRect(PITCH_V1_BX+1, PITCH_V1_BY+1, PITCH_V1_BW-2, PITCH_V1_BH-2, 0x4208);
