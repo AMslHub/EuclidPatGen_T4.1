@@ -5234,6 +5234,7 @@ void drawChordSeqTitleBar() {
     tft.setFont(AwesomeF100_24);
     tft.setCursor(20, 4);
     tft.print((char)18);
+    tft.setFont(Arial_12);  // Font zurücksetzen nach Pfeil
     // Div
     bool divSel = (chordFieldCursor == 4);
     tft.setTextColor(divSel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
@@ -5516,7 +5517,7 @@ void drawChordDefScreen() {
     tft.setFont(AwesomeF100_24);
     tft.setCursor(4, 4);
     tft.print((char)18);
-    tft.fillRect(0, 32, 40, 8, ILI9341_BLACK);  // Font-Überlauf unter dem Pfeil löschen
+    tft.setFont(Arial_12);  // Font zurücksetzen nach Pfeil
     drawChordDefSaveButton();
     drawChordDefTabs();
     drawChordDefParams();
