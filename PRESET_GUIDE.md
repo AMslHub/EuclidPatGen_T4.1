@@ -114,7 +114,10 @@ Transformieren das zuletzt geladene (oder gebackene) Pattern.
 | ------ | ------------ | ------------------ |
 | Note Blur | Gleitender Mittelwert (links+mitte+rechts)/3 — glättet harte Sprünge | Nach Brwn Fast oder S&H um Energie zu dämpfen |
 | Note Delay+1 | Verschiebt alle Steps um 1 nach rechts (mit Wrap) — invertiert gerade/ungerade Raster | Auf Acid, Detroit: bricht das rhythmische Raster auf |
+| Note Dilat. | Morphologische Dilation: jeder Step = Maximum aus sich + Nachbarn — Spitzen breiten sich aus, Täler verschwinden | Auf S&H und Brwn Fast für Energie; Gegenteil zu Note Erode |
 | Note Drunk | Jeder Step ±1 Skalenstufe zufällig verschoben — leichtes organisches Zittern | Nach Mk Stepwise für lebendige Nuancen |
+| Note Erode | Morphologische Erosion: jeder Step = Minimum aus sich + Nachbarn — Täler breiten sich aus, Spitzen verschwinden | Auf laute, hohe Patterns für Dunkel/Schwere; Gegenteil zu Note Dilat. |
+| Note Grad. | Morphologischer Gradient: Max−Min im Fenster — ruhige Steps → 0, Sprünge → hoher Wert (Energieprofil) | Als Basis für rhythmische Intensitätskurve; kombiniert mit Note Thin interessant |
 | Note Echo | Ungerade Steps = verzögertes Echo des vorherigen geraden Steps | Auf jedes dichte Pattern |
 | Note Freeze | Zweite Hälfte wird auf einen zufälligen Step eingefroren — Stotter-Effekt | Auf Cascade, Spiral für dramatischen Bruch |
 | Note Inv | Spiegelt alle Werte vertikal: 255−x — Melodie wird zur Umkehrung | Auf Berlin, Mirror für harmonisches Spiegelbild |

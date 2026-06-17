@@ -202,7 +202,10 @@ static const PitchPreset PITCH_PRESETS[] = {
     // --- N ---
     { "Note Blur",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Delay+1", { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Dilat.",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Drunk",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Erode",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
+    { "Note Grad.",   { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Echo",    { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Freeze",  { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
     { "Note Inv",     { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 } },
@@ -464,6 +467,38 @@ void getPitchPresetNotes(int idx, uint8_t *dest32) {
         int len = clampVal(PatLen[0], 1, 32);
         for (int j = 0; j < len; j++)
             dest32[j] = lastNonEchoPitchNotes[(j - 1 + len) % len];
+        return;
+    }
+    else if (!strcmp(name, "Note Dilat.")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++) {
+            uint8_t a = lastNonEchoPitchNotes[(j - 1 + len) % len];
+            uint8_t b = lastNonEchoPitchNotes[j];
+            uint8_t c = lastNonEchoPitchNotes[(j + 1) % len];
+            dest32[j] = (a > b ? (a > c ? a : c) : (b > c ? b : c));
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Erode")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++) {
+            uint8_t a = lastNonEchoPitchNotes[(j - 1 + len) % len];
+            uint8_t b = lastNonEchoPitchNotes[j];
+            uint8_t c = lastNonEchoPitchNotes[(j + 1) % len];
+            dest32[j] = (a < b ? (a < c ? a : c) : (b < c ? b : c));
+        }
+        return;
+    }
+    else if (!strcmp(name, "Note Grad.")) {
+        int len = clampVal(PatLen[0], 1, 32);
+        for (int j = 0; j < len; j++) {
+            uint8_t a = lastNonEchoPitchNotes[(j - 1 + len) % len];
+            uint8_t b = lastNonEchoPitchNotes[j];
+            uint8_t c = lastNonEchoPitchNotes[(j + 1) % len];
+            uint8_t mx = (a > b ? (a > c ? a : c) : (b > c ? b : c));
+            uint8_t mn = (a < b ? (a < c ? a : c) : (b < c ? b : c));
+            dest32[j] = mx - mn;
+        }
         return;
     }
     else if (!strcmp(name, "Note Blur")) {
