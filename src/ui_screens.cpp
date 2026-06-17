@@ -2839,15 +2839,17 @@ void drawPitchPlayhead(unsigned int step) {
     int len  = clampVal(PatLen[0], 1, 32);
     int idx  = (int)(step % (unsigned int)len);
     int last = lastPitchPlayIdx;
-    int y    = PITCH_BAR_Y - 5;
-    int r    = 3;
+    int barW = PITCH_BAR_W / len;
 
+    // Letzten Balken restaurieren (Linie entfernen)
     if (last >= 0 && last < len) {
-        int lx = PITCH_BAR_X + (last * PITCH_BAR_W) / len + (PITCH_BAR_W / len) / 2;
-        tft.fillCircle(lx, y, r, ILI9341_BLACK);
+        int lx = PITCH_BAR_X + last * barW;
+        tft.drawFastVLine(lx, PITCH_BAR_Y, PITCH_BAR_H, ILI9341_BLACK);
+        drawPitchBar(last);  // Balkeninhalt wiederherstellen
     }
-    int x = PITCH_BAR_X + (idx * PITCH_BAR_W) / len + (PITCH_BAR_W / len) / 2;
-    tft.fillCircle(x, y, r, ILI9341_WHITE);
+    // Aktuellen Schritt: cyan Linie am linken Rand des Balkens
+    int x = PITCH_BAR_X + idx * barW;
+    tft.drawFastVLine(x, PITCH_BAR_Y, PITCH_BAR_H, ILI9341_CYAN);
     lastPitchPlayIdx = idx;
 }
 
@@ -5459,7 +5461,7 @@ static void drawCDRow(bool sel, int y, int h, const char *label,
     }
 }
 
-static void drawChordDefParams() {
+void drawChordDefParams() {
     tft.fillRect(0, 36, 320, 204, ILI9341_BLACK);
     ChordDef &d = chordDefs[chordDefCursor];
 
@@ -5490,13 +5492,18 @@ static void drawChordDefParams() {
         tft.print("Tone:");
         for (int b = 0; b < CD_TONE_COUNT; b++) {
             int bx  = CD_TONE_X0 + b * CD_TONE_W;
-            bool act = (d.toneMask >> b) & 1;
+            bool act     = (d.toneMask >> b) & 1;
+            bool curHere = sel && (b == chordToneCursor);
             uint16_t bg   = act ? 0x07BF : ILI9341_BLACK;
-            uint16_t brdr = act ? ILI9341_CYAN :
-                            (sel ? ILI9341_YELLOW : 0x4208);
+            // Cursor-Position: dicker weißer/gelber Rahmen; aktiv=Cyan, Cursor=Weiß, beides=helles Cyan
+            uint16_t brdr = curHere ? ILI9341_WHITE :
+                            act     ? ILI9341_CYAN  :
+                            sel     ? ILI9341_YELLOW : 0x4208;
             uint16_t fg   = act ? ILI9341_BLACK : (sel ? ILI9341_WHITE : 0x8410);
             tft.fillRect(bx+1, CD_TONE_Y+1, CD_TONE_W-2, CD_TONE_H-2, bg);
             tft.drawRect(bx,   CD_TONE_Y,   CD_TONE_W,   CD_TONE_H,   brdr);
+            // Cursor-Highlighting: zweiter Rahmen 1px innen für Sichtbarkeit
+            if (curHere) tft.drawRect(bx+2, CD_TONE_Y+2, CD_TONE_W-4, CD_TONE_H-4, ILI9341_WHITE);
             tft.setTextColor(fg);
             int xOff = (b < 5) ? (CD_TONE_W - 8) / 2 : (CD_TONE_W - 14) / 2;
             tft.setCursor(bx + xOff, CD_TONE_Y + (CD_TONE_H - 14) / 2);

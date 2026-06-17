@@ -484,11 +484,16 @@ static void handleChordSeqEncoder(int enc, int delta) {
         // Wert am aktiven Feld
         int s = chordStepCursor;
         switch (chordFieldCursor) {
-            case 0: { // AkkNr
+            case 0: { // AkkNr — nur gespeicherte ChordDefs erlaubt
                 uint8_t cur = (chordSlots[s].akkNr == CHORD_SLOT_EMPTY) ? csResolveAkkNr(s) : chordSlots[s].akkNr;
                 int v = (int)cur + delta;
-                if (v < 0) { chordSlots[s].akkNr = CHORD_SLOT_EMPTY; }
-                else        { chordSlots[s].akkNr = (uint8_t)clampVal(v, 0, 7); }
+                if (v < 0) {
+                    chordSlots[s].akkNr = CHORD_SLOT_EMPTY;
+                } else {
+                    v = clampVal(v, 0, CHORD_DEF_COUNT - 1);
+                    // Nur Slots anwählen, die gespeichert wurden
+                    if (chordDefs[v].saved) chordSlots[s].akkNr = (uint8_t)v;
+                }
                 break;
             }
             case 1: // Mute toggle
@@ -558,15 +563,18 @@ static void handleChordDefEncoder(int enc, int delta) {
     ChordDef &d = chordDefs[chordDefCursor];
     if (enc == 0) {
         int next = clampVal(chordDefCursor + delta, 0, CHORD_DEF_COUNT - 1);
-        // Nur belegte Slots + ersten freien nach dem letzten belegten erlaubt
         bool canSelect = chordDefs[next].saved ||
                          (next == 0) ||
                          (next > 0 && chordDefs[next-1].saved);
-        if (canSelect) chordDefCursor = next;
+        if (canSelect) {
+            chordDefCursor = next;
+            chordToneCursor = 0;  // Cursor zurücksetzen beim Tab-Wechsel
+        }
         drawChordDefScreen();
     } else if (enc == 1) {
         chordDefField = clampVal(chordDefField + delta, 0, 3);
-        drawChordDefScreen();
+        // Nur Parameter-Bereich neu zeichnen — kein fillScreen
+        drawChordDefParams();
     } else if (enc == 2) {
         switch (chordDefField) {
             case 0: // Spread 1-5
@@ -578,16 +586,17 @@ static void handleChordDefEncoder(int enc, int delta) {
             case 2: // Oct -2..+2
                 d.oct = (int8_t)clampVal((int)d.oct + delta, -2, 2);
                 break;
-            case 3: { // ToneMask: delta bewegt einen Cursor durch Bits 0-6 (Töne 1/3/5/7/9/11/13) und togglet
-                static int toneCursor = 0;
-                toneCursor = clampVal(toneCursor + delta, 0, 6);
-                uint8_t toggled = d.toneMask ^ (uint8_t)(1u << toneCursor);
-                if (toggled != 0) d.toneMask = toggled;
+            case 3: // Tone-Cursor bewegen; Ton wird getoggelt
+                chordToneCursor = clampVal(chordToneCursor + delta, 0, 6);  // 7 Töne: 1,3,5,7,9,11,13
+                {
+                    uint8_t toggled = d.toneMask ^ (uint8_t)(1u << chordToneCursor);
+                    if (toggled != 0) d.toneMask = toggled;
+                }
                 break;
-            }
         }
         scheduleSaveParams();
-        drawChordDefScreen();
+        // Nur Parameter-Bereich neu zeichnen — kein fillScreen
+        drawChordDefParams();
     }
 }
 

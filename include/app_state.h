@@ -290,6 +290,7 @@ extern int  chordFieldCursor;  // 0=AkkNr, 1=Mute, 2=Leg, 3=Val, 4=Div, 5=Len
 // Cursor-State für den CHORD_DEF-Screen (nicht persistent)
 extern int  chordDefCursor;    // 0–7: welcher der 8 Akkorde editiert wird
 extern int  chordDefField;     // 0=Spread, 1=Inv, 2=Oct, 3=ToneMask
+extern int  chordToneCursor;   // 0–6: Cursor innerhalb der Tone-Zeile (Enc3 bei field==3)
 
 // ---------------------------------------------------------------------------
 // Clock-Modus: false=intern (IntervalTimer), true=extern (Clock-In-Pin)

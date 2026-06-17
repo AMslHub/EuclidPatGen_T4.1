@@ -174,6 +174,7 @@ int       chordStepCursor  = 0;
 int       chordFieldCursor = 0;
 int       chordDefCursor   = 0;
 int       chordDefField    = 0;
+int       chordToneCursor  = 0;
 int     frozenMidi[32]     = { 0 };
 int     frozenMidiBase[32] = { 0 };
 int     transposeOffset    = 0;
