@@ -2835,21 +2835,25 @@ void drawPitchBarRange(int from, int to) {
     }
 }
 
+// Kleines Highlight-Feld direkt über dem Balkenrahmen (y=73..78, 6px hoch).
+// Letzter Schritt: schwarz löschen. Aktueller Schritt: cyan füllen.
+static void drawPitchStepHighlight(int idx, int len, uint16_t col) {
+    if (idx < 0 || idx >= len) return;
+    int x  = PITCH_BAR_X + (idx       * PITCH_BAR_W) / len;
+    int xN = PITCH_BAR_X + ((idx + 1) * PITCH_BAR_W) / len;
+    int w  = xN - x - 1;
+    if (w < 1) w = 1;
+    tft.fillRect(x, PITCH_BAR_Y - 7, w, 5, col);
+}
+
 void drawPitchPlayhead(unsigned int step) {
     int len  = clampVal(PatLen[0], 1, 32);
     int idx  = (int)(step % (unsigned int)len);
     int last = lastPitchPlayIdx;
-    int barW = PITCH_BAR_W / len;
 
-    // Letzten Balken restaurieren (Linie entfernen)
-    if (last >= 0 && last < len) {
-        int lx = PITCH_BAR_X + last * barW;
-        tft.drawFastVLine(lx, PITCH_BAR_Y, PITCH_BAR_H, ILI9341_BLACK);
-        drawPitchBar(last);  // Balkeninhalt wiederherstellen
-    }
-    // Aktuellen Schritt: cyan Linie am linken Rand des Balkens
-    int x = PITCH_BAR_X + idx * barW;
-    tft.drawFastVLine(x, PITCH_BAR_Y, PITCH_BAR_H, ILI9341_CYAN);
+    if (last >= 0 && last != idx)
+        drawPitchStepHighlight(last, len, ILI9341_BLACK);
+    drawPitchStepHighlight(idx, len, ILI9341_CYAN);
     lastPitchPlayIdx = idx;
 }
 
