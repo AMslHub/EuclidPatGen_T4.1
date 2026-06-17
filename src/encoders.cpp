@@ -547,9 +547,13 @@ static void handleChordSeqButton(int enc) {
         drawChordSeqTitleBar();
         drawChordSeqCell(page, chordStepCursor % 8);
     } else if (enc == 1) {
-        // LIVE toggle
+        // LIVE toggle — bei Einschalten zu CHORD_DEF navigieren (wie Touch-Handler)
         chordLive = !chordLive;
-        drawChordSeqTitleBar();
+        if (chordLive) {
+            requestNavigateTo(CHORD_DEF);
+        } else {
+            drawChordSeqTitleBar();
+        }
     }
 }
 
