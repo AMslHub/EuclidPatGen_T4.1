@@ -5233,11 +5233,6 @@ void drawChordSeqTitleBar() {
     tft.setFont(AwesomeF100_24);
     tft.setCursor(20, 4);
     tft.print((char)18);
-    // "Crd" Label
-    tft.setFont(Arial_12);
-    tft.setTextColor(ILI9341_CYAN);
-    tft.setCursor(48, 4);
-    tft.print("Crd");
     // Div
     bool divSel = (chordFieldCursor == 4);
     tft.setTextColor(divSel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
