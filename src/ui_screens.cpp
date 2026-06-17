@@ -5409,7 +5409,7 @@ static void drawChordDefSaveButton() {
     tft.print(saved ? "SAVD" : "SAVE");
 }
 
-static void drawChordDefTabs() {
+void drawChordDefTabs() {
     for (int i = 0; i < CHORD_DEF_COUNT; i++) {
         int x    = CD_TAB_X0 + i * CD_TAB_W;
         bool sel  = (i == chordDefCursor);

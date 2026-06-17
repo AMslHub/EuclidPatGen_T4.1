@@ -142,6 +142,7 @@ void drawChordSeqCell(int page, int col);
 uint8_t csResolveAkkNr(int i);
 uint8_t csResolveValNr(int i);
 void drawChordDefScreen();
+void drawChordDefTabs();
 void handleChordDef(int mapX, int mapY, uint16_t tipPos);
 void drawCondCell(int setIdx, int page, int col);   // einzelne Spalte (alle 4 Zeilen)
 void drawCondTitle(int setIdx);                     // Titelzeile neu zeichnen

@@ -415,6 +415,7 @@ void applyBpm(){
   if(bpm == 0){
     myTimer.end();
     DurationOfOneStep = 0;
+    chordPlayPos = -1;
     noInterrupts();
     pendingTicks = 0;
     interrupts();
@@ -872,13 +873,17 @@ void loop() {
   // Deferred-Masken: schwere Kreis-Redraws werden nach der Tick-Schleife ausgefuehrt
   // Song HALT: akkumulierte Ticks verwerfen, Schleife nicht betreten
   bool seqFrozen = songHalted || (pin7Mode == 1 && !extRunStop);
-  if (seqFrozen) { discardPendingTicks(); }
+  if (seqFrozen) { discardPendingTicks(); chordPlayPos = -1; }
   uint8_t deferredRedrawMask = 0;
   uint8_t deferredProbMask   = 0;
   int     deferredOldLen[3]  = {};
   while(!seqFrozen && consumePendingTick()){
     cnt++;
     lastGlobalTickUs = micros();
+
+    // Chord-Sequencer Playhead: welcher Slot ist gerade aktiv?
+    if (chordLen > 0)
+        chordPlayPos = (int)((cnt / (unsigned int)clampVal((int)chordDiv, 1, 32)) % (unsigned int)chordLen);
 
     // Per-Kanal Schrittzaehler vorrücken; chFired merkt, welche Kanaele diesen Tick feuern.
     // cntChHold wird NICHT hier gesetzt – es wird erst nach dem Zeichnen des Dots aktualisiert,
@@ -1108,6 +1113,26 @@ void loop() {
           tickPitchUi();
           if (chFired[0]) drawPitchPlayhead(cntCh[0]);
           break;
+      case CHORD_SEQ: {
+          static int lastChordPlayPos = -1;
+          if (chordPlayPos != lastChordPlayPos) {
+              int page = chordStepCursor / 8;
+              if (lastChordPlayPos >= 0 && (lastChordPlayPos / 8) == page)
+                  drawChordSeqCell(page, lastChordPlayPos % 8);
+              if (chordPlayPos >= 0 && (chordPlayPos / 8) == page)
+                  drawChordSeqCell(page, chordPlayPos % 8);
+              lastChordPlayPos = chordPlayPos;
+          }
+          break;
+      }
+      case CHORD_DEF: {
+          static int lastChordPlayPosD = -1;
+          if (chordPlayPos != lastChordPlayPosD) {
+              drawChordDefTabs();
+              lastChordPlayPosD = chordPlayPos;
+          }
+          break;
+      }
       case COND1:
           if (chFired[0]) drawCondPlayhead(0, cntCh[0]);
           break;
