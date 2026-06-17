@@ -557,7 +557,12 @@ static void handleChordSeqButton(int enc) {
 static void handleChordDefEncoder(int enc, int delta) {
     ChordDef &d = chordDefs[chordDefCursor];
     if (enc == 0) {
-        chordDefCursor = clampVal(chordDefCursor + delta, 0, CHORD_DEF_COUNT - 1);
+        int next = clampVal(chordDefCursor + delta, 0, CHORD_DEF_COUNT - 1);
+        // Nur belegte Slots + ersten freien nach dem letzten belegten erlaubt
+        bool canSelect = chordDefs[next].saved ||
+                         (next == 0) ||
+                         (next > 0 && chordDefs[next-1].saved);
+        if (canSelect) chordDefCursor = next;
         drawChordDefScreen();
     } else if (enc == 1) {
         chordDefField = clampVal(chordDefField + delta, 0, 3);
@@ -573,9 +578,9 @@ static void handleChordDefEncoder(int enc, int delta) {
             case 2: // Oct -2..+2
                 d.oct = (int8_t)clampVal((int)d.oct + delta, -2, 2);
                 break;
-            case 3: { // ToneMask: delta bewegt einen Cursor durch Bits 0-4 und togglet
+            case 3: { // ToneMask: delta bewegt einen Cursor durch Bits 0-6 (Töne 1/3/5/7/9/11/13) und togglet
                 static int toneCursor = 0;
-                toneCursor = clampVal(toneCursor + delta, 0, 4);
+                toneCursor = clampVal(toneCursor + delta, 0, 6);
                 uint8_t toggled = d.toneMask ^ (uint8_t)(1u << toneCursor);
                 if (toggled != 0) d.toneMask = toggled;
                 break;

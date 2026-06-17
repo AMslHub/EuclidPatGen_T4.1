@@ -5376,22 +5376,54 @@ void drawChordSeqCell(int page, int col) {
 
 // ---------------------------------------------------------------------------
 // Chord-Definitions-Screen
+// Layout: 320×240, Titelzeile Y=0..35, Parameter Y=38..239
+//   Rückpfeil X=4, Tabs X=44..268 (8×28px), SAVE-Button X=272..319
+//   Zeile 1 Spread  Y=38..75   (5 Buttons à 46px, X=74..304)
+//   Zeile 2 Inv     Y=85..122  (4 Buttons à 58px, X=74..306)
+//   Zeile 3 Oct     Y=132..169 (5 Buttons à 46px, X=74..304)
+//   Zeile 4 Tone    Y=179..239 (7 Buttons à 34px, X=74..312)
 // ---------------------------------------------------------------------------
 static const int CD_TAB_Y  = 4;
 static const int CD_TAB_H  = 28;
 static const int CD_TAB_W  = 28;
-static const int CD_TAB_X0 = 44;   // nach Rückpfeil; 44 + 8*28 = 268, LIVE ab 272
+static const int CD_TAB_X0 = 44;   // 44 + 8*28 = 268; SAVE-Button ab 272
+
+// Tone-Zeile: 7 Töne (1,3,5,7,9,11,13), je 34px breit ab X=74 → 74+7*34=312 ≤ 320
+static const int CD_TONE_COUNT = 7;
+static const int CD_TONE_X0    = 74;
+static const int CD_TONE_W     = 34;
+static const int CD_TONE_Y     = 179;
+static const int CD_TONE_H     = 38;
+static const char *CD_TONE_LBL[7] = { "1","3","5","7","9","11","13" };
+
+static void drawChordDefSaveButton() {
+    bool saved = chordDefs[chordDefCursor].saved;
+    uint16_t fill   = saved ? 0x0320 : 0x0841;
+    uint16_t border = saved ? ILI9341_GREEN : 0xC618;
+    uint16_t fg     = saved ? ILI9341_GREEN : ILI9341_WHITE;
+    tft.fillRect(273, 5, 45, 22, fill);
+    tft.drawRect(272, 4, 47, 24, border);
+    tft.setFont(Arial_12);
+    tft.setTextColor(fg);
+    tft.setCursor(278, 10);
+    tft.print(saved ? "SAVD" : "SAVE");
+}
 
 static void drawChordDefTabs() {
     for (int i = 0; i < CHORD_DEF_COUNT; i++) {
-        int x = CD_TAB_X0 + i * CD_TAB_W;
+        int x    = CD_TAB_X0 + i * CD_TAB_W;
         bool sel  = (i == chordDefCursor);
         bool play = (chordPlayPos >= 0 && csResolveAkkNr(chordPlayPos) == (uint8_t)i);
-        uint16_t border = sel  ? ILI9341_YELLOW :
-                          play ? ILI9341_GREEN  : ILI9341_DARKGREY;
-        uint16_t fill   = sel  ? 0x2945 : ILI9341_BLACK;
+        bool used = chordDefs[i].saved;
+        // Farbe: spielend=grün, selektiert=gelb, belegt=weiß, leer=dunkelgrau
+        uint16_t border = play ? ILI9341_GREEN :
+                          sel  ? ILI9341_YELLOW :
+                          used ? 0xC618 : ILI9341_DARKGREY;
+        uint16_t fill   = sel  ? 0x2945 :
+                          used ? 0x1082 : ILI9341_BLACK;
         uint16_t fg     = play ? ILI9341_GREEN :
-                          sel  ? ILI9341_WHITE : ILI9341_LIGHTGREY;
+                          sel  ? ILI9341_WHITE :
+                          used ? ILI9341_LIGHTGREY : 0x4208;
         tft.fillRect(x+1, CD_TAB_Y+1, CD_TAB_W-2, CD_TAB_H-2, fill);
         tft.drawRect(x,   CD_TAB_Y,   CD_TAB_W,   CD_TAB_H,   border);
         tft.setFont(Arial_12);
@@ -5401,113 +5433,85 @@ static void drawChordDefTabs() {
     }
 }
 
+// Hilfsfunktion: eine Parameter-Zeile zeichnen (Radio-Buttons: genau ein Wert aktiv)
+static void drawCDRow(bool sel, int y, int h, const char *label,
+                      int btnCount, int btnW, int btnX0,
+                      int activeIdx,
+                      const char * const lbls[], int lblXOff[]) {
+    tft.setFont(Arial_12);
+    tft.setTextColor(sel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
+    tft.setCursor(4, y + (h - 14) / 2);
+    tft.print(label);
+    for (int v = 0; v < btnCount; v++) {
+        int bx  = btnX0 + v * btnW;
+        bool act = (v == activeIdx);
+        // Aktiv: heller Hintergrund (0x07FF = Cyan-tinted), deutlicher Rahmen
+        uint16_t bg  = act ? 0x07BF : ILI9341_BLACK;
+        uint16_t brdr = act ? ILI9341_CYAN :
+                        (sel ? ILI9341_YELLOW : 0x4208);
+        uint16_t fg  = act ? ILI9341_BLACK : (sel ? ILI9341_WHITE : 0x8410);
+        tft.fillRect(bx+1,   y+1,     btnW-2, h-2, bg);
+        tft.drawRect(bx,     y,       btnW,   h,   brdr);
+        tft.setTextColor(fg);
+        int xOff = lblXOff ? lblXOff[v] : (btnW - (int)strlen(lbls[v]) * 7) / 2;
+        tft.setCursor(bx + xOff, y + (h - 14) / 2);
+        tft.print(lbls[v]);
+    }
+}
+
 static void drawChordDefParams() {
-    tft.fillRect(0, 40, 320, 200, ILI9341_BLACK);
+    tft.fillRect(0, 36, 320, 204, ILI9341_BLACK);
     ChordDef &d = chordDefs[chordDefCursor];
 
-    // Zeile 1: Spread
+    // Zeile 1: Spread (5 Radio-Buttons)
     {
-        bool sel = (chordDefField == 0);
-        tft.setFont(Arial_12);
-        tft.setTextColor(sel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
-        tft.setCursor(8, 52);
-        tft.print("Spread:");
-        for (int v = 1; v <= 5; v++) {
-            int bx = 80 + (v-1) * 46;
-            bool act = (d.spread == v);
-            tft.fillRect(bx+1, 44, 43, 26, act ? 0x0841 : ILI9341_BLACK);
-            tft.drawRect(bx,   44, 45, 28,
-                act ? ILI9341_CYAN :
-                (sel ? ILI9341_YELLOW : ILI9341_DARKGREY));
-            tft.setTextColor(act ? ILI9341_CYAN : ILI9341_DARKGREY);
-            tft.setCursor(bx + 16, 52);
-            tft.print(v);
-        }
+        const char *lbl[] = { "1","2","3","4","5" };
+        drawCDRow(chordDefField == 0, 38, 34, "Sprd:", 5, 46, 74, d.spread - 1, lbl, nullptr);
     }
 
-    // Zeile 2: Inversion
+    // Zeile 2: Inversion (4 Radio-Buttons)
     {
-        bool sel = (chordDefField == 1);
-        tft.setFont(Arial_12);
-        tft.setTextColor(sel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
-        tft.setCursor(8, 100);
-        tft.print("Inv:");
-        const char *invLbl[] = { "0", "1", "2", "3" };
-        for (int v = 0; v <= 3; v++) {
-            int bx = 80 + v * 58;
-            bool act = (d.inv == (uint8_t)v);
-            tft.fillRect(bx+1, 88, 54, 26, act ? 0x0841 : ILI9341_BLACK);
-            tft.drawRect(bx,   88, 56, 28,
-                act ? ILI9341_CYAN :
-                (sel ? ILI9341_YELLOW : ILI9341_DARKGREY));
-            tft.setTextColor(act ? ILI9341_CYAN : ILI9341_DARKGREY);
-            tft.setCursor(bx + 20, 96);
-            tft.print(invLbl[v]);
-        }
+        const char *lbl[] = { "0","1","2","3" };
+        drawCDRow(chordDefField == 1, 84, 34, "Inv:", 4, 58, 74, d.inv, lbl, nullptr);
     }
 
-    // Zeile 3: Oktave
+    // Zeile 3: Oktave (5 Radio-Buttons)
     {
-        bool sel = (chordDefField == 2);
-        tft.setFont(Arial_12);
-        tft.setTextColor(sel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
-        tft.setCursor(8, 148);
-        tft.print("Oct:");
-        const char *octLbl[] = { "-2", "-1", "0", "+1", "+2" };
-        for (int v = 0; v < 5; v++) {
-            int bx = 80 + v * 46;
-            bool act = (d.oct == (int8_t)(v - 2));
-            tft.fillRect(bx+1, 136, 43, 26, act ? 0x0841 : ILI9341_BLACK);
-            tft.drawRect(bx,   136, 45, 28,
-                act ? ILI9341_CYAN :
-                (sel ? ILI9341_YELLOW : ILI9341_DARKGREY));
-            tft.setTextColor(act ? ILI9341_CYAN : ILI9341_DARKGREY);
-            tft.setCursor(bx + (v == 2 ? 16 : 10), 144);
-            tft.print(octLbl[v]);
-        }
+        const char *lbl[] = { "-2","-1","0","+1","+2" };
+        drawCDRow(chordDefField == 2, 130, 34, "Oct:", 5, 46, 74, d.oct + 2, lbl, nullptr);
     }
 
-    // Zeile 4: Töne (Toggle-Buttons)
+    // Zeile 4: Töne (7 Toggle-Buttons, unabhängig schaltbar)
     {
         bool sel = (chordDefField == 3);
         tft.setFont(Arial_12);
         tft.setTextColor(sel ? ILI9341_YELLOW : ILI9341_LIGHTGREY);
-        tft.setCursor(8, 196);
+        tft.setCursor(4, CD_TONE_Y + (CD_TONE_H - 14) / 2);
         tft.print("Tone:");
-        const char *toneLbl[] = { "1", "3", "5", "7", "9" };
-        for (int b = 0; b < 5; b++) {
-            int bx = 80 + b * 46;
+        for (int b = 0; b < CD_TONE_COUNT; b++) {
+            int bx  = CD_TONE_X0 + b * CD_TONE_W;
             bool act = (d.toneMask >> b) & 1;
-            tft.fillRect(bx+1, 184, 43, 26, act ? 0x0841 : ILI9341_BLACK);
-            tft.drawRect(bx,   184, 45, 28,
-                act ? ILI9341_CYAN :
-                (sel ? ILI9341_YELLOW : ILI9341_DARKGREY));
-            tft.setTextColor(act ? ILI9341_CYAN : ILI9341_DARKGREY);
-            tft.setCursor(bx + 16, 192);
-            tft.print(toneLbl[b]);
+            uint16_t bg   = act ? 0x07BF : ILI9341_BLACK;
+            uint16_t brdr = act ? ILI9341_CYAN :
+                            (sel ? ILI9341_YELLOW : 0x4208);
+            uint16_t fg   = act ? ILI9341_BLACK : (sel ? ILI9341_WHITE : 0x8410);
+            tft.fillRect(bx+1, CD_TONE_Y+1, CD_TONE_W-2, CD_TONE_H-2, bg);
+            tft.drawRect(bx,   CD_TONE_Y,   CD_TONE_W,   CD_TONE_H,   brdr);
+            tft.setTextColor(fg);
+            int xOff = (b < 5) ? (CD_TONE_W - 8) / 2 : (CD_TONE_W - 14) / 2;
+            tft.setCursor(bx + xOff, CD_TONE_Y + (CD_TONE_H - 14) / 2);
+            tft.print(CD_TONE_LBL[b]);
         }
     }
 }
 
-static void drawChordDefLiveIndicator() {
-    // LIVE-Indikator rechts oben (Touch → toggle)
-    uint16_t col = chordLive ? ILI9341_GREEN : ILI9341_DARKGREY;
-    tft.fillRect(269, 5, 50, 22, chordLive ? 0x0600 : ILI9341_BLACK);
-    tft.drawRect(268, 4, 52, 24, col);
-    tft.setFont(Arial_12);
-    tft.setTextColor(col);
-    tft.setCursor(277, 10);
-    tft.print("LIVE");
-}
-
 void drawChordDefScreen() {
     fillScreenIfNeeded();
-    // Rückpfeil
     tft.setTextColor(ILI9341_LIGHTGREY);
     tft.setFont(AwesomeF100_24);
     tft.setCursor(4, 4);
     tft.print((char)18);
-    drawChordDefLiveIndicator();
+    drawChordDefSaveButton();
     drawChordDefTabs();
     drawChordDefParams();
 }
@@ -5517,29 +5521,38 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
         requestNavigateTo(CHORD_SEQ);
         return;
     }
-    // LIVE-Button oben rechts
-    if (mapX >= 268 && mapY >= 4 && mapY < 28) {
-        chordLive = !chordLive;
-        drawChordDefLiveIndicator();
+    // SAVE-Button oben rechts
+    if (mapX >= 272 && mapY >= 4 && mapY < 28) {
+        chordDefs[chordDefCursor].saved = true;
+        scheduleSaveParams();
+        drawChordDefSaveButton();
+        drawChordDefTabs();  // Tab-Farbe aktualisieren
         return;
     }
-    // Tab antippen → Akkord wechseln
+    // Tab antippen → Akkord wechseln (nur belegte Tabs erlaubt, außer leerem Slot direkt rechts)
     if (mapY >= CD_TAB_Y && mapY < CD_TAB_Y + CD_TAB_H) {
         for (int i = 0; i < CHORD_DEF_COUNT; i++) {
             int x = CD_TAB_X0 + i * CD_TAB_W;
             if (mapX >= x && mapX < x + CD_TAB_W) {
-                chordDefCursor = i;
-                drawChordDefTabs();
-                drawChordDefParams();
+                // Ersten leeren Slot nach dem letzten belegten darf man anwählen (zum Anlegen)
+                bool canSelect = chordDefs[i].saved ||
+                                 (i == 0) ||
+                                 (i > 0 && chordDefs[i-1].saved);
+                if (canSelect) {
+                    chordDefCursor = i;
+                    drawChordDefTabs();
+                    drawChordDefParams();
+                    drawChordDefSaveButton();
+                }
                 return;
             }
         }
     }
-    // Spread-Buttons antippen
-    if (mapY >= 44 && mapY < 72) {
+    // Spread-Buttons
+    if (mapY >= 38 && mapY < 72) {
         for (int v = 1; v <= 5; v++) {
-            int bx = 80 + (v-1) * 46;
-            if (mapX >= bx && mapX < bx + 45) {
+            int bx = 74 + (v-1) * 46;
+            if (mapX >= bx && mapX < bx + 46) {
                 chordDefs[chordDefCursor].spread = v;
                 chordDefField = 0;
                 drawChordDefParams();
@@ -5547,11 +5560,11 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
             }
         }
     }
-    // Inv-Buttons antippen
-    if (mapY >= 88 && mapY < 116) {
+    // Inv-Buttons
+    if (mapY >= 84 && mapY < 118) {
         for (int v = 0; v <= 3; v++) {
-            int bx = 80 + v * 58;
-            if (mapX >= bx && mapX < bx + 56) {
+            int bx = 74 + v * 58;
+            if (mapX >= bx && mapX < bx + 58) {
                 chordDefs[chordDefCursor].inv = v;
                 chordDefField = 1;
                 drawChordDefParams();
@@ -5559,11 +5572,11 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
             }
         }
     }
-    // Oct-Buttons antippen
-    if (mapY >= 136 && mapY < 164) {
+    // Oct-Buttons
+    if (mapY >= 130 && mapY < 164) {
         for (int v = 0; v < 5; v++) {
-            int bx = 80 + v * 46;
-            if (mapX >= bx && mapX < bx + 45) {
+            int bx = 74 + v * 46;
+            if (mapX >= bx && mapX < bx + 46) {
                 chordDefs[chordDefCursor].oct = (int8_t)(v - 2);
                 chordDefField = 2;
                 drawChordDefParams();
@@ -5571,11 +5584,11 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
             }
         }
     }
-    // Tone-Toggle-Buttons antippen
-    if (mapY >= 184 && mapY < 212) {
-        for (int b = 0; b < 5; b++) {
-            int bx = 80 + b * 46;
-            if (mapX >= bx && mapX < bx + 45) {
+    // Tone-Toggle-Buttons (7 Töne)
+    if (mapY >= CD_TONE_Y && mapY < CD_TONE_Y + CD_TONE_H) {
+        for (int b = 0; b < CD_TONE_COUNT; b++) {
+            int bx = CD_TONE_X0 + b * CD_TONE_W;
+            if (mapX >= bx && mapX < bx + CD_TONE_W) {
                 uint8_t toggled = chordDefs[chordDefCursor].toneMask ^ (uint8_t)(1u << b);
                 if (toggled != 0) chordDefs[chordDefCursor].toneMask = toggled;
                 chordDefField = 3;

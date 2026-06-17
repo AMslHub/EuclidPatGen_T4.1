@@ -522,8 +522,9 @@ void setup() {
   chordSlots[0].val   = 50;
   chordSlots[0].leg   = 0;
   // ChordDefs: alle mit sinnvollem Default
-  for (int i = 0; i < CHORD_DEF_COUNT; i++)
-      chordDefs[i] = { 1, 0, 0, 0x07 };  // Spread 1, Inv 0, Oct 0, Töne 1+3+5
+  chordDefs[0] = { 1, 0, 0, 0x07, true };   // Slot 0: belegt (Root-Default)
+  for (int i = 1; i < CHORD_DEF_COUNT; i++)
+      chordDefs[i] = { 1, 0, 0, 0x07, false };  // Slot 1–7: leer
 
   Serial.begin(115200);
   if (CrashReport) {

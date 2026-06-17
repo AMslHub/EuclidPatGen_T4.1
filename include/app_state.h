@@ -272,7 +272,8 @@ struct ChordDef {
     uint8_t spread;    // 1–5 Oktaven
     uint8_t inv;       // 0–3 Inversion
     int8_t  oct;       // -2..+2 Oktav-Offset
-    uint8_t toneMask;  // Bitfeld: bit0=1, bit1=3, bit2=5, bit3=7, bit4=9
+    uint8_t toneMask;  // Bitfeld: bit0=1, bit1=3, bit2=5, bit3=7, bit4=9, bit5=11, bit6=13
+    bool    saved;     // true: dieser Slot wurde gespeichert (nicht leer)
 };
 
 extern ChordSlot chordSlots[CHORD_SLOT_COUNT];
