@@ -271,6 +271,8 @@ static volatile bool     gateWasFiredByISR[3] = { false, false, false };
 
 // Schaltet abgelaufene Gate-Pulse ab — läuft als ISR, damit Gates auch während
 // langer SPI-Transfers (fillScreen usw.) pünktlich abgeschaltet werden.
+static volatile uint8_t midiNoteOffPending = 0;  // Bit i: Kanal i braucht Note-Off
+
 static void gateOffISR() {
     uint32_t now = micros();
     for (int i = 0; i < 3; i++) {
@@ -279,6 +281,7 @@ static void gateOffISR() {
         if (offAt != 0 && (int32_t)(now - offAt) >= 0) {
             digitalWriteFast(GatePins[i], HIGH);
             gateOffAt[i] = 0;
+            midiNoteOffPending |= (uint8_t)(1u << i);  // Main-Loop soll Note-Off senden
         }
     }
 }
@@ -1353,6 +1356,17 @@ void loop() {
   }
 
   midiOutTick();   // Chord-MIDI senden wenn chordPlayPos sich geändert hat
+
+  // MIDI Note-Off: von gateOffISR gesetztes Flag atomar lesen und verarbeiten
+  if (midiNoteOffPending) {
+      noInterrupts();
+      uint8_t pending = midiNoteOffPending;
+      midiNoteOffPending = 0;
+      interrupts();
+      if (pending & 0x01) midiOutMelodyOff();
+      if (pending & 0x02) midiOutRhythmOff(1);
+      if (pending & 0x04) midiOutRhythmOff(2);
+  }
 
   // Zwei-Phasen-Draw: Phase 1 = fillScreen, Phase 2 = Inhalte.
   // Jede Phase blockiert nur ~15-30ms statt ~40-50ms am Stück.

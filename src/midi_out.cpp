@@ -63,8 +63,6 @@ static int buildChordNotes(const ChordDef &d, uint8_t *outNotes) {
     if (N < 1) return 0;
 
     // Root-Note: tiefster Ton in der Notenliste (= Grundton in Oktave 0)
-    int rootMidi = noteList[0];  // C2 + pitchRoot + 0. Skalengrad = Root
-
     // Skalentöne der ersten Oktave extrahieren (Halbtonabstände vom Root)
     // Aus der Skalen-Definition direkt lesen wäre sauberer, aber buildNoteList
     // liefert uns bereits die korrekten MIDI-Noten — wir nehmen die ersten N/2.
@@ -212,4 +210,41 @@ void midiOutTick() {
     s_activeCount = newCount;
     for (int i = 0; i < newCount; i++) s_activeNotes[i] = newNotes[i];
     s_lastPlayPos = pos;
+}
+
+// ---------------------------------------------------------------------------
+// Melodie CH1: Note-On bei jedem Gate-Hit von Ch0
+// ---------------------------------------------------------------------------
+static uint8_t s_melodyNote = 0xFF;  // 0xFF = keine aktive Note
+
+void midiOutMelodyHit(int midiNote, uint8_t velocity) {
+    if (midiNote < 0 || midiNote > 127) return;
+    if (s_melodyNote != 0xFF)
+        midiNoteOff(MIDI_CH_MELODY, s_melodyNote);  // vorherige Note beenden
+    s_melodyNote = (uint8_t)midiNote;
+    midiNoteOn(MIDI_CH_MELODY, s_melodyNote, velocity);
+}
+
+void midiOutMelodyOff() {
+    if (s_melodyNote != 0xFF) {
+        midiNoteOff(MIDI_CH_MELODY, s_melodyNote);
+        s_melodyNote = 0xFF;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rhythmus CH9 (Ch1) / CH10 (Ch2): feste Note C3 (MIDI 48) als Gate-Trigger
+// ---------------------------------------------------------------------------
+static const uint8_t RHYTHM_NOTE     = 48;   // C3
+static const uint8_t RHYTHM_VELOCITY = 100;
+static const uint8_t MIDI_CH_RHYTHM[2] = { 9, 10 };  // ch=1→9, ch=2→10
+
+void midiOutRhythmHit(int ch) {
+    if (ch < 1 || ch > 2) return;
+    midiNoteOn(MIDI_CH_RHYTHM[ch - 1], RHYTHM_NOTE, RHYTHM_VELOCITY);
+}
+
+void midiOutRhythmOff(int ch) {
+    if (ch < 1 || ch > 2) return;
+    midiNoteOff(MIDI_CH_RHYTHM[ch - 1], RHYTHM_NOTE);
 }

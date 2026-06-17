@@ -3,6 +3,7 @@
 #include <euclid.h>
 #include <pitch.h>
 #include <cv_inputs.h>
+#include <midi_out.h>
 
 namespace {
 
@@ -112,6 +113,7 @@ void triggerGates() {
         if (EPatArr[i][euclidRotatedSrc(idx, len, effRot)]) {
             digitalWrite(GatePins[i], LOW);
             gateOffAt[i] = micros() + gateLenForStep(i, cntCh[i]);
+            if (i == 1 || i == 2) midiOutRhythmHit(i);
         }
     }
 }
@@ -143,6 +145,8 @@ void triggerGateForCh(int ch) {
         gateIsHeld[ch] = false;
         gateOffAt[ch]  = micros() + gateLenForStep(ch, cntCh[ch]);
     }
+    // MIDI: Ch1→CH9, Ch2→CH10 (Ch0 Melodie wird in outputValuesForStep gesendet)
+    if (ch == 1 || ch == 2) midiOutRhythmHit(ch);
 }
 
 // Cache für Ratchet-Folgehits: unmodulierte Value-Werte + aktueller Pitch-DAC
@@ -309,6 +313,7 @@ void outputValuesForStep(unsigned int /*step_unused*/, uint8_t swingMask) {
                 midi = clampVal(midi + totalShift * 12 + (int)cvPitchTransposeST + cvPitchAdj * 12 + (int)condTransposeAdd[0], 36, 127);
                 lastPitchDac = midiToDac(midi);
                 pitchDac = lastPitchDac;
+                if (hit) midiOutMelodyHit(midi, 100);
             }
         }
     }
