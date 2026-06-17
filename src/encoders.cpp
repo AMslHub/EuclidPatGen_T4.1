@@ -590,15 +590,11 @@ static void handleChordDefEncoder(int enc, int delta) {
             case 2: // Oct -2..+2
                 d.oct = (int8_t)clampVal((int)d.oct + delta, -2, 2);
                 break;
-            case 3: // Tone-Cursor bewegen; Ton wird getoggelt
-                chordToneCursor = clampVal(chordToneCursor + delta, 0, 6);  // 7 Töne: 1,3,5,7,9,11,13
-                {
-                    uint8_t toggled = d.toneMask ^ (uint8_t)(1u << chordToneCursor);
-                    if (toggled != 0) d.toneMask = toggled;
-                }
+            case 3: // Tone-Cursor bewegen — kein Toggle, nur Cursor verschieben
+                chordToneCursor = clampVal(chordToneCursor + delta, 0, 6);
                 break;
         }
-        scheduleSaveParams();
+        if (chordDefField != 3) scheduleSaveParams();  // case 3: kein Wert geändert
         // Nur Parameter-Bereich neu zeichnen — kein fillScreen
         drawChordDefParams();
     }
@@ -704,6 +700,15 @@ void handleEncoders() {
                         requestNavigateTo(getNavCursorState());
                     } else if (GUIState == PITCH1) {
                         handlePitchButton(2);
+                    } else if (GUIState == CHORD_DEF) {
+                        // Ton an chordToneCursor togglen
+                        if (chordDefField == 3) {
+                            ChordDef &d = chordDefs[chordDefCursor];
+                            uint8_t toggled = d.toneMask ^ (uint8_t)(1u << chordToneCursor);
+                            if (toggled != 0) d.toneMask = toggled;
+                            scheduleSaveParams();
+                            drawChordDefParams();
+                        }
                     } else if (GUIState == EUCLCIRCS || GUIState == EUCLPARAM1 ||
                                GUIState == EUCLPARAM2 || GUIState == EUCLPARAM3) {
                         handleNormalButton(2);
