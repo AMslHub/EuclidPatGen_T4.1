@@ -820,6 +820,14 @@ void handleEncoders() {
                         handleCondButtonPress(ch);
                     }
                     // Short press: no action
+                } else if (GUIState == CHORD_DEF) {
+                    if (held < LONG_PRESS_MS) {
+                        // Short Press: aktuellen Slot speichern (wie SAVE-Button)
+                        chordDefs[chordDefCursor].saved = true;
+                        scheduleSaveParams();
+                        drawChordDefSaveButton();
+                        drawChordDefTabs();
+                    }
                 } else if (GUIState == CHORD_SEQ) {
                     uint32_t held2 = now - enc1PressStartMs;
                     if (held2 >= LONG_PRESS_MS) {
