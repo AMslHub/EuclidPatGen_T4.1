@@ -830,7 +830,7 @@ void handleEncoders() {
                     if (held < LONG_PRESS_MS) {
                         // Short Press: aktuellen Slot speichern (wie SAVE-Button)
                         chordDefs[chordDefCursor].saved = true;
-                        scheduleSaveParams();
+                        scheduleChordSave();
                         drawChordDefSaveButton();
                         drawChordDefTabs();
                     }

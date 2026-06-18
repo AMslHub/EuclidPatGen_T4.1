@@ -9,8 +9,8 @@
 
 // EEPROM: Autosave des aktuellen Zustands (schnell, nur geänderte Bytes).
 // SD-Karte: Slot-Speicher (explizite User-Action, schnell durch internes FTL).
-static const uint16_t EEPROM_MAGIC   = 0xEB4F;  // bumped: pin7Mode hinzugefügt
-static const uint16_t SD_MAGIC_SLOTS = 0xEB65;  // bumped: +holdStep/muteStep in ParamBlock
+static const uint16_t EEPROM_MAGIC   = 0xEB50;  // bumped: +ChordDef/ChordSlot/chordDiv/chordLen
+static const uint16_t SD_MAGIC_SLOTS = 0xEB66;  // bumped: +ChordDef/ChordSlot/chordDiv/chordLen
 static const uint16_t SD_MAGIC_SONG  = 0xEB61;
 
 static bool sdOK = false;
@@ -75,6 +75,21 @@ struct PitchBlock {
     uint8_t rotIvStep;
 };
 
+struct ChordSlotPacked {
+    uint8_t akkNr;
+    uint8_t mute;
+    uint8_t leg;
+    uint8_t val;
+};
+
+struct ChordDefPacked {
+    uint8_t spread;
+    uint8_t inv;
+    int8_t  oct;
+    uint8_t toneMask;
+    uint8_t saved;
+};
+
 struct CurrentParams {
     uint16_t   bpm;
     ParamBlock data;
@@ -89,13 +104,21 @@ struct CurrentParams {
     uint8_t    activeSongNumVal;
     uint8_t    autosaveModeVal;  // 0=Aus, 1=Ständig, 2=Bei Clock-Stop
     uint8_t    pin7ModeVal;      // 0=Reset-Puls, 1=Run/Stop-Pegel
+    ChordSlotPacked chordSlots[CHORD_SLOT_COUNT];
+    ChordDefPacked  chordDefs[CHORD_DEF_COUNT];
+    uint8_t         chordDiv;
+    uint8_t         chordLen;
 };
 
 struct SlotParams {
-    ParamBlock data;
-    uint8_t    epatSavedMask;
-    uint8_t    epat[3][32];
-    PitchBlock pitch;
+    ParamBlock    data;
+    uint8_t       epatSavedMask;
+    uint8_t       epat[3][32];
+    PitchBlock    pitch;
+    ChordSlotPacked chordSlots[CHORD_SLOT_COUNT];
+    ChordDefPacked  chordDefs[CHORD_DEF_COUNT];
+    uint8_t         chordDiv;
+    uint8_t         chordLen;
 };
 
 struct EucParams {
@@ -272,6 +295,21 @@ static void packCurrent(CurrentParams &p) {
     p.activeSongNumVal   = (uint8_t)clampVal(activeSongNum, 0, 99);
     p.autosaveModeVal = autosaveMode;
     p.pin7ModeVal     = pin7Mode;
+    for (int i = 0; i < CHORD_SLOT_COUNT; i++) {
+        p.chordSlots[i].akkNr = chordSlots[i].akkNr;
+        p.chordSlots[i].mute  = chordSlots[i].mute ? 1 : 0;
+        p.chordSlots[i].leg   = chordSlots[i].leg;
+        p.chordSlots[i].val   = chordSlots[i].val;
+    }
+    for (int i = 0; i < CHORD_DEF_COUNT; i++) {
+        p.chordDefs[i].spread   = chordDefs[i].spread;
+        p.chordDefs[i].inv      = chordDefs[i].inv;
+        p.chordDefs[i].oct      = chordDefs[i].oct;
+        p.chordDefs[i].toneMask = chordDefs[i].toneMask;
+        p.chordDefs[i].saved    = chordDefs[i].saved ? 1 : 0;
+    }
+    p.chordDiv = chordDiv;
+    p.chordLen = chordLen;
 }
 
 static void unpackCurrent(const CurrentParams &p) {
@@ -297,6 +335,24 @@ static void unpackCurrent(const CurrentParams &p) {
     activeSongNum    = clampVal((int)p.activeSongNumVal, 0, 99);
     autosaveMode = (p.autosaveModeVal <= 2) ? p.autosaveModeVal : 1;
     pin7Mode     = (p.pin7ModeVal     <= 1) ? p.pin7ModeVal     : 0;
+    for (int i = 0; i < CHORD_SLOT_COUNT; i++) {
+        uint8_t akk = p.chordSlots[i].akkNr;
+        chordSlots[i].akkNr = (akk == CHORD_SLOT_EMPTY || akk < CHORD_DEF_COUNT) ? akk : CHORD_SLOT_EMPTY;
+        chordSlots[i].mute  = p.chordSlots[i].mute != 0;
+        uint8_t leg = p.chordSlots[i].leg;
+        chordSlots[i].leg   = (leg == CHORD_SLOT_EMPTY || leg <= 1) ? leg : CHORD_SLOT_EMPTY;
+        uint8_t val = p.chordSlots[i].val;
+        chordSlots[i].val   = (val == CHORD_SLOT_EMPTY || (val >= 10 && val <= 100)) ? val : CHORD_SLOT_EMPTY;
+    }
+    for (int i = 0; i < CHORD_DEF_COUNT; i++) {
+        chordDefs[i].spread   = (p.chordDefs[i].spread >= 1 && p.chordDefs[i].spread <= 5) ? p.chordDefs[i].spread : 1;
+        chordDefs[i].inv      = (p.chordDefs[i].inv <= 3) ? p.chordDefs[i].inv : 0;
+        chordDefs[i].oct      = (int8_t)clampVal((int)p.chordDefs[i].oct, -2, 2);
+        chordDefs[i].toneMask = (p.chordDefs[i].toneMask != 0) ? p.chordDefs[i].toneMask : 0x07;
+        chordDefs[i].saved    = p.chordDefs[i].saved != 0;
+    }
+    chordDiv = (p.chordDiv >= 1) ? p.chordDiv : 1;
+    chordLen = (p.chordLen >= 1 && p.chordLen <= CHORD_SLOT_COUNT) ? p.chordLen : 1;
 }
 
 static void packSlot(SlotParams &p) {
@@ -309,6 +365,21 @@ static void packSlot(SlotParams &p) {
             p.epat[i][j] = (uint8_t)(EPatArr[i][j] ? 1 : 0);
     }
     packPitch(p.pitch);
+    for (int i = 0; i < CHORD_SLOT_COUNT; i++) {
+        p.chordSlots[i].akkNr = chordSlots[i].akkNr;
+        p.chordSlots[i].mute  = chordSlots[i].mute ? 1 : 0;
+        p.chordSlots[i].leg   = chordSlots[i].leg;
+        p.chordSlots[i].val   = chordSlots[i].val;
+    }
+    for (int i = 0; i < CHORD_DEF_COUNT; i++) {
+        p.chordDefs[i].spread   = chordDefs[i].spread;
+        p.chordDefs[i].inv      = chordDefs[i].inv;
+        p.chordDefs[i].oct      = chordDefs[i].oct;
+        p.chordDefs[i].toneMask = chordDefs[i].toneMask;
+        p.chordDefs[i].saved    = chordDefs[i].saved ? 1 : 0;
+    }
+    p.chordDiv = chordDiv;
+    p.chordLen = chordLen;
 }
 
 static void unpackSlot(const SlotParams &p) {
@@ -324,6 +395,24 @@ static void unpackSlot(const SlotParams &p) {
         }
     }
     unpackPitch(p.pitch);
+    for (int i = 0; i < CHORD_SLOT_COUNT; i++) {
+        uint8_t akk = p.chordSlots[i].akkNr;
+        chordSlots[i].akkNr = (akk == CHORD_SLOT_EMPTY || akk < CHORD_DEF_COUNT) ? akk : CHORD_SLOT_EMPTY;
+        chordSlots[i].mute  = p.chordSlots[i].mute != 0;
+        uint8_t leg = p.chordSlots[i].leg;
+        chordSlots[i].leg   = (leg == CHORD_SLOT_EMPTY || leg <= 1) ? leg : CHORD_SLOT_EMPTY;
+        uint8_t val = p.chordSlots[i].val;
+        chordSlots[i].val   = (val == CHORD_SLOT_EMPTY || (val >= 10 && val <= 100)) ? val : CHORD_SLOT_EMPTY;
+    }
+    for (int i = 0; i < CHORD_DEF_COUNT; i++) {
+        chordDefs[i].spread   = (p.chordDefs[i].spread >= 1 && p.chordDefs[i].spread <= 5) ? p.chordDefs[i].spread : 1;
+        chordDefs[i].inv      = (p.chordDefs[i].inv <= 3) ? p.chordDefs[i].inv : 0;
+        chordDefs[i].oct      = (int8_t)clampVal((int)p.chordDefs[i].oct, -2, 2);
+        chordDefs[i].toneMask = (p.chordDefs[i].toneMask != 0) ? p.chordDefs[i].toneMask : 0x07;
+        chordDefs[i].saved    = p.chordDefs[i].saved != 0;
+    }
+    chordDiv = (p.chordDiv >= 1) ? p.chordDiv : 1;
+    chordLen = (p.chordLen >= 1 && p.chordLen <= CHORD_SLOT_COUNT) ? p.chordLen : 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,6 +520,17 @@ void loadParams() {
         cvTargetMap[i]     = CV_TARGET_NONE;
     }
     pin7Mode      = 0;
+    // Chord-Defaults (identisch mit setup()-Initialisierung in main.cpp)
+    for (int i = 0; i < CHORD_SLOT_COUNT; i++)
+        chordSlots[i] = { CHORD_SLOT_EMPTY, false, CHORD_SLOT_EMPTY, CHORD_SLOT_EMPTY };
+    chordSlots[0].akkNr = 0;
+    chordSlots[0].val   = 50;
+    chordSlots[0].leg   = 0;
+    chordDefs[0] = { 1, 0, 0, 0x07, true };
+    for (int i = 1; i < CHORD_DEF_COUNT; i++)
+        chordDefs[i] = { 1, 0, 0, 0x07, false };
+    chordDiv = 4;
+    chordLen = 8;
     // Defer EEPROM write to main loop (avoids FlexNVM write during USB-enumeration window)
     PendingSave   = true;
     PendingSaveAt = 0;  // fires on first main-loop iteration (millis() already > 0)
@@ -438,6 +538,12 @@ void loadParams() {
 
 void scheduleSaveParams() {
     if (autosaveMode != 1) return;  // Nur im Modus "Ständig" Auto-Save
+    PendingSave   = true;
+    PendingSaveAt = millis() + SAVE_DEBOUNCE_MS;
+}
+
+void scheduleChordSave() {
+    // Immer speichern, unabhängig von autosaveMode — Chord-Daten sind explizit vom User gesaved
     PendingSave   = true;
     PendingSaveAt = millis() + SAVE_DEBOUNCE_MS;
 }

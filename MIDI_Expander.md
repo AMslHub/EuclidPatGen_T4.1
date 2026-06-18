@@ -224,7 +224,73 @@ Offizielle Extension "Raspberry Pi Pico" von raspberry-pi, mehr Kontrolle aber m
 
 ---
 
-## Nächste Schritte (wenn bereit)
+---
+
+## Implementierungsstand (Stand 2026-06-17)
+
+> **Hier weitermachen**, wenn das Pico-Extension-Board aufgebaut ist.
+
+### ✅ Teensy-Firmware — MIDI-OUT vollständig implementiert
+
+Alle vier musikalischen Kanäle werden bereits auf dem Teensy fertig als MIDI-Bytes berechnet
+und über **Serial7 (TX=Pin 29, 31250 Baud)** ausgegeben.
+Der Pico muss diese Bytes nur 1:1 auf MIDI-DIN OUT durchleiten — kein MIDI-Parsing im Pico nötig.
+
+| Kanal | MIDI-Kanal | Implementierung | Datei |
+|-------|-----------|-----------------|-------|
+| Melodie Ch0 | CH1 | Note-On bei Gate-Hit (`outputValuesForStep()`), Note-Off via `midiNoteOffPending`-Flag aus ISR | `src/gates.cpp`, `src/midi_out.cpp` |
+| Akkord/Pad | CH2 | `midiOutTick()` bei `chordPlayPos`-Wechsel, Legato-Logik, Carry-Forward | `src/midi_out.cpp` |
+| Rhythmus Ch1 | CH9 | Note-On in `triggerGateForCh()` / `triggerGates()`, Note-Off via Flag | `src/gates.cpp` |
+| Rhythmus Ch2 | CH10 | Note-On in `triggerGateForCh()` / `triggerGates()`, Note-Off via Flag | `src/gates.cpp` |
+
+**ISR-Sicherheit:** `gateOffISR` setzt `volatile uint8_t midiNoteOffPending` (Bit-Flags),
+Main-Loop liest atomar und ruft `midiOutMelodyOff()` / `midiOutRhythmOff()` auf.
+`Serial7.write()` wird **nie** aus dem ISR heraus aufgerufen.
+
+**Akkord-Berechnung:** `buildChordNotes()` in `src/midi_out.cpp` — skalengerecht via `buildNoteList()`,
+ToneMask (Bits 0–6 = Stufen 1,3,5,7,9,11,13), Inversion, Oct-Offset, Spread über Oktaven.
+
+**Legato:** Note-On neue Noten → dann Note-Off nur die Töne die im neuen Akkord nicht vorkommen
+(gemeinsame Töne klingen durch ohne Unterbrechung).
+
+### ⏳ Teensy-Firmware — MIDI-IN (noch nicht implementiert)
+
+Wartet auf Pico-Hardware. Zu implementieren wenn Extension-Board fertig:
+
+| Funktion | MIDI-Befehl | Ziel |
+|----------|-------------|------|
+| Pattern-Wechsel | Note-On C3–B3 oder Program Change 0–127 | `perfSlot` wählen |
+| BPM | CC 1 | `bpm` setzen |
+| Spread | CC 2 | `spread` aller Kanäle |
+| Transpose | CC 3 | `pitchShift` (Skalenstufen) |
+| Echtzeit-Transpose | Pitch Bend | `pitchShift` |
+
+Serial7 RX (Pin 28) ist frei — noch kein Parser implementiert.
+
+### ⏳ Pico-Firmware — nicht begonnen
+
+Zu implementieren wenn Hardware-Teile vorliegen:
+
+| Aufgabe | Details |
+|---------|---------|
+| MIDI-DIN OUT Durchleitung | UART vom Teensy → MIDI-DIN OUT (top priority — damit Akkorde/Melodie sofort klingen) |
+| MIDI-DIN IN Parser | Optokoppler (6N138) → UART → zum Teensy weiterleiten |
+| USB-MIDI-Host | Launchpad X / Keystep über USB-A |
+| Stream-Merger | USB-MIDI + DIN-IN → ein UART zum Teensy |
+
+**Empfehlung Pico-Firmware-Reihenfolge:**
+1. UART-Durchleitung (Teensy → MIDI-DIN OUT) — 10 Zeilen Code, sofort nutzbar
+2. MIDI-DIN IN Passthrough (DIN IN → Teensy)
+3. USB-MIDI-Host (Launchpad X)
+
+### ⏳ Chord-Daten im Save/Load (noch nicht implementiert)
+
+`chordSlots[]`, `chordDefs[]`, `chordDiv`, `chordLen` sind noch nicht im LittleFS-Slot-Save enthalten.
+Wird beim Abschalten nicht gespeichert und geht verloren.
+
+---
+
+## Nächste Schritte (wenn Pico-Hardware bereit)
 
 **Hardware:**
 - [ ] KiCad-Schaltplan anlegen (Pico + USB-A + MIDI-DIN IN/OUT + DIP-Switch)
@@ -232,15 +298,14 @@ Offizielle Extension "Raspberry Pi Pico" von raspberry-pi, mehr Kontrolle aber m
 - [ ] Frontplatte designen (USB-A, MIDI-DIN IN, MIDI-DIN OUT, DIP-Switch)
 - [ ] Verbindungskabel EuclidPatGen ↔ Expander (4-polig JST)
 
-**Pico-Firmware:**
+**Pico-Firmware (in dieser Reihenfolge):**
+- [ ] UART-Durchleitung Teensy TX → MIDI-DIN OUT (Prio 1 — sofort nutzbar)
+- [ ] MIDI-DIN IN Parser (Optokoppler → UART → Teensy)
 - [ ] USB-MIDI-Host (Launchpad X empfangen)
-- [ ] MIDI-DIN IN Parser (Optokoppler → UART)
 - [ ] Stream-Merger (USB + DIN → ein UART zum Teensy)
-- [ ] MIDI-DIN OUT Durchleitung (UART vom Teensy → DIN OUT)
 
 **Teensy-Firmware (EuclidPatGen):**
-- [ ] Serial7 MIDI-Parser implementieren
+- [ ] Serial7 MIDI-IN Parser implementieren (Serial7 RX = Pin 28)
 - [ ] Pattern-Wechsel via Note-On / Program Change
 - [ ] Transpose via CC / Pitch Bend
-- [ ] Akkord-Ausgabe via MIDI-OUT (Chord-Preset → Note-On alle Töne)
-- [ ] Gate-Length für Akkord-Noten (Note-Off Timing)
+- [ ] Chord-Daten in LittleFS-Slot-Save einbauen (`chordSlots[]`, `chordDefs[]`, `chordDiv`, `chordLen`)

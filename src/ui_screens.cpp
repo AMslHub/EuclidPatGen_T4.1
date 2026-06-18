@@ -5413,7 +5413,9 @@ void drawChordDefSaveButton() {
     tft.setFont(Arial_12);
     tft.setTextColor(fg);
     tft.setCursor(278, 10);
+    tft.setTextWrap(false);
     tft.print(saved ? "SAVD" : "SAVE");
+    tft.setTextWrap(true);
 }
 
 void drawChordDefTabs() {
@@ -5539,7 +5541,7 @@ void handleChordDef(int mapX, int mapY, uint16_t tipPos) {
     // SAVE-Button oben rechts
     if (mapX >= 272 && mapY >= 4 && mapY < 28) {
         chordDefs[chordDefCursor].saved = true;
-        scheduleSaveParams();
+        scheduleChordSave();
         drawChordDefSaveButton();
         drawChordDefTabs();  // Tab-Farbe aktualisieren
         return;

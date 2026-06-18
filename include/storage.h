@@ -6,6 +6,7 @@ void initStorage();
 void saveParams();
 void loadParams();
 void scheduleSaveParams();
+void scheduleChordSave();   // wie scheduleSaveParams, aber immer (unabhängig von autosaveMode)
 
 uint16_t getSlotsUsedMask();
 bool saveParamsSlot(int slot);
